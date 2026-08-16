@@ -110,6 +110,7 @@ These are not yet contracts.
 | [OQ-004](open-questions/OQ-004-snapshot-boundary.md) | `OPEN` | P0 | What exactly must a sealed snapshot materialize? | Reproducibility contract |
 | [OQ-005](open-questions/OQ-005-operations-contract.md) | `OPEN` | P0 | Which operator actions and evidence must the dashboard expose? | Dashboard acceptance contract |
 | [OQ-006](open-questions/OQ-006-job-concurrency.md) | `OPEN` | P0 | Is the PostgreSQL job model sufficient and correct under failure? | Worker and retry contract |
+| [OQ-007](open-questions/OQ-007-credential-scope.md) | `OPEN` | P0 | Which credentials may a worker resolve, and what enforces that limit? | Credential handling and worker boundary contract |
 
 Priority expresses the order of evidence work, not long-term business importance.
 

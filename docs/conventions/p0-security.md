@@ -46,8 +46,10 @@ M0 현재 상태는 의도적으로 넓게 열려 있다.
 
 - Code, committed config, database, job payload, Raw header, fixture, log, screenshot에 secret 원문을 저장하지 않는다.
 - Source와 job에는 opaque `credential_ref`만 저장한다.
-- Worker가 실행 경계에서 environment 또는 승인된 local secret source로 reference를 해석한다.
-- 공개 가능한 변수 이름과 형식은 `config/env.example`에 기록한다.
+- Worker가 사용 시점에 승인된 local secret source에서 reference를 해석하고, 값을 요청 수명 동안만 보유한다.
+- Credential 값을 프로세스 환경변수로 export하지 않는다. 환경으로 펼치면 모든 자식 프로세스가 모든 credential을 상속하며, 이는 log 통제와 다른 유출 채널이다. 실행 경계에는 store 위치만 전달한다.
+- Worker가 어떤 reference를 해석할 수 있어야 하는지는 [OQ-007](../open-questions/OQ-007-credential-scope.md)에서 결정한다. 그때까지 범위 제한을 확정된 것으로 다루지 않는다.
+- 공개 가능한 key 이름과 형식은 `config/env.example`에 기록한다.
 - 실제 credential 값은 repository working tree 밖의 승인된 local secret source에만 둔다. 기본 위치는 `~/.config/cosmasignal/`이며 다른 위치를 쓰려면 실험 기록이나 Decision Packet에 남긴다.
 - Working tree 안에는 `.env`를 포함해 어떤 secret 파일도 만들지 않는다. `.gitignore`와 agent permission deny 규칙은 안전망이지 유일한 방어선이 아니다.
 - 적용 절차는 [Secret Setup](secret-setup.md)에 있다.
