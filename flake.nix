@@ -35,8 +35,12 @@
             pkgs.git
           ];
 
+          # direnv re-enters the shell on every cd into the tree, so keep the
+          # banner for explicit `nix develop` only.
           shellHook = ''
-            echo "cosma-signal: optional Nix shell. Nothing in this repository requires it; see README.md."
+            if [ -z "''${DIRENV_IN_ENVRC:-}" ]; then
+              echo "cosma-signal: optional Nix shell. Nothing in this repository requires it; see README.md."
+            fi
           '';
         };
       });

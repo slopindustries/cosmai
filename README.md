@@ -57,7 +57,9 @@ A flake provides `uv`, Node, PostgreSQL, and Git for anyone who would rather not
 nix develop
 ```
 
-This path is supplementary. No script, test, or document requires Nix, and uv resolves the same environment inside the shell as outside it. To enter it automatically with direnv, copy `.envrc.example` to `.envrc` and run `direnv allow`.
+To enter the shell automatically, run `direnv allow` once. The committed `.envrc` does nothing until you do, and skips the shell entirely on a machine without Nix. Per-user tweaks belong in `.envrc.local`, which is ignored. [nix-direnv](https://github.com/nix-community/nix-direnv) is worth installing if you use this path — it caches the shell instead of re-evaluating it on every `cd`.
+
+This path stays supplementary. No script, test, or document requires Nix, and uv resolves the same environment inside the shell as outside it.
 
 ## Lifecycle
 

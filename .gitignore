@@ -39,7 +39,7 @@ test-results/
 .direnv/
 result
 result-*
-.envrc
+.envrc.local
 
 # Runtime and non-redistributable data
 /var/
