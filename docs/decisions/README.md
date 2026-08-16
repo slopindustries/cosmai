@@ -8,3 +8,4 @@ Current decisions:
 
 - [DP-001 — Disposable P0 and clean P1 reconstruction](DP-001-p0-lifecycle.md)
 - [DP-002 — Project identity and initial technology constraints](DP-002-project-identity-and-stack.md)
+- [DP-003 — Development environment and Python packaging](DP-003-development-environment.md)

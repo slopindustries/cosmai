@@ -1,0 +1,41 @@
+[project]
+name = "cosma-signal"
+version = "0.0.0"
+description = "CosmaSignal development environment. Intentionally defines no importable package."
+requires-python = ">=3.13"
+dependencies = []
+
+# This project is a tooling manifest, not a package. Nothing here is importable,
+# so no P0 module can become a runtime or package dependency of P1.
+# See docs/decisions/DP-003-development-environment.md.
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "mypy>=1.14",
+    "pytest>=8.3",
+    "ruff>=0.9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--strict-markers -ra"
+markers = [
+    "requires_credential: needs a real credential; skipped unless --run-credential is given",
+    "network: performs an outbound request; skipped unless --run-network is given",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [".venv", "var"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true

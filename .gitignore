@@ -35,6 +35,12 @@ coverage/
 playwright-report/
 test-results/
 
+# Nix and direnv (optional development shell)
+.direnv/
+result
+result-*
+.envrc
+
 # Runtime and non-redistributable data
 /var/
 /tmp/
@@ -43,3 +49,4 @@ test-results/
 !/tests/fixtures/local/README.md
 /tests/fixtures/private/
 *.log
+.tmp-*

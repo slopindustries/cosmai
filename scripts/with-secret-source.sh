@@ -50,7 +50,17 @@ case "$secret_real" in
     ;;
 esac
 
-perms=$(stat -f '%Lp' "$secret_real" 2>/dev/null || stat -c '%a' "$secret_real")
+# Assign in separate branches: `$(gnu || bsd)` would concatenate the output of a
+# partially-failing first attempt with the output of the fallback.
+if perms=$(stat -c '%a' "$secret_real" 2>/dev/null); then
+  : # GNU coreutils
+elif perms=$(stat -f '%Lp' "$secret_real" 2>/dev/null); then
+  : # BSD stat
+else
+  echo "error: cannot determine permissions of $secret_real" >&2
+  exit 78
+fi
+
 case "$perms" in
   600 | 400) ;;
   *)

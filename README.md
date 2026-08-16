@@ -27,7 +27,7 @@ The final product meaning of “trend” and the final `Normalized Schema 1.0` r
 docs/            Project state, open questions, decisions, and synthesis
 contracts/       Experimental and later accepted versioned contracts
 experiments/     Disposable source probes and integrated P0 code
-tests/           Promotable fixtures and acceptance scenarios
+tests/           Promotable fixtures and scenarios, plus environment tests
 config/          Committed configuration templates; never real secret values
 scripts/         Local developer helpers
 ```
@@ -37,6 +37,27 @@ Credentials are never stored in this repository. See [Secret Setup](docs/convent
 Start with [Project State](docs/project-state.md) and [P0 Charter](docs/p0-charter.md).
 Before using external data, read [Data Handling](docs/conventions/data-handling.md) and the [P0 Security Baseline](docs/conventions/p0-security.md).
 The curated, non-authoritative project history is available in [Project History](docs/history/README.md).
+
+## Development environment
+
+Python and every Python package are managed by [uv](https://docs.astral.sh/uv/). The interpreter is pinned in `.python-version`.
+
+```sh
+uv sync
+uv run pytest
+```
+
+The repository defines no importable package; experiments stay plain modules under `experiments/`. The reasoning is in [DP-003](docs/decisions/DP-003-development-environment.md).
+
+### Optional: Nix shell
+
+A flake provides `uv`, Node, PostgreSQL, and Git for anyone who would rather not install them:
+
+```sh
+nix develop
+```
+
+This path is supplementary. No script, test, or document requires Nix, and uv resolves the same environment inside the shell as outside it. To enter it automatically with direnv, copy `.envrc.example` to `.envrc` and run `direnv allow`.
 
 ## Lifecycle
 
@@ -51,4 +72,4 @@ Source and schema exploration
 
 ## Status
 
-No runnable application exists yet. That is intentional: M0 establishes the decision boundary and evidence protocol before source probes and P0 implementation begin.
+No application exists yet. That is intentional: M0 establishes the decision boundary, the evidence protocol, and a working toolchain before source probes and P0 implementation begin. `uv run pytest` exercises the repository's own environment tests.
