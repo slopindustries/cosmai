@@ -4,6 +4,7 @@
 .vscode/
 *.swp
 CLAUDE.local.md
+AGENTS.local.md
 .claude/settings.local.json
 
 # Secrets and local configuration
