@@ -59,6 +59,7 @@ P0 구현 시 다음을 지킨다.
 - Resolver 인터페이스나 provider 추상화를 만들지 않는다. 두 번째 secret source가 실제로 필요해지기 전까지는 명명된 불확실성을 줄이지 못하는 추상화다.
 - 값은 `repr`이 redact되는 타입으로 감싼다. 환경변수 방식의 주된 누출 경로는 traceback과 문자열 포매팅이다.
 - 미해석 시 configuration failure error class로 종료하고 dashboard에서 구분 가능하게 만든다.
+- Secret source 경로가 repository working tree 아래면 기동 시점에 즉시 실패시킨다. 현재 이 검사는 `scripts/with-secrets.sh`에만 있으므로 런처를 거치지 않는 실행 경로에는 적용되지 않는다. P0에서 애플리케이션 기동 경로와 test session 시작 지점에 같은 가드를 추가해야 `SEC-001` 증거로 쓸 수 있다.
 - Acceptance test는 실제 credential을 요구하지 않는다. 실제 credential이 필요한 probe는 표시하고 기본 실행에서 제외한다.
 
 ## 금지
