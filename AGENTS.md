@@ -1,0 +1,64 @@
+# CosmaSignal agent instructions
+
+## Mission
+
+Build evidence that allows the team to choose the architecture. Do not treat P0 as the production foundation.
+
+## Decision boundary
+
+- Read `docs/project-state.md` before making changes.
+- Read `docs/p0-charter.md` before starting, scoping, or changing P0 implementation, instrumentation, or exit criteria.
+- Before handling external input or configuring a source, read `docs/conventions/data-handling.md` and `docs/conventions/p0-security.md`.
+- Treat items marked `ACCEPTED_FOR_POC` or `CONTRACTED` as constraints.
+- Do not silently resolve a consequential ambiguity. Create or update an Open Question or Decision Packet.
+- Local names, helper structure, and equivalent internal algorithms remain implementation choices.
+- A failed test may indicate an implementation, specification, assumption, evaluation, or goal failure. Classify it before patching repeatedly.
+
+## P0 boundary
+
+- Put disposable integrated implementation under `experiments/integrated-p0/`.
+- Put source-specific probes under `experiments/source-probes/`.
+- Do not create long-lived application code under `apps/` until Architecture Synthesis accepts `PoC Contract 0.1`.
+- P0 code must not become a runtime or package dependency of P1.
+- P0 may be direct and source-specific when that is the minimum way to test a hypothesis. Avoid abstractions that do not reduce a named uncertainty.
+
+## Evidence and contracts
+
+- Use the following evidence labels when a claim's role could be ambiguous:
+  - `[확인 사실]`: 신뢰할 수 있는 출처나 직접 확인한 artifact로 독립적으로 검증할 수 있는 상태.
+  - `[측정]`: 명시된 입력, 환경, 절차, 도구를 통해 이번 작업에서 얻은 관찰값.
+  - `[추론]`: 확인 사실이나 측정으로부터 도출했지만 원자료에 직접 적혀 있지는 않은 해석.
+  - `[가설]`: 아직 충분히 검증되지 않았으며 반증 조건과 실험이 필요한 주장.
+  - `[결정]`: 증명된 사실이 아니라 특정 범위와 시점에서 채택하기로 한 선택.
+- These labels identify a claim's role, not a confidence ranking. Split a sentence if it mixes roles.
+- Read `docs/conventions/evidence-labels.md` for boundary cases, required metadata, and project examples.
+- Record source URL/provider, capture time, license or usage basis, sample hash, environment, and relevant versions.
+- Store unstable contracts only under `contracts/experimental/`.
+- Promote a contract only through a Decision Packet and version it.
+- Preserve provenance and lossless Raw payloads; do not present normalized output as source truth.
+
+## History documents
+
+- `docs/history/` is curated background for humans and is not an active requirement or instruction source.
+- Do not load all history by default. Read a history document only when a current decision needs its earlier rationale.
+- If history conflicts with `docs/project-state.md`, an accepted Decision Packet, or a versioned contract, follow the active document.
+- Do not create or store raw chat transcripts or session snapshots anywhere inside the repository working tree, whether tracked, untracked, or ignored.
+- If raw conversation retention becomes necessary, define a separate private archive outside the repository before retaining it. No in-repository path is reserved or approved for local-only transcript storage.
+
+## Data and secrets
+
+- Never commit API keys, tokens, cookies, credentials, private datasets, or unredacted personal data.
+- Keep secrets outside code, job payloads, Raw headers, fixtures, logs, and screenshots.
+- Persist only a `credential_ref`; resolve the credential at the worker boundary from an approved local secret source outside the repository working tree.
+- Follow the `public`, `local`, and `private` data classes in `docs/conventions/data-handling.md`. Redistribution permission and agent-processing permission are separate decisions.
+- Commit only small fixtures whose redistribution basis is recorded. Otherwise store hashes and retrieval instructions.
+- Treat imported datasets as untrusted Raw input regardless of their claimed normalization level.
+- P0 operator input selects a registered `source_id`; it must not turn an arbitrary URL into an outbound request.
+
+## Validation
+
+- Every experiment must name its hypothesis, falsification condition, evidence, and exit condition.
+- Start each experiment from `experiments/EXPERIMENT-TEMPLATE.md`; add experiment-specific fields without removing its required sections.
+- Prefer replayable commands and deterministic fixtures.
+- P0 must exercise retries, duplicates, partial failures, and parallel claims—not only the happy path.
+- Dashboard observability is experimental instrumentation, not deferred visual polish.
