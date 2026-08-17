@@ -343,6 +343,34 @@ The plan placed the review here because this is where the two hypotheses that ca
 
 **Review outcome: continue to S4 and S5.** No falsification condition fired, so the platform premise the remaining slices build on is intact.
 
+### Conduct findings carried into S4, not deferred to the gate
+
+The midpoint review also looked for problems in how the experiment is being run, on the reasoning that a defect in the record is as capable of producing a false `GO` as a defect in the platform. Three would compound if left.
+
+```text
+[측정] Fixture duplication is 31 of the suite's 71 seconds.
+```
+
+- procedure: `./scripts/with-database.sh uv run pytest --durations=12`
+- observed: the five `JOB-006` tests each pay 6.22–6.24 s in **setup**, replaying one 6 s stall five times under a function-scoped fixture. `JOB-005` has the same shape at roughly 1.4 s × 8. Suite runtime has gone 7 s → 32 s → 71 s across S1, S2, and S3.
+- `[추론]` The number is not the problem; the shape is, because it is the shape S5's operator scenarios will copy when they start processes to exercise the dashboard. A suite that passes two minutes stops being run, and a regression suite nobody runs is equivalent to none. Fixed in S4 rather than recorded as a limitation.
+
+```text
+[확인 사실] SEC-003 reads `NOT RUN` while 30 tests named after it pass.
+```
+
+- `sec_003` selects 30 passing tests; `sec_001`, `sec_002`, and `sec_004` select none. All four scenario records read `NOT RUN`.
+- `[추론]` The `NOT RUN` is correct — S1 covered configuration rejection but not the entrypoint half the scenario requires — but a reviewer cannot distinguish that honesty from an oversight, and the passing tests make S4 look already done. This is the exact shape the charter's timebox rule forbids: missing evidence reading as a pass. S4 must reconcile all four records against what it actually establishes.
+
+```text
+[확인 사실] The evidence directory every scenario names does not exist.
+```
+
+- `experiments/integrated-p0/evidence/` is absent. Every measurement so far lives in this record's prose.
+- `[추론]` Left until S6, capturing evidence becomes one large step that descope ladder item 3 would remove entirely, leaving the gate with prose claims and no artifacts. Started in S4 instead, so that each slice adds to it.
+
+Two further findings need no action now and are recorded so they are not mistaken for oversights. The boundary guard reads `.py` and `.sql` only, so the TypeScript dashboard will be checked by path name alone — the directory does not exist yet, and the decision belongs to S5, where a UI naming things `records` is the actual temptation. And all twelve scenarios remain `DRAFT` while eight read `PASS`, which is coherent: `DRAFT` means not yet accepted as a project constraint, and the gate is where that acceptance happens.
+
 ## Interpretation
 
 ```text

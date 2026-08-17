@@ -26,6 +26,15 @@ The contract deliberately says nothing about throughput, scale-out beyond a sing
 
 Experimental status permits replacement without migration inside P0. It does not permit changing behavior here without changing the version and the affected scenarios.
 
+### How `0.1` stayed one identifier across four amendments
+
+This version was amended four times during P0-A, each row of the change record naming the change and what surfaced it. The version string never moved, which means `@0.1` cited on its own does not identify one text. Two rules bound that, and the gate reviewer should check both rather than take the version number as a guarantee:
+
+- **An amendment may sharpen an obligation the text already implied. It may not invalidate a recorded result.** Every amendment so far met this: each was written while the scenarios it touched still read `NOT RUN`, so no `PASS` was retroactively made false. A change that would break this needs a new version and a re-run of the affected scenarios, not an edit in place.
+- **The change record is the authority on what the text says; the version string is not.** A reader who needs the exact text a result was measured against takes it from the gate record's reviewed revision. `@0.1` names the contract; the revision names the text.
+
+Bump the version if this contract is ever cited outside P0-A, or if a change would break the first rule.
+
 ## Schema or message shape
 
 Authoritative SQL lives in `experiments/integrated-p0/platform_core/db/migrations/`. The shape below is the contract; column order and index choices are implementation detail.
