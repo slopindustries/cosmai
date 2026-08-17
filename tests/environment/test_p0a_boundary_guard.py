@@ -80,9 +80,14 @@ _SQL_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
 # identifier or in a .sql file. String constants are therefore scanned too — but
 # only those that read as SQL, so that an error message explaining the boundary
 # ("this handler is not a collector") is still ordinary prose the guard ignores.
+# Each alternative is a statement opener that ordinary English does not produce.
+# A bare `from` or `join` was the first attempt and it misfired immediately: any
+# docstring containing "separates this case from ..." became a SQL statement, and
+# every noun in the surrounding prose was then reviewed as an identifier.
 _LOOKS_LIKE_SQL = re.compile(
-    r"\b(select|insert\s+into|update|delete\s+from|create\s+table|alter\s+table|"
-    r"drop\s+table|from|join)\b",
+    r"(?:^|\n)\s*(?:with\s+\w+\s+as|select\s|insert\s+into\s|update\s+\w+\s+set\s|"
+    r"delete\s+from\s|create\s+(?:table|index|unique)\s|alter\s+table\s|drop\s+table\s|"
+    r"truncate\s)",
     re.IGNORECASE,
 )
 
@@ -257,12 +262,44 @@ def test_matching_catches_each_forbidden_form() -> None:
 def test_sql_embedded_in_python_is_reviewed_but_prose_is_not() -> None:
     """DP-006 D5 keeps SQL in string literals, so those strings must be scanned."""
     module = ast.parse(
-        'QUERY = "SELECT id FROM observation WHERE 1"\n'
+        'QUERY = "\\nselect id from observation where 1"\n'
         'NOTE = "this handler is not a collector and holds no raw payload"\n'
     )
     found = [text for text, _ in embedded_sql(module)]
     assert len(found) == 1, found
     assert "observation" in found[0]
+
+
+def test_prose_that_merely_contains_a_sql_word_is_not_scanned_as_sql() -> None:
+    """A docstring is not a query, however many keywords English lends it.
+
+    The first version of the detector matched a bare ``from`` and turned every
+    docstring using the word into a statement whose every noun was then reviewed
+    as an identifier. Prose is exactly what the guard promises not to read.
+    """
+    module = ast.parse(
+        '''
+def handler() -> None:
+    """Apply the effect, then stop.
+
+    This separates the case from the one before it, and the observation that
+    follows is what distinguishes them: the effect was already there.
+    """
+'''
+    )
+    assert list(embedded_sql(module)) == []
+
+
+def test_real_statements_are_still_recognised() -> None:
+    for statement in (
+        "\nselect id from job",
+        "\n  insert into platform_effect (effect_key) values (%s)",
+        "\nwith candidate as materialized (select 1)",
+        "\nupdate job set state = 'FAILED'",
+        "\ncreate unique index one_open on job_attempt (job_id)",
+    ):
+        module = ast.parse(f"Q = {statement!r}")
+        assert list(embedded_sql(module)), statement
 
 
 def test_secret_store_names_stay_available_to_the_p0a_guard() -> None:

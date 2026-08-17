@@ -25,7 +25,6 @@ because P0-A has no answer to what a job means and must not imply one.
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from io import StringIO
@@ -42,7 +41,7 @@ from platform_core.errors import (
     PlatformPermanentError,
     PlatformTransientError,
 )
-from platform_core.handlers.synthetic import SYNTHETIC_HANDLERS, synthetic_registry
+from platform_core.handlers.synthetic import SYNTHETIC_HANDLERS
 from platform_core.jobs.registry import HandlerRegistry, JobContext, effect_key_for
 from platform_core.jobs.runner import JobRunner
 from platform_core.jobs.state import (
@@ -53,99 +52,21 @@ from platform_core.jobs.state import (
     JobState,
 )
 from platform_core.jobs.store import CLAIM_NEXT, Backoff, JobStore
-from platform_core.obs.logging import StructuredLogger
 from platform_core.obs.metrics import MetricsRegistry
 from psycopg.rows import dict_row
 
-WORKER = "worker-under-test"
-
-LEASE_SECONDS = 5.0
-
-MAX_ATTEMPTS = 3
-
-#: A lease that is already over by the time the next statement runs. It is the
-#: single-process stand-in for the interruption JOB-006 produces with a real one.
-EXPIRED_LEASE = 0.0
-
-
-# --------------------------------------------------------------------------- #
-# Fixtures
-# --------------------------------------------------------------------------- #
-
-
-@pytest.fixture
-def log_stream() -> StringIO:
-    return StringIO()
-
-
-@pytest.fixture
-def logger(log_stream: StringIO) -> StructuredLogger:
-    return StructuredLogger(stream=log_stream, level="DEBUG")
-
-
-@pytest.fixture
-def metrics() -> MetricsRegistry:
-    return MetricsRegistry()
-
-
-@pytest.fixture
-def connection(database: PlatformConfig) -> Any:
-    """An autocommit connection, so each store statement is its own transaction."""
-    with connected(database, autocommit=True) as handle:
-        yield handle
-
-
-@pytest.fixture
-def store(
-    connection: psycopg.Connection[Any],
-    database: PlatformConfig,
-    logger: StructuredLogger,
-    metrics: MetricsRegistry,
-) -> JobStore:
-    # A jitter of zero makes every backoff the low edge of its window, so a test
-    # that asserts on scheduling asserts on a number rather than on a range.
-    return JobStore(
-        connection,
-        database,
-        logger=logger,
-        metrics=metrics,
-        backoff=Backoff(database.retry_base_ms, database.retry_max_ms, jitter=lambda: 0.0),
-    )
-
-
-@pytest.fixture
-def registry() -> HandlerRegistry:
-    return synthetic_registry()
-
-
-@pytest.fixture
-def runner(store: JobStore, registry: HandlerRegistry) -> JobRunner:
-    return JobRunner(store, registry, worker_id=WORKER, lease_seconds=LEASE_SECONDS)
-
-
-# --------------------------------------------------------------------------- #
-# Reading the database back
-# --------------------------------------------------------------------------- #
-
-
-def attempts_of(connection: psycopg.Connection[Any], job_id: UUID) -> list[dict[str, Any]]:
-    with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute(
-            "select * from job_attempt where job_id = %s order by attempt_no", (job_id,)
-        )
-        return cursor.fetchall()
-
-
-def effects_of(connection: psycopg.Connection[Any], job_id: UUID) -> list[dict[str, Any]]:
-    with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute("select * from platform_effect where job_id = %s", (job_id,))
-        return cursor.fetchall()
-
-
-def all_effects(connection: psycopg.Connection[Any]) -> list[dict[str, Any]]:
-    with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute("select * from platform_effect")
-        return cursor.fetchall()
+from tests.conftest import (
+    EXPIRED_LEASE,
+    LEASE_SECONDS,
+    MAX_ATTEMPTS,
+    WORKER,
+    all_effects,
+    attempts_of,
+    effects_of,
+    events,
+    events_named,
+    transitions,
+)
 
 
 def public_tables(connection: psycopg.Connection[Any]) -> set[str]:
@@ -169,21 +90,6 @@ def constraint_body(connection: psycopg.Connection[Any], name: str) -> str:
 def unwritten_effect(effect_key: str, payload: Any = None) -> bool:
     """The effect applier for context tests that must reach no database."""
     return True
-
-
-def events(log_stream: StringIO) -> list[dict[str, Any]]:
-    return [json.loads(line) for line in log_stream.getvalue().splitlines() if line.strip()]
-
-
-def events_named(log_stream: StringIO, event: str) -> list[dict[str, Any]]:
-    return [record for record in events(log_stream) if record["event"] == event]
-
-
-def transitions(log_stream: StringIO) -> list[tuple[Any, Any]]:
-    return [
-        (record["from_state"], record["to_state"])
-        for record in events_named(log_stream, "job.transition")
-    ]
 
 
 # --------------------------------------------------------------------------- #

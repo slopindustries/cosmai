@@ -85,6 +85,7 @@ class PlatformConfig:
     lease_seconds: int
     retry_base_ms: int
     retry_max_ms: int
+    poll_ms: int
     api_host: str
     api_port: int
     log_level: str
@@ -144,6 +145,10 @@ SETTINGS: Final[Sequence[Setting]] = (
     Setting("COSMA_LEASE_SECONDS", "lease_seconds", _positive_int, default="30"),
     Setting("COSMA_RETRY_BASE_MS", "retry_base_ms", _positive_int, default="100"),
     Setting("COSMA_RETRY_MAX_MS", "retry_max_ms", _positive_int, default="30000"),
+    # How long a worker waits before asking an empty queue again. It is a pause
+    # between claims, not a deadline on anything, so lowering it in a test only
+    # makes the loop turn faster.
+    Setting("COSMA_POLL_MS", "poll_ms", _positive_int, default="200"),
     # Loopback by default: the charter requires operator surfaces to bind locally
     # unless a deployment deliberately says otherwise.
     Setting("COSMA_API_HOST", "api_host", _text, default=DEFAULT_API_HOST),

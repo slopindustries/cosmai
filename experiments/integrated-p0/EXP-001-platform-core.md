@@ -252,6 +252,42 @@ I1's suppression, I2's claim exclusivity, and I4's attempt budget now fail at in
 
 An exception would have left the caller to decide whether anything had been written, and the natural implementation — attempt the write, catch the violation — would already have touched the row. Fencing the write inside the statement's own `WHERE` means a refused completion never reaches the row at all, which is why the before-and-after comparison above is exact rather than approximate. Supporting measurements: the identical row snapshots, and the empty `platform_effect`.
 
+### S2 — failure surface, worker process, JOB-002 through JOB-005
+
+```text
+[측정] The four single-job failure scenarios execute.
+```
+
+- procedure: `./scripts/with-database.sh uv run pytest -k job_00N` for N in 2..5
+- observed: JOB-002 7 passed, JOB-003 6 passed, JOB-004 7 passed, JOB-005 12 passed. Full suite 311 passed sequentially (32 s) and under `-n 4` (19 s); ruff, mypy strict across 38 files, and the boundary guard clean.
+- environment: PostgreSQL 18.4, `python -m platform_core.worker`, Python 3.13
+- captured_at: 2026-08-17
+- limitation: every one of these runs a single job through a single worker at a time. Nothing here is evidence about contention; `JOB-006` through `JOB-008` are.
+
+```text
+[측정] Interruption before and after the durable effect are distinguishable, and both end with one effect row.
+```
+
+- procedure: `JOB-005` cases A and B, each from an empty state. A worker subprocess claims the job, the handler ends the process with `os._exit` either side of the effect, the lease is expired, and a second worker finishes the job.
+- observed: both cases end with exactly one `platform_effect` row, two attempts, the first `ABANDONED`, and the job `SUCCEEDED`. The recovering worker's `suppressed_duplicate_effects` is **0 in case A and 1 in case B**, while `abandoned_attempts`, `lease_recovery_latency` count, and `rejected_completions` are identical across both.
+- captured_at: 2026-08-17
+- limitation: the process is ended with `os._exit`, which is a clean kill at a chosen instruction. A real crash can land mid-statement, and PostgreSQL's own crash recovery is not exercised here.
+
+```text
+[추론] Without the suppressed-duplicate counter, this scenario would pass even if both cases stopped at the same place.
+```
+
+Both cases end with one effect row, so the effect table cannot say whether the recovering attempt wrote it or found it already written. The counter is the only observation that separates them, which is why the scenario demanded it in advance rather than accepting the row count as sufficient. Supporting measurements: the 0-versus-1 counter above against identical row states.
+
+```text
+[측정] An exhausted job is distinguishable from a backing-off one using only the fields an operator surface renders.
+```
+
+- procedure: `JOB-003` leaves one job failed by exhaustion and a second waiting out its backoff, then compares both through `read_job`
+- observed: `state` differs (`FAILED` versus `PENDING`), `terminal_reason` is set only on the exhausted one, and `attempt_count` against `max_attempts` shows whether budget remains. The exhausted job is not claimed again after a further claim cycle.
+- captured_at: 2026-08-17
+- limitation: this is a store-level read. Whether the operator API and dashboard actually render those three fields is `OPS` work in S5, and a field that exists but is not shown does not satisfy the charter's diagnosis criterion.
+
 ## Interpretation
 
 ```text

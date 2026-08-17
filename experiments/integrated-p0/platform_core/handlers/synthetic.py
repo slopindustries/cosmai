@@ -21,6 +21,11 @@ line is the experiment: whether the durable effect survives an interruption
 placed on either side of it, and whether the retry that follows produces a second
 one. Splitting them into two handlers rather than one with a flag keeps the two
 cases separately nameable from a scenario document.
+
+Both halt on one stated attempt and behave normally afterwards, which is what
+JOB-005 asks for: a handler that killed every worker it met would exhaust the
+attempt budget instead of recovering, and the recovery is the half of the
+scenario that carries the evidence.
 """
 
 from __future__ import annotations
@@ -41,7 +46,14 @@ STALL_SECONDS_FIELD: Final = "stall_seconds"
 #: Payload key: the status a ``halt`` handler exits with.
 EXIT_CODE_FIELD: Final = "exit_code"
 
+#: Payload key: the attempt number a ``halt`` handler ends its process on.
+HALT_ON_ATTEMPT_FIELD: Final = "halt_on_attempt"
+
 DEFAULT_EXIT_CODE: Final = 70
+
+#: The attempt a ``halt`` handler ends its process on when the payload is silent.
+#: Attempt 1, so that the plain case is "interrupted once, then recovered".
+DEFAULT_HALT_ON_ATTEMPT: Final = 1
 
 DEFAULT_STALL_SECONDS: Final = 5.0
 
@@ -87,14 +99,27 @@ def fail_permanent(context: JobContext) -> None:
 
 
 def halt_before_effect(context: JobContext) -> None:
-    """End this process with no effect applied and the attempt left open."""
-    _halt(context)
+    """End this process with no effect applied and the attempt left open.
+
+    On any other attempt it applies the effect and returns, so the attempt that
+    follows the interruption is the one that finishes the job.
+    """
+    if _halts_now(context):
+        _halt(context)
+    context.apply_effect(effect_key_for(context), _effect_value(context, "halt_before_effect"))
 
 
 def halt_after_effect(context: JobContext) -> None:
-    """Apply the effect, then end this process with the attempt left open."""
+    """Apply the effect, then end this process with the attempt left open.
+
+    The attempt that follows applies the same key again and is suppressed, which
+    is the observation that separates this case from ``halt_before_effect``: the
+    effect was already there, so the counter of suppressed inserts moves and the
+    effect table does not.
+    """
     context.apply_effect(effect_key_for(context), _effect_value(context, "halt_after_effect"))
-    _halt(context)
+    if _halts_now(context):
+        _halt(context)
 
 
 def stall(context: JobContext) -> None:
@@ -108,6 +133,13 @@ def stall(context: JobContext) -> None:
     seconds = float(stated) if isinstance(stated, int | float) else DEFAULT_STALL_SECONDS
     time.sleep(seconds)
     context.apply_effect(effect_key_for(context), _effect_value(context, "stall"))
+
+
+def _halts_now(context: JobContext) -> bool:
+    """Whether this attempt is the one the payload asked to be interrupted."""
+    stated = context.payload_field(HALT_ON_ATTEMPT_FIELD)
+    wanted = stated if isinstance(stated, int) else DEFAULT_HALT_ON_ATTEMPT
+    return context.attempt_no == wanted
 
 
 def _halt(context: JobContext) -> None:

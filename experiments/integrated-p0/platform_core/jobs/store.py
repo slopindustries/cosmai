@@ -304,10 +304,10 @@ job_settled as (
         updated_at = now()
     from fenced f
     where j.id = f.job_id
-    returning j.state, j.attempt_count, j.terminal_reason, j.handler,
+    returning j.state, j.attempt_count, j.max_attempts, j.terminal_reason, j.handler,
               j.correlation_id, j.available_at
 )
-select js.state, js.attempt_count, js.terminal_reason, js.handler,
+select js.state, js.attempt_count, js.max_attempts, js.terminal_reason, js.handler,
        js.correlation_id, js.available_at, ac.attempt_no
 from job_settled js
 left join attempt_closed ac on true
@@ -703,6 +703,12 @@ class JobStore:
             attempt_no=row["attempt_no"],
             terminal_reason=row["terminal_reason"],
         )
+        # `attempt_count` is on every completion event because two terminal
+        # events that differ only in how much budget was spent — exhausted after
+        # the last attempt, or refused on the first — would otherwise read the
+        # same. `available_at` is on the reschedule event because "returned to
+        # the queue" is not an observation until it says when.
+        scheduled = {"available_at": row["available_at"]} if state is JobState.PENDING else {}
         with correlation_context(row["correlation_id"]):
             self._transition(
                 job_id=job_id,
@@ -712,7 +718,14 @@ class JobStore:
                 to_state=state,
                 outcome=outcome.value,
                 error_class=None if error is None else error.error_class.value,
+                # The operator-visible half of the failure, and only that half.
+                # It was redacted when the error was built and is redacted again
+                # on the way into the line; the protected detail stays out.
+                error_summary=None if error is None else error.summary,
                 terminal_reason=row["terminal_reason"],
+                attempt_count=row["attempt_count"],
+                max_attempts=row["max_attempts"],
+                **scheduled,
             )
         return completion
 
