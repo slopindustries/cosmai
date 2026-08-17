@@ -18,6 +18,18 @@ Every choice below is either a gap DP-003 explicitly left open or a departure fr
 
 This packet is written before the work it governs so that no consequential choice is resolved silently. It is proposed for acceptance at the P0-A Completion Gate, together with the evidence that shows whether each choice held. Until then its status is `DRAFT` and each decision below is a recorded proposal, not a project constraint.
 
+## A tension with Project State, stated rather than assumed away
+
+`[확인 사실]` [Project State](../project-state.md) section 4 says: *"Framework and library selections such as FastAPI, SQLAlchemy, Alembic, HTTPX, React Router, TanStack Query, and MUI are strong P0 defaults but remain replaceable if an experiment produces contrary evidence."*
+
+D4, D5, and D6 decline Alembic, SQLAlchemy, and three frontend libraries **without** contrary evidence. Read strictly, that sentence sets a bar this packet does not clear, so the reading it relies on is recorded here for the gate reviewer to accept or reject rather than left implicit.
+
+`[추론]` The sentence governs **replacing a default that is in use**. None of these is in use; no application code exists at all. The question A1 actually faces is adoption, not replacement, and adoption is governed by a different accepted rule — AGENTS.md's *"Avoid abstractions that do not reduce a named uncertainty."* [DP-002](DP-002-project-identity-and-stack.md)'s own "Scope and reversibility" section supports this reading: it calls these "strong defaults subject to P0 evidence," which describes evidence as the thing that settles them rather than as a precondition for declining them.
+
+`[추론]` The asymmetry is deliberate and in the project's favour. Adopting a default costs configuration time now and produces no evidence about whether it was needed. Declining one costs a later import if P1 wants it. Under [DP-001](DP-001-p0-lifecycle.md), P1 is reconstructed from contracts rather than from this code, so a P0-A decision not to adopt a library constrains P1 not at all.
+
+**If the reviewer rejects this reading, the correct outcome is to adopt the named defaults in P0-A, not to keep the choice unrecorded.** That is why the tension is written down instead of resolved in a commit message.
+
 ---
 
 ## D1 — Module layout and process entrypoints

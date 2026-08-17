@@ -4,7 +4,7 @@
 - Priority: P0-A platform claims and P0-B domain effects
 - Owner: Project team
 - Blocks: worker, transaction, retry, and scale-out contract
-- Related experiments: not started
+- Related experiments: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — `RUNNING`, covers the P0-A minimum experiment below. H1 and H2 are in scope at the platform level; H3 is not testable without the domain and stays with P0-B.
 - Resolution Decision Packet: not created
 
 ## Question

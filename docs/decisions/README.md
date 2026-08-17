@@ -11,6 +11,10 @@ Active decisions:
 - [DP-003 — Development environment and Python packaging](DP-003-development-environment.md)
 - [DP-005 — Two-part pre-P1 execution](DP-005-two-part-pre-p1-execution.md)
 
+Proposed, not yet accepted:
+
+- [DP-006 — P0-A platform foundation choices](DP-006-p0a-platform-foundation.md) — `DRAFT`. Written before the work it governs so that no A1 foundation choice is resolved silently, and proposed for acceptance at the P0-A Completion Gate together with the evidence showing whether each choice held. Until then it is a recorded proposal, not a project constraint.
+
 Superseded decisions:
 
 - [DP-004 — Core-first P0 and deferred collector/normalizer implementations](DP-004-p0-implementation-order.md), superseded by DP-005
