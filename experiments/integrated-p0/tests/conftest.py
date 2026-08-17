@@ -30,12 +30,12 @@ applier's idempotence is the second line of defence if the marker were ever wron
 cannot run inside a transaction block. That is also why the maintenance
 connections are opened and closed around each statement rather than held.
 
-**Why the process helpers are here.** ``start_worker`` and its neighbours are
-used by more than one scenario module, and they are the other half of the same
-mechanism: a database a spawned process can reach is only useful together with
-the environment that points the process at it. They are plain functions rather
-than fixtures because a scenario decides how many processes it starts and when,
-which is exactly what its Action section describes.
+**Why the process helpers are here.** ``start_worker``, ``running_api`` and their
+neighbours are used by more than one scenario module, and they are the other half
+of the same mechanism: a database a spawned process can reach is only useful
+together with the environment that points the process at it. They are plain
+functions rather than fixtures because a scenario decides how many processes it
+starts and when, which is exactly what its Action section describes.
 
 Pass ``--keep-database`` to leave the per-test databases behind for inspection;
 the names are printed as they are kept, and ``dropdb`` removes them.
@@ -55,11 +55,14 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import signal
+import socket
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterator
-from dataclasses import replace
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from io import StringIO
 from itertools import count
 from pathlib import Path
@@ -68,7 +71,7 @@ from uuid import UUID
 
 import psycopg
 import pytest
-from platform_core.config import PlatformConfig, load_config
+from platform_core.config import DEFAULT_API_HOST, PlatformConfig, load_config
 from platform_core.db.connection import connect, connected
 from platform_core.db.migrate import apply_migrations
 from platform_core.errors import PlatformError
@@ -90,6 +93,26 @@ KEEP_OPTION = "--keep-database"
 #: The import root a spawned process needs on its path. ``platform_core`` lives
 #: inside it, and this file is two levels down from it.
 EXPERIMENT_ROOT = Path(__file__).resolve().parents[1]
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+#: The two process entrypoints DP-006 D1 fixes. SEC-001 and SEC-003 each require
+#: the same refusal from both, so both scenarios parametrize over this.
+ENTRYPOINTS = ("platform_core.worker", "platform_core.api")
+
+#: ``EX_CONFIG`` from ``sysexits.h``, the status both entrypoints use for a
+#: configuration refusal.
+EX_CONFIG = 78
+
+#: Long enough for an interpreter start on a loaded machine; a process that was
+#: supposed to refuse and is still alive after this is the failure, not the wait.
+ENTRYPOINT_TIMEOUT_SECONDS = 30.0
+
+REQUEST_TIMEOUT_SECONDS = 10.0
+
+#: A value that must never appear in an artefact. Used by every `SEC` scenario that
+#: needs something recognisable to search for.
+SECRET_MARKER = "marker-must-not-leak-42"
 
 #: How long a test waits for a worker process it started. Generous enough that a
 #: loaded machine does not fail the run, short enough that a stuck worker is
@@ -121,6 +144,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def worker_environment(config: PlatformConfig, **overrides: str) -> dict[str, str]:
     """Environment for a process a test starts, pointing it at ``config``.
+
+    Used for the API entrypoint too, and named after the worker only because that
+    was the first process a test started. There is nothing worker-specific in it:
+    both entrypoints read the same ``COSMA_`` settings, which is the property
+    SEC-001 and SEC-003 depend on when they require the same refusal from each.
 
     A test spawns real workers, and they read their configuration the way every
     other process does. Returning a fresh mapping rather than mutating
@@ -200,6 +228,125 @@ def run_worker(
 ) -> subprocess.CompletedProcess[str]:
     """Run a worker process to completion. The common case in a scenario."""
     return wait_for_worker(start_worker(config, *arguments, **overrides), timeout=timeout)
+
+
+def api_command(*arguments: str) -> list[str]:
+    """The command line DP-006 D1 fixes for the operator API process."""
+    return [sys.executable, "-m", "platform_core.api", *arguments]
+
+
+def start_entrypoint(
+    module: str, environment: Mapping[str, str]
+) -> subprocess.CompletedProcess[str]:
+    """Run one entrypoint to completion with exactly ``environment`` plus a path.
+
+    Deliberately not built from ``os.environ``, unlike ``worker_environment``: a
+    case that removes a setting has to be sure nothing else put it back, and the
+    developer's own shell is the most likely thing to have. Used by the SEC-001 and
+    SEC-003 cases, which expect the process to refuse and exit rather than run.
+    """
+    return subprocess.run(
+        [sys.executable, "-m", module],
+        cwd=REPO_ROOT,
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "PYTHONPATH": str(EXPERIMENT_ROOT),
+            **environment,
+        },
+        capture_output=True,
+        text=True,
+        timeout=ENTRYPOINT_TIMEOUT_SECONDS,
+        check=False,
+    )
+
+
+def free_port(host: str) -> int:
+    """A port nothing is listening on, for an API a test is about to start.
+
+    Bound, read back, and released, which leaves a window in which something else
+    could take it. The alternative — letting the process bind port 0 — would need
+    ``COSMA_API_PORT`` to accept a value the configuration guard refuses as
+    non-positive, and weakening that guard to make a test convenient is the wrong
+    trade. A collision here shows up as a bind failure the test reports.
+    """
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as probe:
+        probe.bind((host, 0))
+        return int(probe.getsockname()[1])
+
+
+def accepts_connections(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+@dataclass
+class RunningApi:
+    """An API process a test started, where to reach it, and what it left behind."""
+
+    process: subprocess.Popen[str]
+    host: str
+    port: int
+    finished: subprocess.CompletedProcess[str] | None = None
+
+    @property
+    def base_url(self) -> str:
+        # A literal IPv6 address needs brackets in a URL; IPv4 must not have them.
+        located = f"[{self.host}]" if ":" in self.host else self.host
+        return f"http://{located}:{self.port}"
+
+    def collected(self) -> subprocess.CompletedProcess[str]:
+        """The exit status and both streams. Available once the block has ended."""
+        assert self.finished is not None, "the API has not been stopped yet"
+        return self.finished
+
+
+@contextmanager
+def running_api(
+    config: PlatformConfig,
+    host: str = DEFAULT_API_HOST,
+    **overrides: str,
+) -> Iterator[RunningApi]:
+    """Start the API entrypoint, wait until it accepts a connection, then stop it.
+
+    Stopped with ``SIGTERM`` rather than killed, because the entrypoint shuts down
+    cleanly on it and both ``api.started`` and ``api.stopped`` are part of what
+    SEC-002 reads. The process is always reaped on the way out — including when the
+    body failed — and its streams are left on ``RunningApi.collected()``, so a test
+    that raised inside the block still reports what the API was saying.
+
+    The API is deliberately quiet: it logs startup, shutdown, and one line per read,
+    which is a handful of lines per test. Anything per-connection would eventually
+    fill a pipe nobody is draining until the block ends.
+    """
+    port = free_port(host)
+    process = subprocess.Popen(
+        api_command(),
+        env=worker_environment(
+            config, COSMA_API_HOST=host, COSMA_API_PORT=str(port), **overrides
+        ),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    api = RunningApi(process=process, host=host, port=port)
+    try:
+        wait_until(
+            lambda: accepts_connections(host, port) or process.poll() is not None,
+            f"the API accepts a connection on {host}:{port}",
+        )
+        assert process.poll() is None, (
+            "the API exited before it accepted a connection:\n"
+            f"{wait_for_worker(process).stderr}"
+        )
+        yield api
+    finally:
+        if process.poll() is None:
+            process.send_signal(signal.SIGTERM)
+        api.finished = wait_for_worker(process)
 
 
 def wait_until(
@@ -282,6 +429,24 @@ def _build_template(config: PlatformConfig) -> None:
         apply_migrations(handle)
 
 
+@pytest.fixture
+def baseline(tmp_path: Path) -> dict[str, str]:
+    """A valid environment that names no running cluster, mutated one case at a time.
+
+    Shared by SEC-001 and SEC-003 because both work the same way: take a
+    configuration that loads, change one thing, and observe the refusal. The socket
+    directory exists so that ``COSMA_DB_HOST`` is valid; nothing listens in it,
+    which is exactly right for cases that must refuse before any connection.
+    """
+    socket_directory = tmp_path / "postgres"
+    socket_directory.mkdir()
+    return {
+        "COSMA_DB_HOST": str(socket_directory),
+        "COSMA_DB_NAME": "cosma_p0",
+        "COSMA_DB_USER": "tester",
+    }
+
+
 @pytest.fixture(scope="session")
 def platform_database() -> PlatformConfig:
     """Configuration for the local cluster, or a skip explaining how to get one."""
@@ -315,12 +480,19 @@ def migrated_template(
     return TEMPLATE_DATABASE
 
 
-def _database_of_its_own(
+@contextmanager
+def cloned_database(
     config: PlatformConfig,
     template: str | None,
     kind: str,
     keep: bool,
 ) -> Iterator[PlatformConfig]:
+    """A fresh database cloned from ``template``, dropped on the way out.
+
+    A context manager as well as the body of the fixtures below, because a module
+    whose fixture is deliberately coarser than function scope has to create its own
+    — see the note on fixture scope in ``test_job_concurrency.py``.
+    """
     name = _unique_database_name(kind)
     with connected(config, autocommit=True) as maintenance:
         _create_database(maintenance, name, template)
@@ -334,6 +506,10 @@ def _database_of_its_own(
                 _drop_database(maintenance, name)
 
 
+def keep_databases(request: pytest.FixtureRequest) -> bool:
+    return bool(request.config.getoption(KEEP_OPTION))
+
+
 @pytest.fixture
 def database(
     platform_database: PlatformConfig,
@@ -341,8 +517,10 @@ def database(
     request: pytest.FixtureRequest,
 ) -> Iterator[PlatformConfig]:
     """A private, migrated database for one test. This is the isolation mechanism."""
-    keep = bool(request.config.getoption(KEEP_OPTION))
-    yield from _database_of_its_own(platform_database, migrated_template, "test", keep)
+    with cloned_database(
+        platform_database, migrated_template, "test", keep_databases(request)
+    ) as config:
+        yield config
 
 
 @pytest.fixture
@@ -351,8 +529,8 @@ def empty_database(
     request: pytest.FixtureRequest,
 ) -> Iterator[PlatformConfig]:
     """A private database with no migration applied, for testing the applier itself."""
-    keep = bool(request.config.getoption(KEEP_OPTION))
-    yield from _database_of_its_own(platform_database, None, "empty", keep)
+    with cloned_database(platform_database, None, "empty", keep_databases(request)) as config:
+        yield config
 
 
 @pytest.fixture
@@ -366,8 +544,10 @@ def shared_database(
     Distinct from ``database`` in intent, not in privilege: nothing here isolates
     the processes from each other, because their contention is the evidence.
     """
-    keep = bool(request.config.getoption(KEEP_OPTION))
-    yield from _database_of_its_own(platform_database, migrated_template, "shared", keep)
+    with cloned_database(
+        platform_database, migrated_template, "shared", keep_databases(request)
+    ) as config:
+        yield config
 
 
 @pytest.fixture

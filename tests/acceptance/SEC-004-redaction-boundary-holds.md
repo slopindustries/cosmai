@@ -62,7 +62,7 @@ No job state transition is under test here. The job follows `JOB-004`'s permanen
 
 ## Result
 
-- Last executed at: not executed
+- Last executed at: 2026-08-17
 - `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: redaction is key-name based. A secret placed under an innocuous key is not detected, and P0-A produces no evidence about value-shape detection. Recorded rather than solved, because the P0-B `credential_ref` design under OQ-007 is what decides whether value-based detection is needed at all.
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 24 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k sec_004`
+- Known limitation: **partially executed.** The structured log and both API representations are covered, including that the protected representation stays redacted and that an ordinary key's marker survives so the search would have found a leak. The scenario's Action steps 3 and 4 also require the dashboard job-detail screen and a screenshot, and no dashboard exists yet, so this is recorded as `NOT RUN` rather than `PASS`. Redaction is also key-name based throughout: a secret placed under an innocuous key is not detected, which P0-B's `credential_ref` design under OQ-007 decides whether to address.

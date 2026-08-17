@@ -369,7 +369,37 @@ The midpoint review also looked for problems in how the experiment is being run,
 - `experiments/integrated-p0/evidence/` is absent. Every measurement so far lives in this record's prose.
 - `[추론]` Left until S6, capturing evidence becomes one large step that descope ladder item 3 would remove entirely, leaving the gate with prose claims and no artifacts. Started in S4 instead, so that each slice adds to it.
 
+All three were acted on in S4. Fixture scope: the five `JOB-006` tests now share one run, and `[측정]` the suite went from 71 s to 45 s while growing from 338 to 428 tests — 26 s recovered from what was pure duplication. Only one 6.24 s setup remains where there were five. The `SEC` records were reconciled against what S4 actually established, which is why one of the four still reads `NOT RUN`. The evidence directory remains the open item and moves to S5.
+
 Two further findings need no action now and are recorded so they are not mistaken for oversights. The boundary guard reads `.py` and `.sql` only, so the TypeScript dashboard will be checked by path name alone — the directory does not exist yet, and the decision belongs to S5, where a UI naming things `records` is the actual temptation. And all twelve scenarios remain `DRAFT` while eight read `PASS`, which is coherent: `DRAFT` means not yet accepted as a project constraint, and the gate is where that acceptance happens.
+
+### S4 — the safety boundary
+
+```text
+[측정] Three of the four SEC scenarios pass; the fourth is partially executed and recorded as such.
+```
+
+- procedure: `./scripts/with-database.sh uv run pytest -k sec_00N`
+- observed: `SEC-001` 25 passed, `SEC-002` 25 passed, `SEC-003` 44 passed, `SEC-004` 24 passed. Suite total 428 passed in 45 s serially and 20 s under `-n 4`; ruff, mypy strict across 44 files, and the boundary guard clean.
+- `SEC-004` is recorded `NOT RUN` despite its 24 passing tests: the log and both API representations are covered, but the scenario's Action also requires the dashboard job-detail screen and a screenshot, and no dashboard exists yet. A `PASS` there would be the failure mode this experiment's own conduct review named.
+- captured_at: 2026-08-17
+- limitation: `SEC-001` guards location only, not file permissions. `SEC-002` is evidence about binding, not authorization — anything on the host reaches the API and the database with no credential.
+
+```text
+[측정] The application-startup guard and the test-session guard refuse the same paths because they are the same guard.
+```
+
+- procedure: `SEC-001` cases a–f against both `python -m platform_core.worker` and `python -m platform_core.api`
+- observed: a store inside the tree is refused by both entrypoints with `CONFIGURATION_INVALID` and no database connection attempted. A symbolic link from outside the tree resolving inside it is refused; one resolving outside is accepted — so the comparison is on resolved paths. An unset store starts normally, and an **unreadable** store outside the tree also starts normally, which is the observation that the guard never opens the file. The refusal names the path, the tree root, and the convention, and does not dump the environment.
+- `tests/conftest.py` now calls `platform_core.config.secret_store_location_problem` rather than keeping its own copy, and asserts that both halves measure the same tree root.
+- captured_at: 2026-08-17
+- limitation: this makes the repository's root test session import experiment code. It is a test-session dependency, not a runtime or package one, so DP-001 is unaffected — but the session stops guarding when `experiments/integrated-p0/` is disposed of, and that obligation belongs in the P0-B artifact disposition register.
+
+```text
+[추론] One guard with two callers is the only reading of "the same guard" that cannot drift.
+```
+
+`secret-setup.md` asks for "the same guard" at application startup and at test-session start. Two implementations of one guard is a contradiction: they can disagree, and the one that disagrees is the leak. The cost is the import direction noted above, whose failure mode is a loud collection error when P0 is deleted — strictly better than a silent divergence nobody is looking for. Supporting measurements: the paired entrypoint cases above, and the root-equality assertion that fires if the two halves ever measure different trees.
 
 ## Interpretation
 

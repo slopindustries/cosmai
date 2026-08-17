@@ -70,7 +70,7 @@ The database is covered here too, because it is the same class of exposure and [
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: this is evidence about binding, not about authorization. Anything running on the host reaches both the API and the database with no credential. That is accepted for a disposable single-host P0 and is a boundary P0-B must revisit before anything real is stored.
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 25 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k sec_002`
+- Known limitation: evidence about binding, not authorization. Anything running on the host reaches both the API and the database with no credential. Accepted for a disposable single-host P0 and a boundary P0-B must revisit before anything real is stored.

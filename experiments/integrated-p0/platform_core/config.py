@@ -23,16 +23,32 @@ noise; ignoring it silently would hide a typo in a real setting name, which
 presents in exactly this way.
 
 ``SETTINGS`` and ``CROSS_CHECKS`` are tables so that a later validator is an
-entry rather than an edit. T4.1 adds the secret-store location guard as one more
-cross-check; it is deliberately absent here, because SEC-001 does not exist yet.
+entry rather than an edit. Two of the entries are security guards rather than
+type checks:
 
-Nothing in this module opens a connection. SEC-003 requires cases a–e to fail
-before the database is touched, and the cheapest way to guarantee that is for the
-configuration layer to have no database code in it at all.
+* ``_loopback_host`` (SEC-002) refuses a non-loopback bind address instead of
+  merely defaulting to loopback. The charter's exit criterion says "by default";
+  P0-A goes further because there is no P0-A reason to expose an unauthenticated
+  operator surface beyond the host, and a default is a thing that gets overridden
+  by accident. Relaxing this later is a one-line change with a recorded reason;
+  discovering it was already relaxed is not recoverable.
+* ``secret_store_location_problem`` (SEC-001) refuses a secret store that
+  resolves to somewhere inside the repository working tree. It is the
+  application-startup half of the obligation ``docs/conventions/secret-setup.md``
+  records; the test-session half lives in ``tests/conftest.py`` and calls this
+  same function, so the two cannot drift.
+
+Nothing in this module opens a connection, and nothing in it opens the secret
+store. SEC-003 requires cases a–e to fail before the database is touched, and the
+cheapest way to guarantee that is for the configuration layer to have no database
+code in it at all. SEC-001 requires the location guard to decide without reading
+the store's **contents**, because reading a credential in order to validate where
+it lives would be the leak the rule exists to prevent.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -45,10 +61,25 @@ from platform_core.obs.redaction import REDACTION_MARKER, is_redacted_key
 
 PREFIX: Final = "COSMA_"
 
-#: Variables the project defines but this stage does not consume. Naming them
-#: keeps ``scripts/with-secret-source.sh`` out of the unknown-variable report; the
-#: guard that actually reads this one arrives with T4.1.
-RECOGNIZED_UNUSED: Final[frozenset[str]] = frozenset({"COSMA_SECRET_SOURCE"})
+#: The path of the secret store, exported by ``scripts/with-secret-source.sh``.
+#: This stage reads its **location** and never its contents, which is why it is
+#: not a ``Setting`` and produces no configuration field.
+SECRET_STORE_VARIABLE: Final = "COSMA_SECRET_SOURCE"
+
+#: Where an operator is sent when the location guard refuses a store.
+SECRET_SETUP_POINTER: Final = "docs/conventions/secret-setup.md"
+
+#: The repository working tree this checkout lives in. ``config.py`` sits at
+#: ``experiments/integrated-p0/platform_core/config.py``, three directories below
+#: the root. ``tests/conftest.py`` computes the same root from its own location
+#: and a test asserts the two agree, because a guard measuring the wrong tree
+#: would pass everything.
+WORKING_TREE_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
+
+#: Variables this stage recognises but does not turn into a configuration field.
+#: Naming them keeps ``scripts/with-secret-source.sh`` out of the
+#: unknown-variable report.
+RECOGNIZED_UNUSED: Final[frozenset[str]] = frozenset({SECRET_STORE_VARIABLE})
 
 DEFAULT_API_HOST: Final = "127.0.0.1"
 
@@ -136,6 +167,36 @@ def _level(value: str) -> str:
         raise _Rejected(error.summary) from None
 
 
+def _loopback_host(value: str) -> str:
+    """Accept a loopback IP address and refuse anything else (SEC-002).
+
+    Refusal rather than correction is the whole point. ``0.0.0.0`` quietly
+    rewritten to ``127.0.0.1`` would hide a mistake the operator needs to see, and
+    a surface that starts anyway teaches nobody that the setting was wrong.
+
+    Only literal addresses are accepted. A name would have to be resolved before
+    its reachability were known, the answer can change between the check and the
+    bind, and ``localhost`` in particular resolves to whatever the host's name
+    service says it does. Requiring an address keeps "this bind is loopback" a
+    property that can be decided here.
+    """
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        raise _Rejected(
+            "must be a literal loopback IP address such as "
+            f"{DEFAULT_API_HOST} or ::1, and a host name is not accepted"
+        ) from None
+    if not address.is_loopback:
+        raise _Rejected(
+            "must be a loopback address; P0-A refuses any other bind, "
+            "including the wildcard address, and does not fall back to loopback"
+        )
+    # Returned exactly as stated. Canonicalising an accepted value would be a
+    # second, quieter kind of correction.
+    return value
+
+
 SETTINGS: Final[Sequence[Setting]] = (
     # The socket directory of the local cluster (DP-006 D2). It carries no
     # password, so it is local configuration rather than a credential.
@@ -149,9 +210,9 @@ SETTINGS: Final[Sequence[Setting]] = (
     # between claims, not a deadline on anything, so lowering it in a test only
     # makes the loop turn faster.
     Setting("COSMA_POLL_MS", "poll_ms", _positive_int, default="200"),
-    # Loopback by default: the charter requires operator surfaces to bind locally
-    # unless a deployment deliberately says otherwise.
-    Setting("COSMA_API_HOST", "api_host", _text, default=DEFAULT_API_HOST),
+    # Loopback, and only loopback (SEC-002). The default applies when the variable
+    # is absent; a stated non-loopback address is refused rather than replaced.
+    Setting("COSMA_API_HOST", "api_host", _loopback_host, default=DEFAULT_API_HOST),
     Setting("COSMA_API_PORT", "api_port", _port, default="8000"),
     Setting("COSMA_LOG_LEVEL", "log_level", _level, default=DEFAULT_LEVEL),
 )
@@ -161,8 +222,19 @@ KNOWN_NAMES: Final[frozenset[str]] = frozenset(setting.name for setting in SETTI
 Problem = tuple[str, str]
 """(setting name, why it was rejected)."""
 
+CrossCheck = Callable[[Mapping[str, Any], Mapping[str, str]], Problem | None]
+"""(parsed values, the environment they came from) -> a problem, or ``None``.
 
-def _backoff_window_is_ordered(values: Mapping[str, Any]) -> Problem | None:
+The environment is passed as well as the parsed values because not every rule is
+about a setting this stage consumes. SEC-001's guard is about the **location** of
+``COSMA_SECRET_SOURCE``, whose contents P0-A never reads and which therefore never
+becomes a configuration field; a check given only ``values`` could not see it.
+"""
+
+
+def _backoff_window_is_ordered(
+    values: Mapping[str, Any], environment: Mapping[str, str]
+) -> Problem | None:
     base = values.get("retry_base_ms")
     maximum = values.get("retry_max_ms")
     if base is None or maximum is None:
@@ -172,8 +244,64 @@ def _backoff_window_is_ordered(values: Mapping[str, Any]) -> Problem | None:
     return None
 
 
-CROSS_CHECKS: Final[Sequence[Callable[[Mapping[str, Any]], Problem | None]]] = (
+def secret_store_location_problem(
+    values: Mapping[str, Any], environment: Mapping[str, str]
+) -> Problem | None:
+    """Refuse a secret store whose resolved path lies inside the working tree.
+
+    The application-startup half of the guard ``docs/conventions/secret-setup.md``
+    names: *"Store 경로가 repository working tree 아래면 기동 시점에 즉시
+    실패시킨다."* Until this existed, any run that bypassed
+    ``scripts/with-secret-source.sh`` — an IDE run configuration, a bare
+    ``python -m``, a container entrypoint — had no guard at all.
+
+    Three properties are the substance of SEC-001 and are easy to lose.
+
+    * **The comparison is between resolved paths.** A path outside the tree whose
+      target is a symbolic link into it is the case a naive check waves through,
+      and it is the case that actually puts a credential file under version
+      control. ``tests/conftest.py`` calls this function so the session guard and
+      the startup guard cannot disagree about that.
+    * **The store is never opened.** Location is the entire question. Reading a
+      credential to decide where it lives would be the leak the rule exists to
+      prevent, so this touches the filesystem only through ``resolve``, and
+      SEC-001 case b proves it by pointing the variable at an unreadable file and
+      requiring startup to succeed anyway.
+    * **An unset variable is not a problem.** P0-A resolves no credential; OQ-007
+      assigns resolution to P0-B. Requiring the variable now would invent an
+      obligation the stage boundary does not have.
+
+    Permissions are deliberately not re-checked here. ``with-secret-source.sh``
+    checks them, and the store's mode is a fact about a file this stage never
+    opens; SEC-001 records the gap rather than closing it, because P0-B's resolver
+    is where a permission check has something to protect.
+    """
+    stated = environment.get(SECRET_STORE_VARIABLE, "").strip()
+    if not stated:
+        return None
+    try:
+        resolved = Path(stated).expanduser().resolve()
+    except OSError:
+        # `resolve` is non-strict, so a merely absent path resolves fine and is
+        # still compared. Reaching here means the filesystem refused to answer,
+        # which names no location inside the tree.
+        return None
+    if resolved != WORKING_TREE_ROOT and WORKING_TREE_ROOT not in resolved.parents:
+        return None
+    # The rejected path and the root are printed: neither is a credential value,
+    # and an operator who cannot see which path was refused cannot move it. The
+    # store's contents are never read, so nothing else about it can be shown.
+    return (
+        SECRET_STORE_VARIABLE,
+        "must name a path outside the repository working tree, but "
+        f"{resolved} resolves inside {WORKING_TREE_ROOT} — "
+        f"move the store outside the repository; see {SECRET_SETUP_POINTER}",
+    )
+
+
+CROSS_CHECKS: Final[Sequence[CrossCheck]] = (
     _backoff_window_is_ordered,
+    secret_store_location_problem,
 )
 
 
@@ -223,7 +351,7 @@ def load_config(environment: Mapping[str, str] | None = None) -> PlatformConfig:
             problems.append((setting.name, _reason_for(setting.name, given, rejected.reason)))
 
     for check in CROSS_CHECKS:
-        problem = check(values)
+        problem = check(values, env)
         if problem is not None:
             problems.append(problem)
 

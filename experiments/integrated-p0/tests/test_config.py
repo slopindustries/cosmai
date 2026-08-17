@@ -17,16 +17,21 @@ Every test here is named ``test_sec_003_*`` so that the scenario's own
 Verification command — ``pytest experiments/integrated-p0/tests -k sec_003`` —
 selects them.
 
-**Coverage gap.** The scenario's Action says to start the worker and API
-entrypoints. Neither exists yet; they arrive with T1.3 and T5. These tests
-exercise the validation boundary those entrypoints will call, and the subprocess
-case observes a real non-zero exit from a process that loads the configuration —
-but not from the entrypoints themselves. The scenario is therefore not fully
-executed by a green run of this file.
+Both entrypoints now exist, and the scenario's Action — "start the worker
+entrypoint and then the API entrypoint" — is executed at the end of this file
+against ``python -m platform_core.worker`` and ``python -m platform_core.api``
+themselves, not only against ``load_config``. The unit-level cases stay because
+they say which setting was refused and why, which an exit status cannot.
+
+SEC-002's configuration half lives here too, for the same reason it is one
+function call away from SEC-003's: a non-loopback bind is a rejected setting, and
+the guard that rejects it is a parser in the same table. The parts of SEC-002 that
+need a bound socket are in ``test_api.py``.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import subprocess
 import sys
@@ -44,10 +49,19 @@ from platform_core.config import (
 )
 from platform_core.errors import ConfigurationInvalidError, ErrorClass
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EXPERIMENT_ROOT = REPO_ROOT / "experiments" / "integrated-p0"
+from tests.conftest import (
+    ENTRYPOINTS,
+    EX_CONFIG,
+    EXPERIMENT_ROOT,
+    REPO_ROOT,
+    SECRET_MARKER,
+    log_events,
+    start_entrypoint,
+    start_worker,
+    wait_for_worker,
+)
 
-EX_CONFIG = 78
+IPV6_LOOPBACK = "::1"
 
 UNRELATED_NAME = "COSMA_TYPO_LEASE_SECONDS"
 UNRELATED_VALUE = "45"
@@ -70,18 +84,6 @@ except ConfigurationInvalidError as error:
     raise SystemExit(78)
 raise SystemExit(0)
 """
-
-
-@pytest.fixture
-def baseline(tmp_path: Path) -> dict[str, str]:
-    """A valid environment, mutated one variable at a time by each case."""
-    socket_directory = tmp_path / "postgres"
-    socket_directory.mkdir()
-    return {
-        "COSMA_DB_HOST": str(socket_directory),
-        "COSMA_DB_NAME": "cosma_p0",
-        "COSMA_DB_USER": "tester",
-    }
 
 
 def rejection(environment: Mapping[str, str]) -> ConfigurationInvalidError:
@@ -125,13 +127,13 @@ def test_sec_003_stated_values_override_the_defaults(baseline: dict[str, str]) -
             "COSMA_LEASE_SECONDS": "5",
             "COSMA_RETRY_BASE_MS": "10",
             "COSMA_RETRY_MAX_MS": "20",
-            "COSMA_API_HOST": "0.0.0.0",
+            "COSMA_API_HOST": IPV6_LOOPBACK,
             "COSMA_API_PORT": "9001",
             "COSMA_LOG_LEVEL": "debug",
         }
     )
     assert (config.lease_seconds, config.retry_base_ms, config.retry_max_ms) == (5, 10, 20)
-    assert (config.api_host, config.api_port, config.log_level) == ("0.0.0.0", 9001, "DEBUG")
+    assert (config.api_host, config.api_port, config.log_level) == (IPV6_LOOPBACK, 9001, "DEBUG")
 
 
 # --- SEC-003 case table -----------------------------------------------------
@@ -343,3 +345,147 @@ def test_sec_003_no_database_module_is_loaded_when_configuration_is_refused(
     assert "COSMA_DB_HOST" in result.stderr
     assert "db-driver-loaded=False" in result.stdout
     assert FOREIGN_VALUE not in result.stderr + result.stdout
+
+
+# --- SEC-003's Action: both entrypoints, as processes ------------------------
+
+
+@pytest.mark.parametrize("module", ENTRYPOINTS)
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        pytest.param({"COSMA_DB_HOST": None}, "COSMA_DB_HOST", id="case-a"),
+        pytest.param({"COSMA_DB_NAME": None}, "COSMA_DB_NAME", id="case-b"),
+        pytest.param(
+            {"COSMA_DB_HOST": "/nonexistent-cosma-socket-directory"},
+            "does not exist",
+            id="case-c",
+        ),
+        pytest.param({"COSMA_LEASE_SECONDS": "soon"}, "COSMA_LEASE_SECONDS", id="case-d"),
+        pytest.param({"COSMA_LEASE_SECONDS": "0"}, "greater than zero", id="case-e"),
+    ],
+)
+def test_sec_003_each_entrypoint_refuses_the_case_table(
+    baseline: dict[str, str],
+    module: str,
+    mutation: dict[str, str | None],
+    expected: str,
+) -> None:
+    """The scenario's Action, executed: cases a–e against each entrypoint.
+
+    The exit status is ``EX_CONFIG`` and not merely non-zero, because a supervisor
+    has to be able to tell "this configuration will never work" from "the database
+    was not up yet", and only one of those is worth restarting for.
+    """
+    environment = dict(baseline)
+    for name, value in mutation.items():
+        if value is None:
+            environment.pop(name, None)
+        else:
+            environment[name] = value
+    result = start_entrypoint(module, environment)
+    assert result.returncode == EX_CONFIG, result.stderr
+    assert "CONFIGURATION_INVALID" in result.stderr, result.stderr
+    assert expected in result.stderr, result.stderr
+
+
+def test_sec_003_case_f_the_worker_entrypoint_reports_an_unknown_variable_and_runs(
+    database: PlatformConfig,
+) -> None:
+    """Case f against a real process: reported, and the process reaches its loop.
+
+    A real database is used because "not fatal" is only observable if the process
+    has somewhere to get to. The API half of this case is in ``test_api.py``, which
+    is where a process that binds a socket is already being started.
+    """
+    # The two underlying helpers rather than run_worker: its keyword-only timeout
+    # and its **overrides cannot be told apart by a type checker at the call site.
+    finished = wait_for_worker(
+        start_worker(database, "--once", **{UNRELATED_NAME: UNRELATED_VALUE})
+    )
+    assert finished.returncode == 0, finished.stderr
+    recorded = log_events(finished.stderr)
+    warnings = [record for record in recorded if record["event"] == "worker.configuration_warning"]
+    assert len(warnings) == 1, recorded
+    assert UNRELATED_NAME in warnings[0]["detail"]
+    assert [record for record in recorded if record["event"] == "worker.started"]
+    assert not [record for record in recorded if "configuration_invalid" in record["event"]]
+
+
+@pytest.mark.parametrize("module", ENTRYPOINTS)
+def test_sec_003_neither_entrypoint_prints_the_environment_when_it_refuses(
+    baseline: dict[str, str], module: str
+) -> None:
+    """secret-setup.md names an environment dump as a leak channel of its own."""
+    del baseline["COSMA_DB_HOST"]
+    result = start_entrypoint(
+        module,
+        {**baseline, FOREIGN_NAME: FOREIGN_VALUE, "COSMA_API_TOKEN": SECRET_MARKER},
+    )
+    written = result.stdout + result.stderr
+    assert result.returncode == EX_CONFIG
+    assert "COSMA_DB_HOST" in written
+    assert FOREIGN_NAME not in written
+    assert FOREIGN_VALUE not in written
+    assert SECRET_MARKER not in written
+    assert baseline["COSMA_DB_USER"] not in written
+
+
+# --- SEC-002, the half that is a configuration decision ---------------------
+
+
+def test_sec_002_the_default_bind_address_is_loopback(baseline: dict[str, str]) -> None:
+    """The charter's "by default" half. The refusal below is the P0-A addition."""
+    assert "COSMA_API_HOST" not in baseline
+    config = load_config(baseline)
+    assert config.api_host == DEFAULT_API_HOST
+    assert ipaddress.ip_address(config.api_host).is_loopback
+
+
+@pytest.mark.parametrize("given", ["127.0.0.1", IPV6_LOOPBACK, "127.0.0.53"])
+def test_sec_002_a_loopback_address_is_accepted_exactly_as_stated(
+    baseline: dict[str, str], given: str
+) -> None:
+    config = load_config({**baseline, "COSMA_API_HOST": given})
+    assert config.api_host == given
+    assert ipaddress.ip_address(config.api_host).is_loopback
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        "0.0.0.0",
+        "::",
+        "192.168.1.10",
+        "10.0.0.5",
+        "203.0.113.7",
+        "fe80::1",
+        "localhost",
+        "example.com",
+        "",
+    ],
+)
+def test_sec_002_a_non_loopback_bind_address_is_refused(
+    baseline: dict[str, str], given: str
+) -> None:
+    """`CONFIGURATION_INVALID`, not a default. The scenario's step 6 and step 7."""
+    error = rejection({**baseline, "COSMA_API_HOST": given})
+    assert error.error_class is ErrorClass.CONFIGURATION_INVALID
+    assert not error.retryable
+    assert "COSMA_API_HOST" in error.summary
+
+
+def test_sec_002_the_wildcard_address_is_not_silently_corrected(
+    baseline: dict[str, str],
+) -> None:
+    """The one behavior SEC-002 forbids by name.
+
+    Falling back to loopback here would produce a *working* API on a configuration
+    the operator got wrong, and the mistake would be discovered the next time
+    somebody assumed the setting did something.
+    """
+    wildcard = "0.0.0.0"
+    with pytest.raises(ConfigurationInvalidError) as raised:
+        load_config({**baseline, "COSMA_API_HOST": wildcard})
+    assert wildcard in raised.value.summary, "the rejected address is named"
+    assert "does not fall back" in raised.value.summary

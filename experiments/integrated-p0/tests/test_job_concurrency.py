@@ -44,23 +44,29 @@ from __future__ import annotations
 
 import signal
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from io import StringIO
 from typing import Any
 from uuid import UUID
 
 import psycopg
 import pytest
 from platform_core.config import PlatformConfig
+from platform_core.db.connection import connected
 from platform_core.errors import ErrorClass
 from platform_core.jobs.registry import EFFECT_KEY_FIELD
 from platform_core.jobs.state import AttemptOutcome, JobState
 from platform_core.jobs.store import JobStore
+from platform_core.obs.logging import StructuredLogger
+from platform_core.obs.metrics import MetricsRegistry
 from platform_core.worker import EXIT_OK, parse_report
 
 from tests.conftest import (
     all_effects,
     attempts_of,
+    cloned_database,
+    keep_databases,
     log_events,
     run_worker,
     start_worker,
@@ -359,18 +365,61 @@ class FencedRun:
     effects: list[dict[str, Any]]
 
 
-@pytest.fixture
+# --------------------------------------------------------------------------- #
+# A note on fixture scope
+#
+# `job_006_run` is module-scoped, and so is `job_005_run` in
+# `test_job_interruption.py`. Both are deliberate and both rest on the same
+# property: every test that reads one of them asserts over the frozen dataclass and
+# changes nothing, so one execution of the scenario's Action serves all of them.
+#
+# At function scope the JOB-006 stall — six seconds, chosen so that the stalled
+# worker is provably still inside its handler when the reclaimed state is read —
+# was replayed once per test, five times, for 31 of the suite's 71 seconds.
+#
+# The consequence is that these fixtures create their own database rather than
+# using `shared_database`, which is function-scoped. That is not a loss of the
+# isolation DP-006 D3 asks for: the database is still private to the fixture, and
+# what the fixture shares it with is a set of read-only assertions rather than
+# another test's writes. The moment one of these tests needs to write, it needs its
+# own `shared_database` and cannot use these.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(scope="module")
 def job_006_run(
-    shared_store: JobStore,
-    shared_connection: psycopg.Connection[Any],
-    shared_database: PlatformConfig,
-) -> FencedRun:
+    platform_database: PlatformConfig,
+    migrated_template: str,
+    request: pytest.FixtureRequest,
+) -> Iterator[FencedRun]:
     """The scenario's Action section, from an empty database.
 
     ``stall_on_attempt`` is what makes both workers able to run the same short
     lease: attempt 1 sleeps past it and attempt 2 does not, which is the
     scenario's stated precondition.
     """
+    with cloned_database(
+        platform_database, migrated_template, "shared", keep_databases(request)
+    ) as shared_database, connected(shared_database, autocommit=True) as shared_connection:
+        yield _fenced_run(
+            JobStore(
+                shared_connection,
+                shared_database,
+                logger=StructuredLogger(stream=StringIO(), level="DEBUG"),
+                metrics=MetricsRegistry(),
+            ),
+            shared_connection,
+            shared_database,
+        )
+
+
+def _fenced_run(
+    shared_store: JobStore,
+    shared_connection: psycopg.Connection[Any],
+    shared_database: PlatformConfig,
+) -> FencedRun:
+    """Steps 1 to 5, as one timeline. Separated from the fixture only so the
+    scenario's steps read as a sequence rather than as two nested ``with`` blocks."""
     job_id = shared_store.create_job(
         "stall",
         {"stall_seconds": STALL_SECONDS, "stall_on_attempt": 1},

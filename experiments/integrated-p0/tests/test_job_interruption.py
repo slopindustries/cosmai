@@ -28,23 +28,30 @@ process, which exits cleanly.
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass
+from io import StringIO
 from typing import Any
 from uuid import UUID
 
 import psycopg
 import pytest
 from platform_core.config import PlatformConfig
+from platform_core.db.connection import connected
 from platform_core.errors import ErrorClass
 from platform_core.handlers.synthetic import DEFAULT_EXIT_CODE
 from platform_core.jobs.state import AttemptOutcome, JobState
 from platform_core.jobs.store import JobStore
+from platform_core.obs.logging import StructuredLogger
+from platform_core.obs.metrics import MetricsRegistry
 from platform_core.worker import EXIT_OK, REPORT_EVENT, parse_report
 
 from tests.conftest import (
     all_effects,
     attempts_of,
+    cloned_database,
     effects_of,
+    keep_databases,
     log_events,
     run_worker,
     wait_until,
@@ -92,6 +99,11 @@ class InterruptionRun:
     job: dict[str, Any]
     attempts: list[dict[str, Any]]
     effects: list[dict[str, Any]]
+    #: The fixture's own connection to the database this case ran against. Carried
+    #: so a test can still read the *whole* effect table live rather than being
+    #: handed a separate connection to a different, empty database — the fixture is
+    #: module-scoped and owns the database, see the note on its scope below.
+    connection: psycopg.Connection[Any]
 
 
 def lease_has_expired(connection: psycopg.Connection[Any], job_id: UUID) -> bool:
@@ -104,15 +116,46 @@ def lease_has_expired(connection: psycopg.Connection[Any], job_id: UUID) -> bool
     return bool(row is not None and row[0])
 
 
-@pytest.fixture(params=CASES, ids=[case.handler for case in CASES])
+@pytest.fixture(params=CASES, ids=[case.handler for case in CASES], scope="module")
 def job_005_run(
     request: pytest.FixtureRequest,
+    platform_database: PlatformConfig,
+    migrated_template: str,
+) -> Iterator[InterruptionRun]:
+    """The scenario's Action section for one case, from an empty database.
+
+    Module-scoped, so each of the two cases runs its Action once rather than once
+    per assertion — five replays of a 1.4 s interruption per case, for five
+    read-only assertions. Every test below reads the frozen ``InterruptionRun`` and
+    writes nothing, which is the property that makes the wider scope sound; the
+    first test that needs to write needs a function-scoped ``shared_database``
+    instead.
+
+    A parametrized fixture is instantiated once per parameter, so creating the
+    database *inside* it gives each case a database of its own. That matters: both
+    cases assert that the whole effect table holds exactly one row, and two cases
+    sharing one database would make the second of them read two.
+    """
+    case: Case = request.param
+    with cloned_database(
+        platform_database, migrated_template, "shared", keep_databases(request)
+    ) as shared_database, connected(shared_database, autocommit=True) as shared_connection:
+        shared_store = JobStore(
+            shared_connection,
+            shared_database,
+            logger=StructuredLogger(stream=StringIO(), level="DEBUG"),
+            metrics=MetricsRegistry(),
+        )
+        yield _interruption_run(case, shared_store, shared_connection, shared_database)
+
+
+def _interruption_run(
+    case: Case,
     shared_store: JobStore,
     shared_connection: psycopg.Connection[Any],
     shared_database: PlatformConfig,
 ) -> InterruptionRun:
-    """The scenario's Action section for one case, from an empty database."""
-    case: Case = request.param
+    """Steps 1 to 3 of one case, as one timeline."""
     job_id = shared_store.create_job(
         case.handler, {"halt_on_attempt": 1}, max_attempts=MAX_ATTEMPTS
     )
@@ -157,6 +200,7 @@ def job_005_run(
         job=job,
         attempts=attempts_of(shared_connection, job_id),
         effects=effects_of(shared_connection, job_id),
+        connection=shared_connection,
     )
 
 
@@ -223,11 +267,16 @@ def test_job_005_recovery_abandons_the_first_attempt_and_succeeds_on_the_second(
 
 
 def test_job_005_leaves_exactly_one_effect_in_both_cases(
-    job_005_run: InterruptionRun, shared_connection: psycopg.Connection[Any]
+    job_005_run: InterruptionRun,
 ) -> None:
-    """I1, at the one place at-least-once delivery is actually dangerous."""
+    """I1, at the one place at-least-once delivery is actually dangerous.
+
+    Both counts matter and neither implies the other: one row for this job, and one
+    row in the table, so a second effect written under a different key would be
+    caught as well.
+    """
     assert len(job_005_run.effects) == 1
-    assert len(all_effects(shared_connection)) == 1
+    assert len(all_effects(job_005_run.connection)) == 1
     assert job_005_run.effects[0]["job_id"] == job_005_run.job_id
 
 

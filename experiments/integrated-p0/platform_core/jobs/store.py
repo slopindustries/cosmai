@@ -371,6 +371,18 @@ from job
 where id = %(job_id)s
 """
 
+# `error_detail` is selected. Which representation may show it is decided one
+# layer up, by `api.app`, and SEC-004 requires the default one not to — a read
+# that omitted the column here would make the protected representation impossible
+# instead of making the default one safe.
+READ_ATTEMPTS = """
+select id, job_id, attempt_no, worker_id, started_at, finished_at, outcome,
+       error_class, error_summary, error_detail, correlation_id
+from job_attempt
+where job_id = %(job_id)s
+order by attempt_no
+"""
+
 
 class JobStore:
     """Data access for CONTRACT-JOB@0.1. One instance per connection.
@@ -647,6 +659,17 @@ class JobStore:
         with self._cursor() as cursor:
             cursor.execute(READ_JOB, {"job_id": job_id})
             return cursor.fetchone()
+
+    def read_attempts(self, job_id: UUID) -> list[dict[str, Any]]:
+        """Every attempt of one job, oldest first, with the protected column included.
+
+        Ordered by ``attempt_no`` rather than by ``started_at`` because the number
+        is the contract's ordering and is unique per job, while two attempts could
+        in principle share a start instant.
+        """
+        with self._cursor() as cursor:
+            cursor.execute(READ_ATTEMPTS, {"job_id": job_id})
+            return cursor.fetchall()
 
     # -------------------------------------------------------------- internals
 

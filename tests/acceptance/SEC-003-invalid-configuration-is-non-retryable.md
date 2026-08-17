@@ -72,7 +72,7 @@ Case f is deliberately not fatal: rejecting unknown variables would make the pro
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: P0-A has no credential setting, so this scenario proves the refusal mechanism, not that it holds for a real credential. That remains a P0-B obligation under OQ-007.
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 44 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k sec_003`
+- Known limitation: P0-A has no credential setting, so this proves the refusal mechanism rather than that it holds for a real credential. That remains a P0-B obligation under OQ-007.

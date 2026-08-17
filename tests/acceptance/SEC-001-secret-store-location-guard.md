@@ -79,7 +79,7 @@ Case e is the one a naive check fails. The guard must compare **resolved** paths
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: this guards location only. File permissions are checked by `scripts/with-secret-source.sh` and not re-checked at application startup, so a run that bypasses the launcher gets the location guarantee but not the permission one. Recorded rather than closed, because P0-A never opens the store; P0-B's resolver is where the permission check belongs.
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 25 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k sec_001`
+- Known limitation: the guard checks location only. File permissions are checked by `scripts/with-secret-source.sh` and not re-checked at startup, so a run that bypasses the launcher gets the location guarantee but not the permission one. P0-A never opens the store; the permission check belongs with P0-B's resolver.
