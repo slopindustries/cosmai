@@ -3,28 +3,39 @@
 - Status: `DRAFT` — awaiting the captain's signature
 - Governing decision: [DP-005](../../docs/decisions/DP-005-two-part-pre-p1-execution.md)
 - Integrated experiment: [EXP-001](EXP-001-platform-core.md), `COMPLETED`, outcome `SUPPORTED`
-- Reviewed code revision: `60807cba3e65e094c5870e46499dffe4577bdfd7` (`60807cb`), branch `p0a/platform-core`
-- Evidence directory: [`evidence/2026-08-17-60807cb/`](evidence/2026-08-17-60807cb/)
+- Reviewed code revision: `07b0688517a3732aca7f6e5e26e5c81fb6a5d6fb` (`07b0688`), branch `p0a/platform-core`
+- Evidence directory: [`evidence/2026-08-17-07b0688/`](evidence/2026-08-17-07b0688/)
 - Review date and timezone: 2026-08-17, Asia/Seoul (UTC+09:00)
-- Reviewers: the project owner, with an adversarial review of every `PASS` claim attached below
+- Reviewers: the project owner, with an [adversarial review](ADVERSARIAL-REVIEW-2026-08-17.md) of every `PASS` claim
 
 ## Gate question
 
 Is the source- and normalization-independent platform core executable, tested, and bounded enough to begin P0-B without claiming that source, acquisition, Raw, snapshot, or normalization behavior has been proved?
 
-**Recommendation: `GO`.** The reasoning, and the five things this gate explicitly does not claim, are in the Decision section.
+**Recommendation: `CONDITIONAL GO`**, with criterion 6 as the single condition.
+
+This document's first draft recommended `GO`. An [adversarial review](ADVERSARIAL-REVIEW-2026-08-17.md) found three blocking defects in the record — none in the platform — and its judgement on criterion 6 was better than mine: the charter names screenshots among the surfaces that must preserve the redaction boundary, none is produced, and a gate that marks the cell `PASS` while inviting the reviewer to downgrade it has declined to decide what it exists to decide. The charter provides `CONDITIONAL GO` for exactly this case. The nine things this gate does not claim have their own section below.
 
 ## How to re-run everything below
 
+Every command below was run at the reviewed revision. The first draft of this block did not survive that check: it cited a test count from one tree and a lint result from another, and its `mypy` claim was false at the revision it named.
+
 ```sh
-./scripts/with-database.sh uv run pytest           # 509 passed in 57.6 s
-./scripts/with-database.sh uv run pytest -n 4      # 509 passed in 25.4 s
-uv run ruff check . && uv run mypy .               # clean, 46 source files, strict
-uv run pytest tests/environment                    # 21 passed — the boundary guard
+./scripts/with-database.sh uv run pytest        # 507 passed, 2 skipped in 53.6 s
+./scripts/with-database.sh uv run pytest -n 4   # 507 passed, 2 skipped
+uv run ruff check . && uv run mypy .            # clean; strict, 46 source files
+uv run pytest tests/environment                 # 21 passed — the boundary guard
 cd experiments/integrated-p0/dashboard && npm run build
 ```
 
-`[측정]` Full transcript: [`evidence/2026-08-17-60807cb/pytest-output.txt`](evidence/2026-08-17-60807cb/pytest-output.txt). Environment and tool versions: [`ENVIRONMENT.md`](evidence/2026-08-17-60807cb/ENVIRONMENT.md) in the same directory.
+The two skips are the evidence-capture tests, which run only under `--capture-evidence=DIR`; with capture requested the suite is 509. Capturing is a separate act, which is why the recorded hashes can be verified at all:
+
+```sh
+./scripts/with-database.sh uv run pytest -k "ops_003 or sec_004" \
+    --capture-evidence=experiments/integrated-p0/evidence/2026-08-17-07b0688
+```
+
+`[확인 사실]` Full transcript: [`pytest-output.txt`](evidence/2026-08-17-07b0688/pytest-output.txt). Environment, tool versions, and per-selector counts: [`ENVIRONMENT.md`](evidence/2026-08-17-07b0688/ENVIRONMENT.md). The four artifact hashes in that directory's `README.md` verify with `shasum -a 256 -c`.
 
 ## Charter exit criteria
 
@@ -32,15 +43,15 @@ Each row is a criterion from the [P0 Charter](../../docs/p0-charter.md) "P0-A ex
 
 | # | Criterion | Result | Evidence | Remaining limitation |
 |---|---|---|---|---|
-| 1 | Parallel job claims do not create conflicting active ownership | `PASS` | `JOB-007`, 10 passed; 200 jobs × 4 worker processes × 5 repetitions × 2 sample sets; `having count(*) > 1` empty every time; per-worker distribution near-uniform around 50, so all four contended | Four processes on one host at P0 volume. Nothing about throughput, fairness, or starvation; a starved job is possible and undetected |
+| 1 | Parallel job claims do not create conflicting active ownership | `PASS` | `JOB-007`, 10 passed; 200 jobs × 4 worker processes × 5 repetitions × 2 sample sets; `having count(*) > 1` empty every time; attempt count equal to job count exactly | `[추론]` **Contention is inferred, not asserted.** The per-worker distribution is printed, not asserted and not captured — one worker taking all 200 would pass. EXP-001 records a range from `33` to `57` per worker, so "near-uniform" overstates it. `claim_conflicts` read 0 in almost every run and is not a usable contention measure. Also: four processes on one host at P0 volume, nothing about throughput, fairness, or starvation |
 | 2 | Duplicate execution does not produce an uncontrolled platform-level durable effect | `PASS` | `JOB-008`, 12 passed; 20 jobs sharing one key → 1 row and 19 suppressions; **20 distinct keys → 20 rows and 0 suppressions**, which is what makes the 19 keyed rather than blanket; each suppression emits its own event | **The effect is one row with a primary-key conflict** — the easiest instance of the problem. See "What this gate does not claim", item 1 |
 | 3 | Interrupted or expired work reaches a documented recoverable or final state | `PASS` | `JOB-005`, 12 passed, both interruption points; `JOB-006`, 5 passed, a live stalled worker; every expired lease reclaimed in 130–168 ms | Processes end via `os._exit`, a clean kill at a chosen instruction. A real crash can land mid-statement, and PostgreSQL's own crash recovery is unexercised |
 | 4 | Retry exhaustion produces an observable terminal state | `PASS` | `JOB-003`, 6 passed; exhausted job distinguishable from a backing-off one by `state`, `terminal_reason`, and `attempt_count` against `max_attempts`; not re-claimed afterwards | Small attempt budgets keep the scenario fast; no evidence at large budgets |
 | 5 | The operator can inspect and safely retry generic work without direct database access | `PASS` | `OPS-001`, 14 passed, **with both psycopg connect entry points patched during every assertion** and a control proving the seal raises; `OPS-002`, 11 passed, retry of an already-applied effect adds no row and moves the suppression counter by 1 | Unauthenticated. Anything on the host can retry any job — evidence about idempotency, never about authority |
-| 6 | Logs, metrics, errors, and screenshots preserve the declared redaction boundary | `PASS` | `SEC-004`, 60 passed; 8 redacted keys absent from 5 rendered screens, the log, and both API representations; the ordinary key's marker present as the detection control; protected representation still redacted | **Step 4's screenshot is not executed.** Screens are asserted as text, so a value hidden by CSS or in a DOM attribute would pass. Redaction is key-name based throughout |
+| 6 | Logs, metrics, errors, and screenshots preserve the declared redaction boundary | **`CONDITIONAL`** | `SEC-004`, 59 passed. Two of the four named surfaces carry a positive detection control: 8 redacted keys absent from 5 rendered screens and both API representations, with an ordinary key's marker present so the search would have found a leak. Metrics are covered by two assertions and structurally, since labels are restricted to a closed state set | **Screenshots are named in the criterion and none is produced** — screens are asserted as rendered text, so a value hidden by CSS or in a DOM attribute would pass. **The log's absence result has no positive control**: the platform never writes a payload into an event, so searching a real log for a marker asserts what was not attempted rather than demonstrating redaction. Redaction is key-name based throughout |
 | 7 | Operator surfaces bind to loopback by default | `PASS` | `SEC-002`, 25 passed; a non-loopback bind is **refused**, not merely defaulted away from, and `0.0.0.0` is not silently corrected; no PostgreSQL TCP listener; `inet_server_addr() IS NULL` | Evidence about binding, not authorization |
 | 8 | The platform rejects a secret-store path inside the repository working tree | `PASS` | `SEC-001`, 25 passed, both entrypoints; a link resolving inside the tree refused and one resolving outside accepted, proving resolved-path comparison; **an unreadable store outside the tree still starts**, proving the guard never opens the file | Location only. File permissions are checked by the launcher and not re-checked at startup |
-| 9 | The gate lists every acquisition and normalization behavior deferred to P0-B | `PASS` | The deferred-domain inventory below, maintained from the first commit as EXP-001's `Scope > Excluded` rather than reconstructed here | The inventory is mechanically enforced for Python and SQL only — see item 5 |
+| 9 | The gate lists every acquisition and normalization behavior deferred to P0-B | `PASS` | The deferred-domain inventory below, now reconciled item by item against [DP-005](../../docs/decisions/DP-005-two-part-pre-p1-execution.md) §Excluded, which is the binding authority. `[확인 사실]` The nine-item list is present in EXP-001's first commit, so "maintained from the first commit" holds | The first draft cited EXP-001 as the source while EXP-001 cited the gate — circular, and six DP-005 behaviors were missing as a result. They are added below. Enforcement is mechanical for Python and SQL identifiers only — see items 5 and 8 |
 | 10 | The gate records `GO` or an explicitly accepted `CONDITIONAL GO` | `DRAFT` | This document | Requires the captain's signature |
 
 Two further charter requirements are not numbered exit criteria and are recorded for completeness:
@@ -49,6 +60,7 @@ Two further charter requirements are not numbered exit criteria and are recorded
 |---|---|---|
 | PostgreSQL runtime, migration mechanism, source-neutral transaction foundations | `PASS` | `0001_platform_core.sql` applied idempotently; the schema's constraints verified with `psql` alone, no Python involved |
 | API and worker process lifecycle, health, configuration validation, safe shutdown | `PASS` | `SEC-003`, 44 passed, cases a–f; a stop signal lets the running attempt finish first; `OPS-004`, 11 passed, health reflects the database and recovers without a restart |
+| Structured logs, metrics, **correlation**, redaction — and DP-005's "telemetry foundations" | `PASS` | `OPS-003`, 8 passed. One `correlation_id` returned the events of two worker processes across a process death, with a control proving an unrelated job's events are excluded. Captured artifact: [`ops-003-correlated-events.json`](evidence/2026-08-17-07b0688/ops-003-correlated-events.json) and the log it was filtered from. Omitted from the first draft of this table, which left a DP-005 bullet unlinked |
 
 ## Synthetic-handler coverage
 
@@ -60,7 +72,9 @@ Two further charter requirements are not numbered exit criteria and are recorded
 | Interruption and lease expiry | `YES` | `JOB-005` (`halt_before_effect`, `halt_after_effect`), `JOB-006` (`stall`) | `os._exit` rather than a real crash |
 | Invalid platform configuration | `YES` | `SEC-003` cases a–f across both entrypoints | P0-A has no credential setting, so this proves the refusal mechanism, not that it holds for a credential |
 
-`[확인 사실]` No synthetic handler imitates a collector, dataset importer, Raw payload, snapshot producer, or normalizer. Each either succeeds, fails with a declared class, applies one opaque effect, or ends its own process. `tests/environment/test_p0a_boundary_guard.py` enforces this for every Python identifier and every SQL object name under the experiment tree, and it fired once on real code during S1.
+`[확인 사실]` No synthetic handler imitates a collector, dataset importer, Raw payload, snapshot producer, or normalizer. Each either succeeds, fails with a declared class, applies one opaque effect, or ends its own process.
+
+`[확인 사실]` `tests/environment/test_p0a_boundary_guard.py` enforces the vocabulary over **Python identifiers, and identifiers inside `.sql` files**, and it fired once on real code during S1. `[확인 사실]` It does **not** cover string literals that are not recognised as SQL: an adversarial review planted `sql.Identifier("observation")`, a `"raw_response"` API-key constant, and a list of domain-shaped column names in a P0-A module and the guard passed, while one real identifier failed it immediately. `psycopg.sql.Identifier` is how this codebase composes dynamic identifiers and API response keys are string literals throughout, so this is a live gap, not a hypothetical one. Recorded in item 8 below.
 
 ## Deferred-domain inventory
 
@@ -76,7 +90,14 @@ Each item confirmed absent from P0-A implementation **and** from its acceptance 
 - [x] Acquisition- or normalization-specific dashboard behavior
 - [x] `ACQ`, `RAW`, `SNP`, or `NRM` pass claim
 
-Additionally absent: `credential_ref` resolution or authorization semantics, and any outbound request whatsoever.
+Reconciled against [DP-005](../../docs/decisions/DP-005-two-part-pre-p1-execution.md) §Excluded, which named six behaviors the nine items above do not spell out. Each is confirmed absent:
+
+- [x] Pagination, rate policy, record mapping, and source identity
+- [x] Changed-source-content semantics
+- [x] Normalization decision use, and normalized result persistence
+- [x] **Domain-specific `OPS` or `SEC` acceptance claims** — this one bounds what P0-A did claim. Four `OPS` and four `SEC` scenarios executed, and every one is platform-level: they concern job state, attempts, correlation, health, metrics, configuration, binding, the secret-store location, and redaction. None names a source, a Raw payload, a snapshot, or a normalizer.
+- [x] `credential_ref` resolution or authorization semantics
+- [x] Any outbound request whatsoever
 
 **How each was confirmed.** The nine items are EXP-001's `Scope > Excluded` list, copied there at S0 so the inventory was maintained from the first commit. The boundary guard turns the vocabulary half into a failing test for `.py` and `.sql`. `[확인 사실]` The dashboard is TypeScript and is checked by **file name only**; its vocabulary was held by fixing the substitutions before the code existed, and a recorded grep found no occurrence. That is a measurement at one moment, not a gate — see item 5 below.
 
@@ -90,7 +111,9 @@ Listed separately from the limitation column because each is a place where a rea
 4. **`SEC-004` step 4 is not executed.** The operator screens are asserted as rendered text from the real component tree, not captured as pixels. A value hidden by CSS or parked in a DOM attribute would pass. `dashboard/README.md` records the manual capture procedure. A reviewer who weighs this differently should read criterion 6 as `CONDITIONAL`.
 5. **The frontend's vocabulary boundary is conventional, not mechanical.** Extending the guard to TypeScript was declined deliberately: a Python-side regex scanner would have to treat `//`, `/* */`, JSDoc, template literals, and JSX text as prose, and that same guard's SQL detector already misfired once for exactly this reason. A future contributor who does not read `dashboard/README.md` gets no warning from a test.
 6. **One host, one PostgreSQL version, four worker processes, one day.** No evidence about clock skew larger than a lease between machines, throughput, fairness, or starvation.
-7. **P0-A completion is not evidence that a real collector, dataset importer, Raw model, snapshot, or normalizer will work.** The charter says this in as many words and it is repeated here because it is the misreading with the largest consequence.
+7. **The root test session imports experiment code.** `tests/conftest.py` calls `platform_core.config.secret_store_location_problem` so that the secret-store guard has one implementation rather than two that can disagree. It is a test-session dependency and not a runtime or package one, so DP-001 is unaffected — but the repository's own test session **stops guarding when `experiments/integrated-p0/` is disposed of**. This belongs in the P0-B artifact disposition register, and it is the item most easily lost, since the failure mode is a collection error in a P0-B session that nobody is expecting.
+8. **The boundary guard does not read string literals that are not SQL, or TypeScript at all.** An adversarial review put `sql.Identifier("observation")` and a `"raw_response"` API-key constant into a P0-A module and the guard passed. The vocabulary is mechanically enforced for identifiers and conventionally enforced everywhere else.
+9. **P0-A completion is not evidence that a real collector, dataset importer, Raw model, snapshot, or normalizer will work.** The charter says this in as many words and it is repeated here because it is the misreading with the largest consequence.
 
 ## P0-B entry readiness
 
@@ -108,11 +131,19 @@ Listed separately from the limitation column because each is a place where a rea
 
 ## Decision
 
-- Outcome: `GO` — **proposed**, pending signature.
-- `[결정]` (proposed): The source- and normalization-independent platform core is executable, tested, and bounded. P0-B may begin with source exploration under B1.
-- Accepted conditions: none required for `GO`. The seven items in "What this gate does not claim" are limitations recorded for P0-B, not conditions on this gate — each is a boundary of what was measured rather than a defect in what was built. A reviewer who judges item 4 material should record `CONDITIONAL GO` with criterion 6 as its condition.
-- Blocking failures: none.
-- Failure classification: no exit criterion failed. Four defects were found and fixed during execution, each classified before being patched — one implementation failure (`redact_text` shielded by a preceding harmless pair) and three specification failures (a boundary guard reading prose as SQL, a scenario asking for a safe retry the contract forbids, a scenario asking which error class a health check produces). All four are recorded in EXP-001's Observations with the measurement that exposed them.
+- Outcome: `CONDITIONAL GO` — **proposed**, pending signature.
+- `[결정]` (proposed): The source- and normalization-independent platform core is executable, tested, and bounded. P0-B may begin with source exploration under B1, with criterion 6's condition recorded and discharged in P0-B rather than blocking entry.
+- **Accepted condition (one):** criterion 6. `SEC-004` step 4 is not executed and the log channel's absence result has no positive control. Discharging it means either capturing the screens as images through a browser driver — which [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md) D6's dependency floor currently forbids, so it is a decision, not a task — or recording in P0-B that the redaction boundary is demonstrated for the screens and API and *structural* for the log. Either is cheap; neither was done today.
+- The other items in "What this gate does not claim" are **not** conditions. Each is a boundary of what was measured rather than a defect in what was built, and each is carried into P0-B rather than fixed here.
+- Blocking failures: none in the platform. **Three in this document's first draft**, all found by the [adversarial review](ADVERSARIAL-REVIEW-2026-08-17.md) and all fixed at the revision now under review: a `mypy` error introduced by the gate commit itself, so the gate's own "clean, strict" claim was false at the revision it named; an evidence directory named for a revision whose tree could not have produced its contents — **the second time in two commits**, which is what showed the naming was bound to nothing; and three of four recorded hashes failing their own verification instruction, because the scenarios rewrote the artifacts on every run.
+
+  The common cause of the last two was mine and structural: a test that writes into committed evidence during a run cannot name the revision that produced it, because the name is only knowable afterwards. Capture is now opt-in, the artifacts land in a commit that changes no code, and the claim is checkable with `git diff` rather than asserted in prose.
+- Failure classification: no exit criterion failed. Defects found and fixed during execution, each classified before being patched:
+  - one **implementation** failure — `redact_text` returned a sensitive value unchanged whenever a harmless pair preceded it;
+  - three **specification** failures — a boundary guard that parsed English prose as SQL, a scenario asking for a safe retry the contract forbids, and a scenario asking which error class a health check produces;
+  - three **record** failures found by adversarial review, listed above.
+
+  `[확인 사실]` The first four are recorded in EXP-001's Observations with the measurement that exposed each. **One correction to the first draft's claim:** the safe-retry conflict is recorded in EXP-001's Interpretation and in `JOB-008`'s revision note, but not as an Observation, and `test_job_concurrency.py` still says resolving it "needs a Decision Packet" while the scenario was amended in place instead. AGENTS.md requires a consequential ambiguity to become an Open Question or Decision Packet rather than be resolved silently. **This is an open action, recorded here rather than closed.**
 - P0-A work package to reopen for each blocker: none.
 - **Also proposed for acceptance:** [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md), currently `DRAFT`. All eight of its decisions held under execution. Its recorded tension with Project State section 4 — declining three named library defaults without contrary evidence, on the argument that nothing was in use so the question was adoption rather than replacement — is the one item a reviewer should decide rather than ratify. If that reading is rejected, the correct outcome is to adopt those defaults in P0-A, not to leave the choice unrecorded.
 

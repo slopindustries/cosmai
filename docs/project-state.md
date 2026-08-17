@@ -145,6 +145,7 @@ The first two hypotheses can begin in P0-A. Acquisition and normalization hypoth
 | [OQ-005](open-questions/OQ-005-operations-contract.md) | `OPEN` | P0-A/P0-B | Which platform and domain actions and evidence must the dashboard expose? | Dashboard acceptance contract |
 | [OQ-006](open-questions/OQ-006-job-concurrency.md) | `OPEN` | P0-A/P0-B | Is the PostgreSQL job model sufficient under platform and domain failures? | Worker, retry, and transaction contract |
 | [OQ-007](open-questions/OQ-007-credential-scope.md) | `OPEN` | P0-A/P0-B | What does the platform protect before a source exists, and which real credentials may a domain worker resolve? | Secret guard and source credential contract |
+| [OQ-008](open-questions/OQ-008-operator-reexecution-authority.md) | `OPEN` | P0-B | May an operator re-execute work that already succeeded, and what distinguishes that from retrying a failure? | Operator action set in `PoC Contract 0.1` |
 
 Stage expresses evidence routing, not long-term business importance.
 

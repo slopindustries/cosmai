@@ -721,9 +721,10 @@ def test_job_008_case_a_the_safe_retry_of_a_succeeded_job_is_refused(
 
     Rather than weaken either document, the conflict is recorded executably: the
     scenario's Action is performed and the platform's actual answer is asserted.
-    Resolving it needs a Decision Packet, because either the contract gains a
-    transition or the scenario loses one. Until then the replay evidence case A
-    carries is taken by the test below.
+    The scenario was later amended to match the contract, and the question of whether
+    an operator should ever re-execute succeeded work is routed to OQ-008 rather than
+    settled by that amendment. The replay evidence case A carries is taken by the test
+    below.
     """
     job_id = shared_store.create_job(
         "succeed", {EFFECT_KEY_FIELD: "case-a/fixed"}, max_attempts=MAX_ATTEMPTS
