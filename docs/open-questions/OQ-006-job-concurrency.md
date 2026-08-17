@@ -1,7 +1,7 @@
 # OQ-006 — Job Concurrency and Recovery
 
 - Status: `OPEN`
-- Priority: P0 — required evidence for the P1 contract
+- Priority: P0-A platform claims and P0-B domain effects
 - Owner: Project team
 - Blocks: worker, transaction, retry, and scale-out contract
 - Related experiments: not started
@@ -9,7 +9,7 @@
 
 ## Question
 
-Can a PostgreSQL-backed job model provide correct P0 concurrency and recovery for independently scalable collector and normalizer workers?
+Can a PostgreSQL-backed platform job model provide correct generic concurrency and recovery, and does that model remain correct when P0-B introduces collector, importer, and normalizer effects?
 
 ## Why this cannot be decided yet
 
@@ -41,11 +41,18 @@ No implementation has yet injected concurrent claims, duplicate delivery, interr
 
 ## Minimum experiment
 
-- Run at least two workers against a shared queue.
+### P0-A
+
+- Implement the handler-neutral platform job core and run at least two workers against a shared queue using synthetic generic handlers that do not imitate collection or normalization.
 - Terminate a worker after claim and after a durable side effect.
 - Deliver the same job more than once.
 - Exhaust retryable work into a final failure state.
 - Recover an expired lease.
+
+### P0-B
+
+- Repeat the relevant claim, interruption, duplicate, and recovery scenarios with the concrete collector, importer, and normalizer.
+- Record where source or rule effects differ from the platform evidence and whether the P0-A gate must be reopened.
 
 ## Evidence
 

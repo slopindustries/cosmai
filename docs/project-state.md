@@ -1,36 +1,34 @@
 # Project State
 
 - Project: CosmaSignal
-- Version: 0.1
-- Updated: 2026-08-16
-- Phase: M0 — Project Bootstrap
-- Next gate: M1 Source Capability Exploration
+- Version: 0.3
+- Updated: 2026-08-17
+- Phase: P0-A — Platform Core Construction and Verification
+- Next gate: P0-A Completion Gate
 
 ## Delivery lifecycle
 
-Milestones describe delivery progress. They are different from Open Question, Decision Packet, contract, and experiment statuses.
+Delivery has two active stages before P1. Work packages inside a stage do not create additional lifecycle stages.
 
 | Stage | Purpose | Entry condition | Required output | Exit condition |
 |---|---|---|---|---|
-| M0 — Project Bootstrap | Establish the decision boundary, evidence protocol, safety baseline, and working templates. | Project identity and P0 lifecycle are accepted. | Active project documents, agent instructions, templates, validated local configuration, and a reviewed bootstrap commit. | The repository can begin source experiments without relying on hidden chat context. |
-| M1 — Source Capability Exploration | Test real REST and dataset candidates and select replayable P0 inputs. | M0 exit condition is met and OQ-001 has bounded candidates. | Completed source probes, capability profiles, selection matrix, rights basis, fixtures or hashes, and a source decision. | One REST source and one dataset receive `GO` or an explicitly accepted `CONDITIONAL GO`. |
-| M2 — Integrated P0 Execution | Run the disposable end-to-end architecture experiment. | M1 outputs are accepted, the P0 timebox is confirmed, and required experimental contracts can be drafted. | Executable P0, experiment records, failure evidence, acceptance results, and proposed contracts. | Every P0 Charter exit criterion is answered with evidence or recorded as an explicit unresolved blocker. |
-| M3 — Architecture Synthesis | Convert P0 evidence into scoped architecture decisions. | M2 reaches its exit review. | Architecture Synthesis, accepted and rejected alternatives, promoted fixtures and tests, and `PoC Contract 0.1`. | The synthesis gate accepts the contract and a P1 reconstruction plan. |
-| P1 — Reconstruction | Rebuild from accepted contracts rather than promote P0 code. | M3 accepts `PoC Contract 0.1`. | A clean, continuously operable prototype baseline. | Defined by the P1 charter after Architecture Synthesis. |
+| P0-A — Platform Core Construction and Verification | Build and test the source- and normalization-independent platform foundation. | Project identity, disposable-P0 lifecycle, technology constraints, evidence protocol, and safety baseline are accepted. | Executable platform core, handler-neutral job and failure evidence, platform operator instrumentation, and a reviewed P0-A gate record. | The P0-A Completion Gate records `GO` or an explicitly accepted `CONDITIONAL GO` without claiming acquisition or normalization evidence. |
+| P0-B — Domain Integration, Evidence Synthesis, and Disposition | Select sources; define and implement acquisition and normalization; verify the real-data flow; decide what P1 promotes, rebuilds, archives, deletes, or carries unresolved. | P0-A gate is accepted and the bounded P0-B experiment, safety review, and timebox are recorded. | Source decisions, domain contracts, concrete collector/importer/normalizer, real-data and failure evidence, Architecture Synthesis, disposition register, `PoC Contract 0.1`, and P1 reconstruction plan. | Every P0 Charter exit criterion is answered and the P1 Entry Gate accepts the contract, disposition, and reconstruction plan, or records an explicit blocker. |
+| P1 — Clean Reconstruction | Rebuild from accepted contracts and promoted evidence rather than harden P0 code. | P0-B P1 Entry Gate is accepted. | A clean, continuously operable prototype baseline. | Defined by the future P1 charter. |
 
 No stage advances automatically because code appears to work. Update this file and the affected artifact statuses when a gate is accepted.
 
-## 1. Current program goal through M2
+## 1. Current program goal through P0-B
 
-Create a disposable but integrated P0 that uses real data to test the architecture from source acquisition through Raw storage, sealed normalization input, versioned normalization output, and operator observation.
+First build and test a source- and normalization-independent platform core. Then, in P0-B, select one REST source and one dataset, define and implement the acquisition and normalization domain, execute realistic integrated failures, and synthesize enough evidence to write `PoC Contract 0.1` and a P1 reconstruction plan.
 
-P0 must generate enough evidence to write `PoC Contract 0.1`. P1 will then be reconstructed from that contract and the accepted tests rather than evolved directly from P0 code.
+P0 remains disposable. P1 is reconstructed from accepted contracts and evidence rather than evolved directly from P0 implementation modules.
 
 ## 2. Final product goal
 
 `OPEN`
 
-The final meaning of beauty trend intelligence, its decision consumer, and the decision or R&D action it should improve have not been fixed. This does not block source sampling or ingestion experiments, but it blocks `Normalized Schema 1.0` and final quality criteria.
+The final meaning of beauty trend intelligence, its decision consumer, and the decision or R&D action it should improve have not been fixed. P0-A must not invent an answer. P0-B must record a provisional decision use before defining the concrete normalizer, while final product semantics may remain unresolved.
 
 ## 3. Artifact states
 
@@ -66,19 +64,53 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 
 - `[결정]` Project and GitHub organization name: **CosmaSignal**.
 - `[결정]` P0 is a disposable Architecture Discovery Prototype.
-- `[결정]` P1 will be reconstructed after Architecture Synthesis.
+- `[결정]` P1 will be reconstructed after P0-B accepts Architecture Synthesis, `PoC Contract 0.1`, artifact disposition, and a P1 reconstruction plan.
 - `[결정]` The repository is a monorepo for backend, dashboard, contracts, experiments, and tests.
+- `[결정]` [DP-005](decisions/DP-005-two-part-pre-p1-execution.md) divides all pre-P1 delivery into P0-A and P0-B.
 
 ### Technology constraints
 
 - `[결정]` Backend language: Python.
 - `[결정]` Primary database: PostgreSQL.
 - `[결정]` Dashboard: React and TypeScript.
-- `[결정]` REST API and existing dataset import are both required acquisition modes.
+- `[결정]` P0-B must support both REST API collection and existing dataset import.
 
 Framework and library selections such as FastAPI, SQLAlchemy, Alembic, HTTPX, React Router, TanStack Query, and MUI are strong P0 defaults but remain replaceable if an experiment produces contrary evidence.
 
+### P0-A boundary
+
+P0-A implements only source- and normalization-independent platform behavior:
+
+- PostgreSQL runtime, migrations, and source-neutral transaction foundations;
+- handler-neutral jobs, workers, API lifecycle, and safe shutdown;
+- generic claim, lease, retry, terminal-state, interruption, and recovery behavior;
+- a source-neutral operator dashboard, logs, metrics, correlation, and safe retry;
+- redaction, loopback binding, secret-store location guards, synthetic handlers, and platform failure injection.
+
+P0-A does not explore or select sources and does not implement acquisition, Raw, snapshot, or normalization contracts, ports, test doubles, persistence, domain UI, or acceptance claims.
+
+### P0-B boundary
+
+P0-B owns all source and normalization work:
+
+```text
+bounded candidate exploration and rights review
+→ REST source and dataset selection
+→ provisional decision use
+→ acquisition, Raw, snapshot, normalization, operations, source-policy, and credential contracts
+→ collector/importer/normalizer interfaces and test doubles
+→ concrete collector/importer/rule-baseline implementation
+→ component, real-data, failure, replay, concurrency, and operator verification
+→ Architecture Synthesis and artifact disposition
+→ PoC Contract 0.1 and P1 reconstruction plan
+→ P1 Entry Gate
+```
+
+Source probes are measurements inside P0-B. They are not integrated collector or importer implementations and cannot satisfy those obligations retroactively.
+
 ### Data and workflow principles
+
+The following accepted principles become executable domain behavior in P0-B, not P0-A:
 
 - `[결정]` Imported external datasets remain untrusted Raw data.
 - `[결정]` Raw data preserves original payload and provenance and is logically append-only.
@@ -91,28 +123,30 @@ Framework and library selections such as FastAPI, SQLAlchemy, Alembic, HTTPX, Re
 
 ## 5. Architecture hypotheses
 
-These are not yet contracts.
+These are not contracts.
 
+- `[가설]` A source- and normalization-independent platform core can expose useful execution, recovery, operator, and safety evidence before P0-B introduces the domain pipeline.
+- `[가설]` PostgreSQL job tables with at-least-once processing and idempotent platform effects are sufficient for P0 concurrency.
 - `[가설]` A shared Raw envelope plus source-specific payload can represent both REST responses and dataset rows without loss.
-- `[가설]` PostgreSQL job tables with at-least-once processing and idempotent writes are sufficient for P0 concurrency.
-- `[가설]` API/control, collector worker, normalizer worker, and dashboard are useful execution boundaries.
 - `[가설]` A materialized snapshot plus manifest and hashes is sufficient for replay despite later Raw-store changes or migration.
 - `[가설]` One small `Normalized Schema 0.x` can express useful common meaning across the first two sources.
 - `[가설]` A rule baseline can expose schema and quality problems before ML or LLM providers are introduced.
 
+The first two hypotheses can begin in P0-A. Acquisition and normalization hypotheses are tested only in P0-B.
+
 ## 6. Open questions
 
-| ID | Status | Priority | Question | Blocks |
-|---|---|---:|---|---|
-| [OQ-001](open-questions/OQ-001-source-capability.md) | `OPEN` | P0 | Which REST and dump sources are usable and representative? | Source contract, fixtures, P0 ingestion |
-| [OQ-002](open-questions/OQ-002-project-decision-contract.md) | `OPEN` | P0 | Which decision should the final product improve? | Schema 1.0, final quality metrics |
-| [OQ-003](open-questions/OQ-003-normalization-protocol.md) | `OPEN` | P0 | What are Schema 0.x and the normalizer provider protocol? | Normalization P0 |
-| [OQ-004](open-questions/OQ-004-snapshot-boundary.md) | `OPEN` | P0 | What exactly must a sealed snapshot materialize? | Reproducibility contract |
-| [OQ-005](open-questions/OQ-005-operations-contract.md) | `OPEN` | P0 | Which operator actions and evidence must the dashboard expose? | Dashboard acceptance contract |
-| [OQ-006](open-questions/OQ-006-job-concurrency.md) | `OPEN` | P0 | Is the PostgreSQL job model sufficient and correct under failure? | Worker and retry contract |
-| [OQ-007](open-questions/OQ-007-credential-scope.md) | `OPEN` | P0 | Which credentials may a worker resolve, and what enforces that limit? | Credential handling and worker boundary contract |
+| ID | Status | Stage | Question | Blocks |
+|---|---|---|---|---|
+| [OQ-001](open-questions/OQ-001-source-capability.md) | `OPEN` | P0-B | Which REST and dataset sources are usable and representative? | Source contract, fixtures, P0-B ingestion |
+| [OQ-002](open-questions/OQ-002-project-decision-contract.md) | `OPEN` | P0-B | Which decision should the final product improve? | Concrete normalizer, Schema 1.0, final quality metrics |
+| [OQ-003](open-questions/OQ-003-normalization-protocol.md) | `OPEN` | P0-B | What are Schema 0.x and the normalizer provider protocol? | P0-B normalization |
+| [OQ-004](open-questions/OQ-004-snapshot-boundary.md) | `OPEN` | P0-B | What exactly must a sealed snapshot materialize? | Reproducibility contract |
+| [OQ-005](open-questions/OQ-005-operations-contract.md) | `OPEN` | P0-A/P0-B | Which platform and domain actions and evidence must the dashboard expose? | Dashboard acceptance contract |
+| [OQ-006](open-questions/OQ-006-job-concurrency.md) | `OPEN` | P0-A/P0-B | Is the PostgreSQL job model sufficient under platform and domain failures? | Worker, retry, and transaction contract |
+| [OQ-007](open-questions/OQ-007-credential-scope.md) | `OPEN` | P0-A/P0-B | What does the platform protect before a source exists, and which real credentials may a domain worker resolve? | Secret guard and source credential contract |
 
-Priority expresses the order of evidence work, not long-term business importance.
+Stage expresses evidence routing, not long-term business importance.
 
 ## 7. Local implementation choices
 
@@ -127,12 +161,12 @@ Implementation may choose these without a Decision Packet when behavior and acce
 
 ## 8. Specification frontier
 
-We can specify invariants now: provenance, lossless Raw preservation, independent recovery, snapshot replay, versioned normalization, idempotency, and observable state.
+P0-A may specify only platform invariants such as generic ownership, lease recovery, observable state, redaction, loopback exposure, and secret-store location guards.
 
-We must not yet freeze provider-specific fields, final normalized semantics, universal D0–D4 maturity claims, production service topology, scale infrastructure, or final product analytics.
+P0-A must not freeze source identity, provider fields, Raw semantics, snapshot selection, normalized semantics, source-specific retry policy, or concrete credential authorization. P0-B may propose those as experimental contracts after source evidence exists. Production topology, scale infrastructure, final product analytics, and `Normalized Schema 1.0` remain outside P0.
 
 ## 9. Historical context
 
-The reasoning path from the initial ingestion idea to the current disposable P0 lifecycle is recorded in [HIST-001](history/HIST-001-initial-concept-to-p0.md).
+The reasoning path from the initial ingestion idea to the disposable P0 lifecycle is recorded in [HIST-001](history/HIST-001-initial-concept-to-p0.md). DP-004 is retained as a superseded decision record.
 
-History documents are non-authoritative. They explain why ideas changed, but current decisions and implementation requirements come from this Project State, accepted Decision Packets, and versioned contracts.
+History documents are non-authoritative. Current requirements come from this Project State, active accepted Decision Packets, and versioned contracts.

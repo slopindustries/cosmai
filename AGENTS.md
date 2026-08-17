@@ -8,6 +8,7 @@ Build evidence that allows the team to choose the architecture. Do not treat P0 
 
 - Read `docs/project-state.md` before making changes.
 - Read `docs/p0-charter.md` before starting, scoping, or changing P0 implementation, instrumentation, or exit criteria.
+- Read `docs/p0-execution-plan.md` before starting or changing P0-A or P0-B work.
 - Before handling external input or configuring a source, read `docs/conventions/data-handling.md` and `docs/conventions/p0-security.md`.
 - Treat items marked `ACCEPTED_FOR_POC` or `CONTRACTED` as constraints.
 - Do not silently resolve a consequential ambiguity. Create or update an Open Question or Decision Packet.
@@ -18,7 +19,11 @@ Build evidence that allows the team to choose the architecture. Do not treat P0 
 
 - Put disposable integrated implementation under `experiments/integrated-p0/`.
 - Put source-specific probes under `experiments/source-probes/`.
-- Do not create long-lived application code under `apps/` until Architecture Synthesis accepts `PoC Contract 0.1`.
+- Follow `DP-005`: P0-A implements and verifies only source- and normalization-independent platform behavior.
+- During P0-A, do not explore or select REST or dataset sources and do not create acquisition, Raw, snapshot, or normalization contracts, ports, fixtures, test doubles, persistence, UI behavior, or implementations.
+- P0-A synthetic handlers may test generic execution and failure behavior, but they must not imitate a collector, dataset importer, Raw payload, snapshot producer, or normalizer.
+- Start all source exploration, source selection, acquisition, Raw, snapshot, and normalization work in P0-B only after the P0-A Completion Gate is accepted and linked from the integrated experiment record.
+- Do not create long-lived application code under `apps/` until the P0-B P1 Entry Gate accepts `PoC Contract 0.1`, artifact disposition, and the P1 reconstruction plan.
 - P0 code must not become a runtime or package dependency of P1.
 - P0 may be direct and source-specific when that is the minimum way to test a hypothesis. Avoid abstractions that do not reduce a named uncertainty.
 
@@ -35,7 +40,7 @@ Build evidence that allows the team to choose the architecture. Do not treat P0 
 - Record source URL/provider, capture time, license or usage basis, sample hash, environment, and relevant versions.
 - Store unstable contracts only under `contracts/experimental/`.
 - Promote a contract only through a Decision Packet and version it.
-- Preserve provenance and lossless Raw payloads; do not present normalized output as source truth.
+- In P0-B, preserve provenance and lossless Raw payloads; do not present normalized output as source truth.
 
 ## History documents
 
@@ -49,16 +54,16 @@ Build evidence that allows the team to choose the architecture. Do not treat P0 
 
 - Never commit API keys, tokens, cookies, credentials, private datasets, or unredacted personal data.
 - Keep secrets outside code, job payloads, Raw headers, fixtures, logs, and screenshots.
-- Persist only a `credential_ref`; resolve the credential at the worker boundary from an approved local secret source outside the repository working tree.
+- In P0-B, persist only a `credential_ref`; resolve the credential at the worker boundary from an approved local secret source outside the repository working tree.
 - Follow the `public`, `local`, and `private` data classes in `docs/conventions/data-handling.md`. Redistribution permission and agent-processing permission are separate decisions.
 - Commit only small fixtures whose redistribution basis is recorded. Otherwise store hashes and retrieval instructions.
 - Treat imported datasets as untrusted Raw input regardless of their claimed normalization level.
-- P0 operator input selects a registered `source_id`; it must not turn an arbitrary URL into an outbound request.
+- In P0-B, operator input selects a registered `source_id`; it must not turn an arbitrary URL into an outbound request.
 
 ## Validation
 
 - Every experiment must name its hypothesis, falsification condition, evidence, and exit condition.
 - Start each experiment from `experiments/EXPERIMENT-TEMPLATE.md`; add experiment-specific fields without removing its required sections.
 - Prefer replayable commands and deterministic fixtures.
-- P0 must exercise retries, duplicates, partial failures, and parallel claims—not only the happy path.
+- P0-A must exercise generic retries, duplicates, interruption, and parallel claims. P0-B adds partial acquisition, source, Raw, snapshot, and normalization failures.
 - Dashboard observability is experimental instrumentation, not deferred visual polish.

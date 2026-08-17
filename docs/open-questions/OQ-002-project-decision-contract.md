@@ -1,9 +1,9 @@
 # OQ-002 — Final Project Decision Contract
 
 - Status: `OPEN`
-- Priority: P0, but does not block initial source sampling
+- Priority: P0-B, after initial source sampling and before concrete normalization design
 - Owner: Project team
-- Blocks: `Normalized Schema 1.0`, final quality metrics, final product workflows
+- Blocks: the P0-B concrete normalizer boundary, `Normalized Schema 1.0`, final quality metrics, final product workflows
 - Related experiments: not started
 - Resolution Decision Packet: not created
 
@@ -59,6 +59,8 @@ These are working hypotheses, not a final product contract.
 ## Exit condition
 
 A Project Decision Contract states: consumer, trigger, decision, output unit, evidence requirements, uncertainty representation, review responsibility, success criteria, and explicit non-goals.
+
+P0-A does not explore or resolve this question. P0-B does not require a final product answer before source sampling, but it does require an accepted provisional P0 consumer, output unit, evidence requirement, and human-review boundary before the concrete normalizer is designed against an otherwise undefined use.
 
 ## Resolution
 

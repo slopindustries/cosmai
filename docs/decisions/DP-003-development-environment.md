@@ -21,7 +21,7 @@ Where does the development environment live, and does any part of it become some
 
 ## Rationale
 
-M0's required output includes validated local configuration, and its exit condition is that source experiments can begin without hidden context. Neither holds without a runnable toolchain.
+The pre-P1 program requires validated local configuration before P0-A can produce executable platform evidence. That condition does not hold without a runnable toolchain.
 
 Declaring no importable package is what keeps this compatible with DP-001. No module named after the product exists for P0 code to accumulate inside, so P1 cannot inherit one by accident. Experiments stay plain modules under `experiments/`, reachable through the pytest path configuration and nothing else.
 
@@ -30,7 +30,7 @@ Nix supplies system runtimes; uv owns every Python package. This is what prevent
 ## Rejected alternatives
 
 - **uv workspace with `experiments/*` as members.** Would allow per-experiment dependency sets under one lock file, but has zero members today. Speculative structure that reduces no named uncertainty. Reconsider when two experiments need conflicting dependencies.
-- **A `pyproject.toml` per experiment.** Most faithful to disposability, but charges environment setup cost at the start of every probe — the exact friction M1 cannot afford.
+- **A `pyproject.toml` per experiment.** Most faithful to disposability, but charges environment setup cost at the start of every experiment — friction neither P0-A nor P0-B needs.
 - **Nix as the primary environment.** Would make the flake a prerequisite for contribution and couple the project to a toolchain no decision has selected.
 
 ## Tradeoffs and risks

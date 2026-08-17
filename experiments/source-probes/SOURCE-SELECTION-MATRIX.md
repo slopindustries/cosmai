@@ -1,4 +1,4 @@
-# M1 Source Selection Matrix
+# P0-B Source Selection Matrix
 
 - Status: `PLANNED`
 - Related Open Question: [OQ-001](../../docs/open-questions/OQ-001-source-capability.md)
@@ -18,7 +18,7 @@ Use one row per completed Source Capability Profile. Preserve links to measureme
 
 - `GO`: every hard gate is `PASS` and no unresolved limitation blocks its named P0 use.
 - `CONDITIONAL GO`: every hard gate is `PASS`, but remaining non-gate operating limitations are bounded and explicitly accepted.
-- `NO-GO`: at least one hard gate is `FAIL`, or any hard gate remains `UNKNOWN` at the M1 exit review.
+- `NO-GO`: at least one hard gate is `FAIL`, or any hard gate remains `UNKNOWN` at the P0-B source-selection review.
 - A numeric score, popularity, or convenient API shape cannot override a hard-gate result.
 
 ## Selected pair
@@ -28,4 +28,4 @@ Use one row per completed Source Capability Profile. Preserve links to measureme
 - Accepted conditions:
 - Decision Packet:
 - Fixture or retrieval identities:
-- Remaining uncertainty carried into M2:
+- Remaining uncertainty carried into P0-B implementation and integration:

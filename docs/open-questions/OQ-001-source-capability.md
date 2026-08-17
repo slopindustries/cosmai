@@ -1,9 +1,9 @@
 # OQ-001 — Source Capability
 
 - Status: `OPEN`
-- Priority: P0 — first exploration
+- Priority: P0-B — first domain exploration after the P0-A Completion Gate
 - Owner: Project team
-- Blocks: source contract, representative fixtures, P0 ingestion
+- Blocks: source contract, representative fixtures, P0-B ingestion
 - Related experiments: not started
 - Resolution Decision Packet: not created
 
@@ -17,9 +17,11 @@ No provider has been tested for access, rights, authentication, pagination, rate
 
 ## Scope
 
+Source capability work is prohibited in P0-A. In P0-B, source probe code measures candidates. It is not the concrete integrated collector or dataset importer and does not satisfy their implementation obligation in [DP-005](../decisions/DP-005-two-part-pre-p1-execution.md).
+
 ### Included
 
-- A bounded M1 candidate set containing REST API and existing dataset options.
+- A bounded P0-B candidate set containing REST API and existing dataset options.
 - Rights, safe handling, retrieval, identity, time, replay, data profile, and P0 usefulness.
 
 ### Excluded
@@ -28,11 +30,11 @@ No provider has been tested for access, rights, authentication, pagination, rate
 
 ## Hypotheses and falsification
 
-These hypotheses apply only to the candidate set recorded in the M1 source-selection experiment. They do not claim that every possible external source has been searched.
+These hypotheses apply only to the candidate set recorded in the P0-B source-selection experiment. They do not claim that every possible external source has been searched.
 
 | Hypothesis | Falsification condition |
 |---|---|
-| H1: At least one evaluated REST source can support repeat collection evidence. | Every evaluated REST candidate fails a hard gate, or none provides a usable observation identity and repeat/retrieval procedure within the M1 timebox. |
+| H1: At least one evaluated REST source can support repeat collection evidence. | Every evaluated REST candidate fails a hard gate, or none provides a usable observation identity and repeat/retrieval procedure within the P0-B source-selection timebox. |
 | H2: At least one evaluated dataset can test import and normalization behavior. | Every evaluated dataset fails a hard gate, or none contains a lawfully usable, replayable sample with enough structural variation to exercise missing, invalid, duplicate, or changed input. |
 | H3: A small capability profile is sufficient for the first REST source. | A consistent source recommendation cannot be made without undocumented source-specific knowledge or a material behavior that the profile cannot represent. |
 
@@ -73,4 +75,4 @@ Each acquisition mode has one explicit `GO`, `CONDITIONAL GO`, or `NO-GO` decisi
 
 ## Resolution
 
-Not completed while status is `OPEN` or `EXPLORING`. Resolution requires a Decision Packet linked to the selected profiles, matrix, fixtures or hashes, and remaining M2 conditions.
+Not completed while status is `OPEN` or `EXPLORING`. Resolution requires a Decision Packet linked to the selected profiles, matrix, fixtures or hashes, and remaining P0-B conditions.

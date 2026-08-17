@@ -1,7 +1,7 @@
 # OQ-005 — Dashboard and Operations Contract
 
 - Status: `OPEN`
-- Priority: P0 — required evidence for the P1 contract
+- Priority: P0-A platform evidence and P0-B domain evidence
 - Owner: Project team
 - Blocks: dashboard acceptance contract
 - Related experiments: not started
@@ -44,7 +44,17 @@ Debug details require redaction and an explicit local access boundary even if no
 
 ## Minimum experiment
 
-Use the P0 dashboard to operate one successful flow and diagnose retryable, permanent, partial-import, normalization, and snapshot-integrity failures.
+### P0-A
+
+- Implement the source-neutral dashboard foundation.
+- Use handler-neutral synthetic work to inspect platform health, generic job state, correlated logs and metrics, retryable and permanent execution failure, lease expiry, and safe retry.
+- Do not create source, import, Raw, snapshot, normalization-run, or result navigation objects.
+
+### P0-B
+
+- Add the domain navigation objects and actions justified by the selected source and accepted experimental contracts.
+- Operate successful collection/import/normalization work and diagnose retryable, permanent, partial-import, normalization, and snapshot-integrity failures.
+- Record any platform diagnostic gap that requires the P0-A gate to be reopened.
 
 ## Evidence
 

@@ -1,7 +1,7 @@
 # OQ-007 — Credential Resolution Scope
 
 - Status: `OPEN`
-- Priority: P0 — required before a worker resolves a real credential
+- Priority: P0-A secret-location and redaction guard; P0-B source credential scope
 - Owner: Project team
 - Blocks: credential handling contract, worker boundary contract, `SEC-001` and `SEC-002` evidence scope
 - Related experiments: not started
@@ -45,7 +45,18 @@ No worker implementation exists, and the claim model in [OQ-006](OQ-006-job-conc
 
 ## Minimum experiment
 
-Register two sources with distinct synthetic credentials. Run one worker, claim a job for source A, and attempt to resolve source B's credential from the same execution context. Repeat under concurrent claims by two workers. Record what is resolvable at each point.
+### P0-A
+
+- Verify that the configured secret-store location is outside the repository working tree.
+- Verify loopback, redaction, protected-debug, and configuration-failure behavior with non-domain synthetic values.
+- Do not register sources, create `credential_ref` authorization semantics, or run synthetic collection handlers.
+
+### P0-B
+
+- Implement the credential-resolution boundary after the source and job-domain contracts exist.
+- Register two sources with distinct synthetic credentials, claim a job for source A, and attempt to resolve source B's credential from the same execution context.
+- Repeat under concurrent claims by two workers, then verify that the concrete selected-source collector preserves the accepted resolution and redaction boundary.
+- Real credential values must not appear in recorded evidence.
 
 ## Evidence requirements
 

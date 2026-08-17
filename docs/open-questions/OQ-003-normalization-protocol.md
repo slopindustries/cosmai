@@ -1,7 +1,7 @@
 # OQ-003 — Normalization Protocol and Schema 0.x
 
 - Status: `OPEN`
-- Priority: P0 after representative source samples
+- Priority: P0-B — protocol, test doubles, and concrete rules all remain in the domain stage
 - Owner: Project team
 - Blocks: normalizer implementation and normalization acceptance tests
 - Related experiments: not started
@@ -44,9 +44,16 @@ Representative records, source-specific ambiguity, the bounded product decision,
 
 - Manually inspect and annotate 50–100 representative records across both sources.
 - Compare at least two small schema candidates.
+- Draft the experimental Schema 0.x and provider input/output/error contract.
+- Implement the provider protocol, input/output validation, versioned result persistence, and lineage in P0-B.
+- Use a contract-conforming normalizer test double to exercise success, invalid output, retryable failure, permanent failure, and version coexistence.
+- Prepare deterministic input and expected-output fixtures.
+- Record ambiguous, unrepresentable, missing, and review-required cases.
 - Implement one deterministic `rule-baseline@0.1` against a sealed snapshot.
 - Repeat the same run and compare outputs byte-for-byte after canonical serialization.
-- Record ambiguous, unrepresentable, missing, and review-required cases.
+- Persist results for both selected sources and verify Raw-to-output lineage.
+
+All of these activities occur in P0-B. P0-A must not create a normalizer protocol, schema, fixture, test double, result store, or rule under another name.
 
 ## Evidence
 

@@ -1,8 +1,8 @@
 # P0 Security Baseline
 
 - 문서 지위: `ACCEPTED_FOR_POC` safety constraint
-- 적용 범위: source probe와 disposable integrated P0
-- 최종 수정일: 2026-08-16
+- 적용 범위: P0-A platform core와 P0-B source probe 및 domain integration
+- 최종 수정일: 2026-08-17
 
 ## 목적과 경계
 
@@ -17,6 +17,8 @@ P0가 폐기형 prototype이라는 사실은 실제 credential, 외부 네트워
 
 ## Outbound source policy
 
+This section applies only to P0-B. P0-A must not register a source, create an outbound source policy, or issue a source request.
+
 - Dashboard와 job payload는 임의 URL이 아니라 등록된 `source_id`를 선택한다.
 - Source profile에는 허용 HTTPS scheme, hostname, port와 endpoint path 범위를 기록한다.
 - HTTP redirect가 발생하면 destination을 같은 정책으로 다시 검증한다.
@@ -30,23 +32,25 @@ P0에서는 범용 URL fetcher를 만들지 않는다. 선택된 source의 bound
 
 Agent 실행 샌드박스는 application의 outbound source policy와 **독립적인 두 번째 강제 지점**이다. Application 쪽 검증에 결함이 있어도 샌드박스가 egress를 막는다.
 
-M0 현재 상태는 의도적으로 넓게 열려 있다.
+P0-A 현재 상태는 의도적으로 넓게 열려 있다. P0-A는 source를 탐색하거나 outbound source request를 실행하지 않는다.
 
-- `[결정]` M0 한정으로 `sandbox.network.allowedDomains: ["*"]`와 `sandbox.autoAllowBashIfSandboxed: true`를 적용한다. 근거: 레포에 실행 코드와 credential이 없고, 의존성 설치와 도구 실행 편의가 우선한다.
+- `[결정]` P0-A 한정으로 `sandbox.network.allowedDomains: ["*"]`와 `sandbox.autoAllowBashIfSandboxed: true`를 유지할 수 있다. 근거: P0-A는 source와 real credential을 다루지 않고 개발 의존성 설치와 도구 실행 편의가 우선한다.
 - `[확인 사실]` 이 조합은 프롬프트 없는 임의 외부 요청을 허용한다. 문서만 있는 레포에서만 성립하는 트레이드오프다.
 
-**P0 프로토타이핑 진입 시 반드시 조정한다.** 첫 source probe가 실제 outbound 요청을 만들기 전에 다음을 수행한다.
+**P0-B 진입 시 반드시 조정한다.** 첫 source probe가 실제 outbound 요청을 만들기 전에 다음을 수행한다.
 
 - `allowedDomains`를 등록된 source profile의 host와 필요한 package registry로 좁힌다.
 - 정책상 접근 금지 대상은 `deniedDomains`에 명시한다. `deniedDomains`는 모든 설정 소스에서 병합되며 `allowedDomains`보다 우선한다.
-- `autoAllowBashIfSandboxed`를 유지할지 재검토한다. 실행 코드와 credential이 생긴 뒤에는 M0의 근거가 더 이상 성립하지 않는다.
+- `autoAllowBashIfSandboxed`를 유지할지 재검토한다. Source와 credential을 다루는 P0-B에서는 P0-A의 근거가 더 이상 성립하지 않는다.
 - 조정 결과를 첫 source probe experiment record의 Environment에 남긴다.
 
 ## Credential handling
 
+P0-A implements only the repository-external secret-store location guard, redaction, protected-debug behavior, and explicit configuration failure. Source credentials, `credential_ref` authorization, and credential resolution belong to P0-B.
+
 - Code, committed config, database, job payload, Raw header, fixture, log, screenshot에 secret 원문을 저장하지 않는다.
-- Source와 job에는 opaque `credential_ref`만 저장한다.
-- Worker가 사용 시점에 승인된 local secret source에서 reference를 해석하고, 값을 요청 수명 동안만 보유한다.
+- P0-B Source와 domain job에는 opaque `credential_ref`만 저장한다.
+- P0-B Worker가 사용 시점에 승인된 local secret source에서 reference를 해석하고, 값을 요청 수명 동안만 보유한다.
 - Credential 값을 프로세스 환경변수로 export하지 않는다. 환경으로 펼치면 모든 자식 프로세스가 모든 credential을 상속하며, 이는 log 통제와 다른 유출 채널이다. 실행 경계에는 store 위치만 전달한다.
 - Worker가 어떤 reference를 해석할 수 있어야 하는지는 [OQ-007](../open-questions/OQ-007-credential-scope.md)에서 결정한다. 그때까지 범위 제한을 확정된 것으로 다루지 않는다.
 - 공개 가능한 key 이름과 형식은 `config/env.example`에 기록한다.
@@ -72,12 +76,12 @@ M0 현재 상태는 의도적으로 넓게 열려 있다.
 
 ## Minimum acceptance evidence
 
-- `SEC-001`: secret과 protected header가 log, error, Raw metadata와 screenshot에 나타나지 않는다.
-- `SEC-002`: 등록되지 않은 source 또는 허용되지 않은 host 요청이 실행 전에 거부된다.
-- `SEC-003`: redirect와 DNS 결과가 source policy를 벗어나면 거부된다.
-- `SEC-004`: oversized/slow response가 bounded failure로 종료되고 worker를 무기한 점유하지 않는다.
-- `SEC-005`: P0 operator surface가 기본 설정에서 loopback 밖에 노출되지 않는다.
-- `SEC-006`: Agent 샌드박스의 `allowedDomains`가 M0의 `["*"]`에서 등록된 source host와 필요한 registry로 좁혀져 있다.
+- `SEC-001` — P0-A/P0-B: secret과 protected detail이 log, error, metadata와 screenshot에 나타나지 않는다. Raw metadata와 protected source header 검증은 P0-B에서 추가한다.
+- `SEC-002` — P0-B: 등록되지 않은 source 또는 허용되지 않은 host 요청이 실행 전에 거부된다.
+- `SEC-003` — P0-B: redirect와 DNS 결과가 source policy를 벗어나면 거부된다.
+- `SEC-004` — P0-B: oversized/slow response가 bounded failure로 종료되고 worker를 무기한 점유하지 않는다.
+- `SEC-005` — P0-A/P0-B: P0 operator surface가 기본 설정에서 loopback 밖에 노출되지 않는다.
+- `SEC-006` — P0-B entry: Agent 샌드박스의 `allowedDomains`가 P0-A의 `["*"]`에서 등록된 source host와 필요한 registry로 좁혀져 있다.
 
 ## Non-goals
 

@@ -27,7 +27,7 @@ Should the first integrated prototype become the continuously hardened product f
 
 `[결정]` Select Candidate 3.
 
-P0 will be an integrated but explicitly disposable Architecture Discovery Prototype. Architecture Synthesis will promote evidence, fixtures, tests, and accepted versioned contracts—not P0 implementation modules. P1 will be reconstructed from `PoC Contract 0.1` and the promoted acceptance evidence.
+P0 will be an integrated but explicitly disposable Architecture Discovery Prototype. Architecture Synthesis inside P0-B will promote evidence, fixtures, tests, and accepted versioned contracts—not P0 implementation modules. P1 will be reconstructed from `PoC Contract 0.1` and the promoted acceptance evidence.
 
 ## Rejected alternatives
 
@@ -49,5 +49,5 @@ P0 will be an integrated but explicitly disposable Architecture Discovery Protot
 ## Required changes
 
 - Keep P0 under `experiments/integrated-p0/`.
-- Do not create P1 `apps/` until Architecture Synthesis accepts `PoC Contract 0.1`.
+- Do not create P1 `apps/` until the P0-B P1 Entry Gate accepts Architecture Synthesis, artifact disposition, `PoC Contract 0.1`, and the reconstruction plan.
 - Archive P0 in history after synthesis.

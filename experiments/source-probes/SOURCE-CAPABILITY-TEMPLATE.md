@@ -32,9 +32,9 @@ Do not infer permission from technical accessibility. `UNKNOWN` cannot pass the 
 | G2 — Data can be handled without exposing prohibited secrets, personal data, or restricted content. | `PASS | FAIL | UNKNOWN` | |
 | G3 — A representative sample can be retrieved or reconstructed with recorded identity, time, and hashes. | `PASS | FAIL | UNKNOWN` | |
 | G4 — The sample exercises at least one named P0 architecture question. | `PASS | FAIL | UNKNOWN` | |
-| G5 — Required access, volume, rate, and cost fit the M1/M2 timebox. | `PASS | FAIL | UNKNOWN` | |
+| G5 — Required access, volume, rate, and cost fit the P0-B timebox. | `PASS | FAIL | UNKNOWN` | |
 
-Any `FAIL` produces `NO-GO`. `UNKNOWN` means the candidate remains `PENDING`; if it is unresolved at the M1 exit review, the candidate is `NO-GO`. `CONDITIONAL GO` still requires every hard gate to pass and may carry only bounded, non-gate operating limitations accepted by a Decision Packet.
+Any `FAIL` produces `NO-GO`. `UNKNOWN` means the candidate remains `PENDING`; if it is unresolved at the P0-B source-selection review, the candidate is `NO-GO`. `CONDITIONAL GO` still requires every hard gate to pass and may carry only bounded, non-gate operating limitations accepted by a Decision Packet.
 
 ## REST API capability
 

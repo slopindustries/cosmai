@@ -4,20 +4,20 @@ CosmaSignal is an evidence-bearing data ingestion and normalization experiment f
 
 ## Current phase
 
-The repository is currently in **M0 — Project Bootstrap**. The next gate is **M1 — Source Capability Exploration**. M1 selects and measures real REST API and dataset inputs before **M2** executes P0, the deliberately disposable integrated architecture prototype.
+The repository is currently in **P0-A — Platform Core Construction and Verification**. The next gate is the **P0-A Completion Gate**.
 
-P0 is not the long-lived product foundation. Its code will be archived after Architecture Synthesis. Only accepted evidence, contracts, fixtures, tests, and decisions may be promoted into the cleanly reconstructed P1 prototype.
+P0 is not the long-lived product foundation. P0-A builds only source- and normalization-independent platform behavior. P0-B then owns source exploration and selection, acquisition and normalization contracts and implementations, real-data verification, Architecture Synthesis, and artifact disposition. Only accepted evidence, contracts, fixtures, tests, and decisions may be promoted into the cleanly reconstructed P1 prototype.
 
 ## Current-stage goal
 
-Prove that CosmaSignal can:
+P0-A must prove only that the source-neutral platform can:
 
-1. ingest one real REST API source and one existing dataset as untrusted Raw data;
-2. preserve source provenance and replayable inputs;
-3. run collection and normalization as independently controlled jobs;
-4. normalize a sealed snapshot with at least one deterministic rule-based provider;
-5. expose job control, state, logs, metrics, and debugging evidence through a minimal dashboard;
-6. produce enough evidence to synthesize `PoC Contract 0.1` before P1 is rebuilt.
+1. run handler-neutral jobs with claims, leases, retries, terminal states, interruption, and recovery;
+2. expose platform health, generic job state, logs, metrics, failure inspection, and safe retry through a minimal dashboard;
+3. preserve correlation, redaction, loopback binding, and repository-external secret-store guards;
+4. produce replayable `JOB`, platform `OPS`, and platform `SEC` evidence without selecting or imitating a source or normalizer.
+
+P0-B later owns real REST and dataset inputs, Raw and snapshot behavior, deterministic normalization, real-data verification, Architecture Synthesis, and `PoC Contract 0.1`.
 
 The final product meaning of “trend” and the final `Normalized Schema 1.0` remain open questions.
 
@@ -35,6 +35,7 @@ scripts/         Local developer helpers
 Credentials are never stored in this repository. See [Secret Setup](docs/conventions/secret-setup.md).
 
 Start with [Project State](docs/project-state.md) and [P0 Charter](docs/p0-charter.md).
+Before P0 work, read the [P0 Execution Plan](docs/p0-execution-plan.md).
 Before using external data, read [Data Handling](docs/conventions/data-handling.md) and the [P0 Security Baseline](docs/conventions/p0-security.md).
 The curated, non-authoritative project history is available in [Project History](docs/history/README.md).
 
@@ -64,14 +65,18 @@ This path stays supplementary. No script, test, or document requires Nix, and uv
 ## Lifecycle
 
 ```text
-Source and schema exploration
-→ Disposable integrated prototype P0
-→ Evidence and Architecture Synthesis
-→ PoC Contract 0.1
+P0-A source-neutral platform implementation and verification
+→ P0-A Completion Gate
+→ P0-B source exploration and selection
+→ Domain contracts and collector/importer/normalizer implementation
+→ Real-data integration and failure evidence
+→ Architecture Synthesis and artifact disposition inside P0-B
+→ PoC Contract 0.1 and P1 reconstruction plan
+→ P1 Entry Gate
 → Clean reconstruction P1
 → Observe, debug, and harden
 ```
 
 ## Status
 
-No application exists yet. That is intentional: M0 establishes the decision boundary, the evidence protocol, and a working toolchain before source probes and P0 implementation begin. `uv run pytest` exercises the repository's own environment tests.
+No application exists yet. P0-A now builds the platform core without selecting or imitating a source, collector, dataset importer, Raw model, snapshot, or normalizer. All of that domain work begins in P0-B after the P0-A gate. `uv run pytest` exercises the repository's own environment tests.

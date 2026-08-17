@@ -1,7 +1,7 @@
 # OQ-004 — Sealed Snapshot Boundary
 
 - Status: `OPEN`
-- Priority: P0 — required evidence for the P1 contract
+- Priority: P0-B — required domain evidence for the P1 contract
 - Owner: Project team
 - Blocks: reproducibility and storage contract
 - Related experiments: not started
@@ -41,11 +41,15 @@ The project has not yet materialized real Raw observations, replayed normalizati
 
 ## Minimum experiment
 
-- Select Raw observations and create a sealed snapshot.
-- Run normalization and record all inputs and hashes.
+- Use P0-B fixture-derived Raw observations to implement and test sealed snapshot creation.
+- Run a normalizer test double and record all inputs and hashes.
 - Add later Raw observations and simulate a changed Raw-store projection.
 - Replay only from the snapshot.
 - Tamper with one snapshot item and confirm detection.
+- Create snapshots from observations produced by the concrete collector and importer.
+- Run the concrete normalizer twice from the same snapshot and verify identical, hash-verified input.
+
+All snapshot contracts, test doubles, persistence, and measurements belong to P0-B. P0-A must not create a snapshot abstraction under another name.
 
 ## Evidence
 

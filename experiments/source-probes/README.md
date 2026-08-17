@@ -1,6 +1,8 @@
 # Source Probes
 
-Use one subdirectory per candidate source. A probe is disposable code used to answer OQ-001, not a production connector.
+Source probes begin only in P0-B after the P0-A Completion Gate. Use one subdirectory per candidate source. A probe is disposable code used to answer OQ-001, not a production connector.
+
+A probe is also not the concrete integrated P0 collector or dataset importer. It may retrieve the bounded sample needed to measure a candidate, but it must not grow into the P0-B acquisition implementation governed by [DP-005](../../docs/decisions/DP-005-two-part-pre-p1-execution.md).
 
 Create each probe record from [`experiments/EXPERIMENT-TEMPLATE.md`](../EXPERIMENT-TEMPLATE.md), then add the source-specific fields below. Keep the completed record beside its code and artifacts.
 

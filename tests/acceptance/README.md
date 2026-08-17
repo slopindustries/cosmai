@@ -2,6 +2,8 @@
 
 Acceptance tests describe behavior before they bind to a particular P0 implementation.
 
+Under [DP-005](../../docs/decisions/DP-005-two-part-pre-p1-execution.md), P0-A may draft and execute only handler-neutral `JOB`, platform `OPS`, and platform `SEC` scenarios. P0-B drafts and executes `ACQ`, `RAW`, `SNP`, `NRM`, and domain `OPS` and `SEC` scenarios after source evidence exists, first against bounded domain test doubles where useful and then against the concrete components and real inputs.
+
 Initial scenario families:
 
 - `ACQ`: REST collection and dataset import.
@@ -12,7 +14,7 @@ Initial scenario families:
 - `OPS`: dashboard control, diagnosis, and safe retry.
 - `SEC`: credential redaction, source restrictions, and protected debug data.
 
-The initial `SEC` scenarios are defined by the [P0 Security Baseline](../../docs/conventions/p0-security.md): secret redaction, registered-source enforcement, redirect/DNS validation, bounded response handling, and loopback-only default exposure.
+The initial `SEC` scenarios are defined by the [P0 Security Baseline](../../docs/conventions/p0-security.md). P0-A covers loopback exposure, redaction, protected debug behavior, and secret-store location guards. P0-B adds registered-source enforcement, credential scope, redirect/DNS validation, and bounded response handling.
 
 Each scenario should name its input fixture, preconditions, action, expected state transitions, durable effects, telemetry, and failure classification.
 

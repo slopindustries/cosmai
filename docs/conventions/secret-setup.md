@@ -1,8 +1,8 @@
 # Secret Setup
 
 - 문서 지위: 활성 프로젝트 convention의 운영 절차
-- 적용 범위: source probe와 disposable integrated P0의 로컬 실행
-- 최종 수정일: 2026-08-16
+- 적용 범위: P0-A secret-store location guard와 P0-B source credential 로컬 실행
+- 최종 수정일: 2026-08-17
 
 [P0 Security Baseline](p0-security.md)이 정의한 credential 제약을 실제로 적용하는 절차다. 제약과 절차가 충돌하면 `p0-security.md`를 따른다.
 
@@ -54,16 +54,20 @@ Credential 값은 읽지도 export하지도 않는다. 따라서 자식 프로�
 - 이 문자열은 log와 dashboard에 노출해도 된다. 값은 어디에도 노출하지 않는다.
 - Worker가 어떤 `credential_ref`를 해석할 수 있어야 하는지는 아직 미결이다. [OQ-007](../open-questions/OQ-007-credential-scope.md)에서 다룬다.
 
-## Worker 구현 규칙
+## Stage boundary
 
-P0 구현 시 다음을 지킨다.
+P0-A는 store 위치가 repository working tree 밖인지, 권한과 redaction 및 configuration failure가 안전한지만 검증한다. Source용 key, `credential_ref` authorization, credential resolution과 collector worker 사용은 P0-B에서만 구현한다.
+
+## P0-B Worker 구현 규칙
+
+P0-B 구현 시 다음을 지킨다.
 
 - 해석은 사용 시점에 함수 하나로 처리한다: `resolve_credential(ref) -> SecretStr`. 이 함수가 `COSMA_SECRET_SOURCE`의 store를 직접 읽는다.
 - `os.environ`에서 credential을 읽지 않는다. Store를 프로세스 환경으로 펼치지 않는다.
 - Resolver 인터페이스나 provider 추상화를 만들지 않는다. 두 번째 secret source가 실제로 필요해지기 전까지는 명명된 불확실성을 줄이지 못하는 추상화다. Store backend 교체는 이 함수 하나를 바꾸는 일로 남는다.
 - 값은 `repr`이 redact되는 타입으로 감싼다. 남은 주된 누출 경로는 traceback과 문자열 포매팅이다.
 - 미해석 시 configuration failure error class로 종료하고 dashboard에서 구분 가능하게 만든다.
-- Store 경로가 repository working tree 아래면 기동 시점에 즉시 실패시킨다. 현재 이 검사는 `scripts/with-secret-source.sh`에만 있으므로 런처를 거치지 않는 실행 경로에는 적용되지 않는다. P0에서 애플리케이션 기동 경로와 test session 시작 지점에 같은 가드를 추가해야 `SEC-001` 증거로 쓸 수 있다.
+- Store 경로가 repository working tree 아래면 기동 시점에 즉시 실패시킨다. 현재 이 검사는 `scripts/with-secret-source.sh`에만 있으므로 런처를 거치지 않는 실행 경로에는 적용되지 않는다. P0-A에서 애플리케이션 기동 경로와 test session 시작 지점에 같은 가드를 추가해야 platform `SEC-001` 증거로 쓸 수 있다.
 - Acceptance test는 실제 credential을 요구하지 않는다. 실제 credential이 필요한 probe는 표시하고 기본 실행에서 제외한다.
 
 ## 금지
