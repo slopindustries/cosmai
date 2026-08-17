@@ -43,6 +43,10 @@ FAIL_UNTIL_ATTEMPT_FIELD: Final = "fail_until_attempt"
 #: Payload key: how long ``stall`` sleeps, in seconds.
 STALL_SECONDS_FIELD: Final = "stall_seconds"
 
+#: Payload key: the one attempt number ``stall`` sleeps on. Absent means every
+#: attempt sleeps, which is what a scenario wants when only one ever runs.
+STALL_ON_ATTEMPT_FIELD: Final = "stall_on_attempt"
+
 #: Payload key: the status a ``halt`` handler exits with.
 EXIT_CODE_FIELD: Final = "exit_code"
 
@@ -128,11 +132,26 @@ def stall(context: JobContext) -> None:
     By the time it wakes, another worker has reclaimed the job and this worker's
     completion will be refused by the fence. The effect it applies on the way out
     is deliberate: the suppressed duplicate is part of what JOB-006 observes.
+
+    ``stall_on_attempt`` narrows the sleep to one attempt, which is JOB-006's
+    stated precondition — "the handler stalls for longer than the lease on its
+    first attempt only". Without it the worker that reclaims the job would stall
+    too, and the reclaim would have to be given a longer lease than the worker it
+    is recovering from; the scenario's configuration says both leases are short.
+    With the field absent every attempt sleeps, so a scenario in which only one
+    attempt ever runs is unaffected.
     """
     stated = context.payload_field(STALL_SECONDS_FIELD)
     seconds = float(stated) if isinstance(stated, int | float) else DEFAULT_STALL_SECONDS
-    time.sleep(seconds)
+    if _stalls_now(context):
+        time.sleep(seconds)
     context.apply_effect(effect_key_for(context), _effect_value(context, "stall"))
+
+
+def _stalls_now(context: JobContext) -> bool:
+    """Whether this attempt is one the payload asked to be slept through."""
+    stated = context.payload_field(STALL_ON_ATTEMPT_FIELD)
+    return not isinstance(stated, int) or context.attempt_no == stated
 
 
 def _halts_now(context: JobContext) -> bool:

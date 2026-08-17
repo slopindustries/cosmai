@@ -24,7 +24,9 @@ The word to hold on to is *uncontrolled*. At-least-once delivery means duplicate
 
 ## Action
 
-**Case A — sequential replay.** Create a job with `handler = "succeed"` and a fixed `effect_key`. Run it to `SUCCEEDED`. Apply an operator safe retry so the same job runs again. Read `platform_effect`.
+**Case A — sequential replay.** Create two jobs with `handler = "succeed"` that derive the same fixed `effect_key`. Run them one after the other through a single worker. Read `platform_effect`. Then request an operator safe retry on the succeeded job and observe that it is refused.
+
+> **Revised 2026-08-17.** This case originally asked for a safe retry of a `SUCCEEDED` job, which [CONTRACT-JOB@0.1](../../contracts/experimental/CONTRACT-JOB-0.1.md) does not permit — its transition table defines safe retry from `FAILED` only. The scenario was wrong, not the contract: re-running succeeded work is a different operation from retrying a failure, and the charter asks only for the second. What case A must actually establish is that suppression works on a **sequential, uninterrupted** replay, which is a distinct path from case B's concurrent collision and from `JOB-005` case B's interrupted one. Two sequential jobs sharing a key reach that without inventing a transition. The refusal is now asserted here rather than left untested.
 
 **Case B — concurrent collision.** Create 20 jobs that all derive the *same* `effect_key`, all due immediately. Start four workers. Wait until every job is terminal.
 
@@ -34,7 +36,8 @@ The word to hold on to is *uncontrolled*. At-least-once delivery means duplicate
 
 | Step | Entity | From | To | Required timestamp or reason |
 |---|---|---|---|---|
-| A | `job` | `SUCCEEDED` → `PENDING` → `RUNNING` → `SUCCEEDED` | | Safe retry resets `attempt_count`; prior attempts retained |
+| A | each `job` | `PENDING` → `RUNNING` → `SUCCEEDED` | | Run sequentially; the second finds the key already applied |
+| A | `job` (safe retry) | `SUCCEEDED` | `SUCCEEDED` | Refused, because safe retry starts from `FAILED` only; nothing changes |
 | B | each `job` | `PENDING` → `RUNNING` → `SUCCEEDED` | | All 20 succeed; none fails because of the collision |
 | C | each `job` | `PENDING` → `RUNNING` → `SUCCEEDED` | | |
 
@@ -42,7 +45,7 @@ A collided insert is a suppression, not a failure. A job whose effect was alread
 
 ## Expected durable effects
 
-- Created or changed records: case A — two `job_attempt` rows, **one** `platform_effect` row. Case B — 20 jobs `SUCCEEDED`, 20 attempts, **exactly one** `platform_effect` row. Case C — 20 jobs `SUCCEEDED`, 20 attempts, **exactly 20** `platform_effect` rows.
+- Created or changed records: case A — two jobs, one `job_attempt` row each, **one** `platform_effect` row. Case B — 20 jobs `SUCCEEDED`, 20 attempts, **exactly one** `platform_effect` row. Case C — 20 jobs `SUCCEEDED`, 20 attempts, **exactly 20** `platform_effect` rows.
 - Effects that must not occur: more than one row per `effect_key` under any concurrency (invariant I1); a job failing because another job got there first; in case C, any suppression at all.
 - Idempotency or duplicate expectation: the entire point. Case C is the control that proves suppression is keyed rather than blanket.
 - Lineage expectation: none.
@@ -59,18 +62,18 @@ A collided insert is a suppression, not a failure. A job whose effect was alread
 - Expected error class and code: none. Suppression is not an error.
 - Retryable: n/a.
 - Operator-visible explanation: a job whose effect was suppressed still shows as succeeded, and the suppression is discoverable from its events.
-- Safe retry or final action: case A exercises operator safe retry, which must be genuinely safe — that is what "safe" means in the charter's exit criterion about retry from the dashboard.
+- Safe retry or final action: case A asserts that safe retry is refused on a job that did not fail, and that the refusal changes nothing. The charter's criterion concerns retrying a failure; `JOB-003`'s exhausted job is where a permitted safe retry is exercised.
 
 ## Verification
 
 - Execution command or procedure: `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -m concurrency -k job_008`
-- Assertions: the row counts above, exactly; the suppressed-duplicate counter matches 1 / 19 / 0; every job reaches `SUCCEEDED` in all three cases; case A's first attempt is still readable after the retry; **cases B and C are each repeated at least five times.**
+- Assertions: the row counts above, exactly; the suppressed-duplicate counter matches 1 / 19 / 0; every job reaches `SUCCEEDED` in all three cases; case A's refused safe retry leaves the job row unchanged; **cases B and C are each repeated at least five times.**
 - Output and evidence location: `experiments/integrated-p0/evidence/<date>-<sha7>/`
 - Environment and versions: recorded in that directory's `ENVIRONMENT.md`.
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 12 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -m concurrency -k job_008`
 - Known limitation: the durable effect is one row with a primary-key conflict. Real acquisition and normalization effects in P0-B span several statements and possibly several tables, and the boundary that holds here is not evidence that it holds there. That gap is OQ-006 H1 and must be re-tested in P0-B.

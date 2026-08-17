@@ -75,7 +75,7 @@ Run two cases independently, each from an empty state.
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: the durable effect is a single-row insert. Whether the boundary holds for a multi-step effect is untestable in P0-A and is the substance of OQ-006 H1 in P0-B.
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 12 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k job_005`
+- Known limitation: the process is ended with `os._exit`, a clean kill at a chosen instruction. A real crash can land mid-statement, and PostgreSQL's own crash recovery is not exercised.

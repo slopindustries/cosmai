@@ -68,7 +68,7 @@ This scenario also covers `HANDLER_UNKNOWN`, which is the other non-retryable cl
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: retryability is decided by the synthetic handler declaring its error class. P0-A produces no evidence about classifying a failure whose class is genuinely ambiguous, which is a real P0-B question for source errors.
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 7 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k job_004`
+- Known limitation: retryability is declared by the synthetic handler. P0-A produces no evidence about classifying a genuinely ambiguous failure, which is a real P0-B question for source errors.

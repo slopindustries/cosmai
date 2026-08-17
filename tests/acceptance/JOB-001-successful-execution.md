@@ -66,7 +66,7 @@ This scenario also fixes what "one durable effect" means in P0-A. The effect is 
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: single worker, no contention. Says nothing about behavior under concurrent claims.
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 7 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k job_001`
+- Known limitation: single worker, no contention; says nothing about behavior under concurrent claims.

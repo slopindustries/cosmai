@@ -288,6 +288,61 @@ Both cases end with one effect row, so the effect table cannot say whether the r
 - captured_at: 2026-08-17
 - limitation: this is a store-level read. Whether the operator API and dashboard actually render those three fields is `OPS` work in S5, and a field that exists but is not shown does not satisfy the charter's diagnosis criterion.
 
+### S3 — concurrency, and the midpoint review of OQ-006
+
+```text
+[측정] Four contending workers never created conflicting active ownership.
+```
+
+- procedure: `JOB-007`. Case A one job and four worker processes; case B 200 jobs and four workers; five repetitions each, run twice
+- observed: `select job_id from job_attempt group by job_id having count(*) > 1` returned no rows in all ten repetitions. Attempt count equalled job count exactly (1 and 200). No job remained non-terminal and no row remained claimable.
+- per-worker claim distribution, case B, ten repetitions: `57/52/52/39`, `50/49/51/50`, `50/51/49/50`, `52/52/42/54`, `50/51/49/50`, `49/51/49/51`, `51/51/50/48`, `49/51/50/50`, `51/49/50/50`, `55/56/33/56`. All four workers claimed in every repetition. Case A's single job was won by three different workers across five repetitions.
+- environment: PostgreSQL 18.4, four `python -m platform_core.worker` processes on one database
+- captured_at: 2026-08-17
+- limitation: four workers on one host at P0 volume. This is evidence about correctness under contention, not about throughput, fairness, or production concurrency. `claim_conflicts` read 0 in almost every run — `SKIP LOCKED` skips to another row rather than returning empty, so that counter is not a usable contention measure and the distribution above is.
+
+```text
+[측정] A live worker that lost its lease is refused at completion time, and it did try.
+```
+
+- procedure: `JOB-006`. Worker A claims and stalls past a 1 s lease; worker B reclaims and finishes; A wakes and attempts its own completion. Five repetitions.
+- observed: A's own report carried `rejected_completions=1` and `suppressed_duplicate_effects=1` — the second proves A's handler ran to its end and reached `apply_effect`, so A was awake and trying rather than dead. A recorded `transitions[RUNNING]=1` and `transitions[SUCCEEDED]=0`. One `job.completion_rejected` line on A's stderr carried `worker_id=worker-a`, the job's `correlation_id`, and `intended_outcome=SUCCEEDED`. B recorded `abandoned_attempts=1` with lease recovery latency 129.8–167.5 ms.
+- the whole job row, both attempt rows, and the entire effect table were compared between the instant B finished and the instant A had exhausted its attempts: identical. Attempt 1 kept its `ABANDONED` outcome and B's `finished_at`.
+- captured_at: 2026-08-17
+- limitation: the fence tests lease ownership rather than expiry, so this is refusal after a reclaim. A worker whose lease expired but whom nobody reclaimed still owns its job and its completion is accepted — deliberate, and now stated in the contract.
+
+```text
+[측정] Duplicate suppression is keyed, not blanket.
+```
+
+- procedure: `JOB-008`. Case B 20 jobs sharing one `effect_key`, case C 20 jobs with distinct keys, four workers each, five repetitions each
+- observed: case B produced exactly one `platform_effect` row and 19 suppressions, every repetition, with all 20 jobs `SUCCEEDED`. Case C produced exactly 20 rows and **0 suppressions**, every repetition. Each suppression emitted its own `job.effect_suppressed` event carrying the `effect_key` and the correlation identifier of the job that lost.
+- captured_at: 2026-08-17
+- limitation: the durable effect is one row with a primary-key conflict. Nothing here concerns a multi-statement or multi-table effect, which is H1's P0-B half.
+
+```text
+[측정] No flakiness across 13 consecutive runs of the concurrency set.
+```
+
+- procedure: 5 × `-n 4`, 5 × serial, 3 × `-n 8` (deliberate over-subscription: eight pytest workers each starting four worker processes against one database), plus two full-suite runs each way, then three further repetitions during review
+- observed: 0 failures, 0 reruns. No assertion was loosened to obtain a pass. Full suite 338 passed serially in 71 s and 37 s under `-n 4`.
+- captured_at: 2026-08-17
+- limitation: one host, one PostgreSQL version, one hardware profile. A slower or more loaded machine may expose ordering this did not.
+
+## Midpoint review — OQ-006 verdict at S3
+
+The plan placed the review here because this is where the two hypotheses that can actually fail are decided. Both are supported at P0-A scope; neither is proved beyond it.
+
+`[추론]` **H2 — `FOR UPDATE SKIP LOCKED`, attempts, leases, and `available_at` are sufficient for P0 claims and recovery: supported.** Its falsification condition has three limbs and none fired. No work was permanently stranded: 200 jobs × 5 repetitions × 4 contending workers left zero non-terminal jobs and zero open attempts every time. No conflicting active ownership appeared in any of twenty concurrent repetitions, and `JOB-006` established the harder half — that a *live* worker which lost its lease is refused at completion time rather than merely out-scheduled. Every expired lease was reclaimed automatically within 130–168 ms, consuming an attempt as the contract requires.
+
+`[추론]` **H1 — at-least-once delivery plus idempotent effects can contain duplicate execution: supported, and the containment is keyed.** Case C's zero is what makes case B's nineteen mean something: without it, the same nineteen would be equally consistent with unconditional suppression. Each suppression is discoverable rather than merely counted, which is what the charter's word *uncontrolled* rules out — the platform detects and reconciles a repeat instead of hoping to avoid one.
+
+`[추론]` **The evidence does not extend past a single-row effect.** Real acquisition and normalization effects in P0-B will span several statements and probably several tables, and a primary-key conflict is the easiest possible case of the problem H1 names. This is the largest single gap P0-A leaves, and the P0-A gate must not present it as settled.
+
+**H3 remains untestable in P0-A**, as DP-005 says: whether collector and normalizer jobs need separate state and retry policy cannot be asked before the domain exists.
+
+**Review outcome: continue to S4 and S5.** No falsification condition fired, so the platform premise the remaining slices build on is intact.
+
 ## Interpretation
 
 ```text

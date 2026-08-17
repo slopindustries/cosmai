@@ -106,6 +106,8 @@ Unlike the three tables above, this one is not created by a migration. The appli
 | `RUNNING` (lease expired) | `FAILED` | Reclaim finds the budget already spent | Previous attempt closed `ABANDONED`, `terminal_reason = LEASE_ABANDONED`, no new attempt opened |
 | `FAILED` | `PENDING` | Operator safe retry | `attempt_count` reset to 0, `available_at = now()`, prior attempts retained |
 
+**Safe retry starts from `FAILED` only.** A request against any other state is refused and changes nothing. Re-running work that already succeeded is a different operation from retrying work that failed, and the platform cannot tell a deliberate re-execution from a misclick on the wrong row. The charter's criterion is that an operator can diagnose and retry *a failure* without database access; capability beyond that reduces no named uncertainty and adds a way to lose work. `JOB-008` case A records the refusal.
+
 **`attempt_no` counts attempts ever made; `attempt_count` counts budget spent.** They are equal until the first safe retry and must not be conflated. A retry resets the budget to 0 while retaining prior attempts, so deriving `attempt_no` from `attempt_count` would reissue `attempt_no = 1` and collide with the retained row. `attempt_no` is therefore one greater than the highest ever recorded for that job, and only `attempt_count` returns to zero.
 
 **A lease-expiry reclaim consumes an attempt.** Without this, a handler that reliably kills its worker would be retried forever. The cost is that a worker crash unrelated to the job also spends budget; this is recorded as a known limitation rather than solved in P0-A.
@@ -115,6 +117,8 @@ Claiming is a single statement using `FOR UPDATE SKIP LOCKED` over rows that are
 **A completion is fenced.** A worker's attempt to record any outcome — success, failure, or reschedule — is accepted only if that worker still owns the current lease **and** its own attempt row is still open. Otherwise the write is refused, changes nothing, and is recorded as a rejected completion.
 
 This rule is what makes I2 an invariant rather than a hope. A lease that is only a timer, with no check at completion time, does not provide exclusivity: a worker that stalls past its lease, is reclaimed, and then wakes up would overwrite the reclaiming worker's result, and the two workers would have held the job at once with nothing to show it. The stale worker's late write is the observable symptom, so refusing it and counting the refusal is what turns the invariant into evidence. `JOB-006` is its acceptance scenario.
+
+**The fence tests ownership, not expiry.** A worker whose lease has run out but whose job nobody has reclaimed still owns it, and its completion is accepted. This is deliberate: the invariant to protect is that two workers are never active at once, and reclaim changes `lease_owner` atomically, so ownership already carries that. Refusing on expiry alone would instead discard finished work whose reclaim never came and make the job wait to be done twice. The consequence for evidence is that `JOB-006` demonstrates fencing **after a reclaim**, which is the case where two workers genuinely contend; mere expiry is not that case.
 
 ### Missing, null, unknown, and not-applicable values
 

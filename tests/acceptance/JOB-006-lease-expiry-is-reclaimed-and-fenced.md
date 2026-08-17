@@ -71,7 +71,7 @@ If a stale completion is accepted, invariant I2 has been violated retroactively 
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: both workers run on one host against one database, so this says nothing about clock skew larger than the lease duration between separate machines. Recorded in the contract's known limitations.
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 5 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -m concurrency -k job_006`
+- Known limitation: two workers on one host against one database; nothing here concerns clock skew larger than the lease between separate machines. The fence tests lease ownership rather than expiry, so this demonstrates refusal after a reclaim, not after mere expiry.

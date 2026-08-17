@@ -67,7 +67,7 @@ Protect the P0-A charter exit criterion *"Retry exhaustion produces an observabl
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: `max_attempts = 2` keeps the scenario fast. It does not probe behavior at large attempt budgets.
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 6 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k job_003`
+- Known limitation: the exhausted-versus-backing-off distinction is read through the store. Whether an operator surface renders those fields is `OPS` work; a field that exists but is not shown does not satisfy the charter's diagnosis criterion.

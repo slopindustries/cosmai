@@ -67,7 +67,7 @@ The last point matters for the operator contract: a job that eventually succeede
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 7 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k job_002`
 - Known limitation: backoff is compressed for test speed, so the observed timing is not evidence about the production backoff curve.

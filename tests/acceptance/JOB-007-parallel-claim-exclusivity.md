@@ -69,7 +69,7 @@ This is the scenario that tests `FOR UPDATE SKIP LOCKED` under real contention r
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
-- Known limitation: four workers on one host at P0 scale. This is evidence about correctness under contention, not about throughput, fairness, or behavior at production concurrency. A starved job is possible and is not detected.
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 10 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -m concurrency -k job_007`
+- Known limitation: four workers on one host at P0 scale: evidence about correctness under contention, not throughput or fairness. A starved job is possible and is not detected.
