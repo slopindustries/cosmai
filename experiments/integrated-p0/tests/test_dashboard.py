@@ -9,11 +9,16 @@ and neither does a field that is rendered somewhere nobody checked.
 **What is executed here, and what is not.** The screen is rendered by the same
 components the browser mounts, under Node, from HTTP responses this module's probe
 obtained from a real API process — see `dashboard/src/detail-text.tsx`. What comes
-back is the visible text of that screen, and every assertion below searches it. That
-is the reading half of step 3, executed on every run. It is **not** the screenshot of
-step 4: a screenshot needs a browser driver, DP-006 D6 puts the dependency floor
-below one, and a value hidden by CSS or parked in an attribute would pass this
-module and fail a human's eyes. The reproduction procedure for the screenshot is in
+back is that screen in two forms: the visible text, and the markup a browser would be
+handed. Both are searched. That is the reading half of step 3, executed on every run,
+and the markup is the stronger half: a value carried in an attribute, or inside an
+element CSS would hide, is absent from the text and has still been delivered, which
+is the thing SEC-004 forbids. It is still **not** the screenshot of step 4: that needs
+a browser driver and DP-006 D6 puts the dependency floor below one. What the missing
+screenshot would add is now narrow and different in kind — a marker painted as an
+image is in the pixels and in no string here — and a screenshot is the weaker of the
+two checks, because it shows only what was painted while the markup carries
+everything that was delivered. The reproduction procedure for a human capture is in
 `dashboard/README.md`, and SEC-004's `Result` section states which half was executed
 how rather than letting the two read as one.
 
@@ -42,6 +47,7 @@ from __future__ import annotations
 
 import fcntl
 import json
+import re
 import subprocess
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -78,6 +84,30 @@ DASHBOARD = EXPERIMENT_ROOT / "dashboard"
 
 #: What `npm run text:build` produces. Running it is this module's own setup.
 TEXT_BUNDLE = DASHBOARD / "dist-text" / "assets" / "detail-text.js"
+
+#: The renderer entry, read for the two section delimiters it exports.
+RENDERER_ENTRY = DASHBOARD / "src" / "detail-text.tsx"
+
+
+def _exported_delimiter(name: str) -> str:
+    """The section delimiter `detail-text.tsx` exports under ``name``.
+
+    Read out of the renderer rather than restated here. A copy in this file would go
+    on splitting on a delimiter the renderer had stopped printing, and the mismatch
+    would surface as a missing section rather than as the stale constant it was.
+    """
+    declared = re.search(
+        rf'^export const {name} = "(?P<value>[^"]+)";$',
+        RENDERER_ENTRY.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert declared is not None, f"{RENDERER_ENTRY} exports no {name}"
+    return declared.group("value")
+
+
+VISIBLE_SECTION = _exported_delimiter("VISIBLE_SECTION")
+
+MARKUP_SECTION = _exported_delimiter("MARKUP_SECTION")
 
 #: Held while the bundle is built, so two `pytest-xdist` workers that both want it
 #: cannot write the same output directory at once. The same mechanism `conftest.py`
@@ -131,6 +161,19 @@ WITHHELD = "present, withheld"
 
 #: The explicit action SEC-004 requires the screen to offer rather than imply.
 EXPLICIT_ASK = "?debug=protected"
+
+#: A job state no API could return, uppercase on purpose.
+#:
+#: `Badge` copies the state it is given into `class="badge badge-<state>"`, and
+#: **lowercases** it on the way, so a screen rendered from this state puts one string
+#: in front of a reader and a different one into what the browser is handed. The
+#: lowercase form is reachable only through the markup, which is what makes the markup
+#: assertions below demonstrably not vacuous: a marked value that took the same route
+#: would satisfy every text assertion in this module.
+ATTRIBUTE_CONTROL_STATE = "MARKER-IN-AN-ATTRIBUTE-42"
+
+#: That state in the only form the markup holds it in, and the visible text does not.
+ATTRIBUTE_CONTROL_IN_MARKUP = f"badge-{ATTRIBUTE_CONTROL_STATE.lower()}"
 
 
 def toolchain_absent() -> str | None:
@@ -196,12 +239,43 @@ def build_text_renderer() -> None:
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
+@dataclass(frozen=True)
+class Screen:
+    """One rendered job-detail screen, in both forms the renderer prints.
+
+    ``text`` is what a person reads. ``markup`` is what a browser would be handed, and
+    it is the stronger of the two to search: a value in an attribute, or inside an
+    element CSS would hide, is absent from ``text`` and has still been delivered.
+    """
+
+    text: str
+    markup: str
+
+
+def _sections(printed: str) -> Screen:
+    """Both sections of one renderer run.
+
+    Each delimiter is matched at its first occurrence, in the order the renderer
+    prints them. That is safe for this module's data and not in general: a payload
+    value that contained a delimiter line would split the output early, and the
+    assertion that the markup section begins with a tag is what would notice.
+    """
+    header, _, body = printed.partition("\n")
+    assert header == VISIBLE_SECTION, (
+        f"the renderer printed no {VISIBLE_SECTION!r} header: {printed[:200]!r}"
+    )
+    text, found, markup = body.partition(f"{MARKUP_SECTION}\n")
+    assert found, f"the renderer printed no {MARKUP_SECTION!r} section"
+    assert markup.startswith("<"), f"the markup section is not markup: {markup[:120]!r}"
+    return Screen(text=text, markup=markup)
+
+
 def rendered_screen(
     job: dict[str, Any],
     attempts: dict[str, Any],
     retry: dict[str, Any] | None = None,
-) -> str:
-    """The visible text of the job-detail screen for these API responses.
+) -> Screen:
+    """The job-detail screen for these API responses, as text and as markup.
 
     The three arguments are API responses, unedited. Nothing is fetched inside the
     renderer, so what is searched below is a function of what the API actually said.
@@ -216,7 +290,7 @@ def rendered_screen(
         check=False,
     )
     assert finished.returncode == 0, f"the screen did not render\n{finished.stderr}"
-    return finished.stdout
+    return _sections(finished.stdout)
 
 
 
@@ -248,17 +322,60 @@ def masked_entry(key: str) -> str:
 
 @dataclass(frozen=True)
 class ScreenProbe:
-    """Every screen this module asserts over, rendered once."""
+    """Every screen this module asserts over, rendered once, in both forms.
+
+    The five screens rendered from real API responses are what SEC-004's search is
+    about. ``attribute_control`` is not one of them: it is the same components fed one
+    fabricated field, and it exists only to show what the markup search catches and
+    the text search cannot. It is kept out of `named_screens` for that reason, so no
+    assertion over "every screen" and no captured evidence includes a made-up reply.
+    """
 
     job: dict[str, Any]
     attempt: dict[str, Any]
     refusal: dict[str, Any]
     correlation_id: str
-    default_screen: str
-    protected_screen: str
-    detail_default_screen: str
-    detail_protected_screen: str
-    refused_screen: str
+    default: Screen
+    protected: Screen
+    detail_default: Screen
+    detail_protected: Screen
+    refused: Screen
+    attribute_control: Screen
+
+    # The five accessors below name the screens the way every assertion written
+    # before the markup was available already reads them. Kept as they were: the
+    # wording of those assertions is what SEC-004's Result section points at.
+
+    @property
+    def default_screen(self) -> str:
+        return self.default.text
+
+    @property
+    def protected_screen(self) -> str:
+        return self.protected.text
+
+    @property
+    def detail_default_screen(self) -> str:
+        return self.detail_default.text
+
+    @property
+    def detail_protected_screen(self) -> str:
+        return self.detail_protected.text
+
+    @property
+    def refused_screen(self) -> str:
+        return self.refused.text
+
+    @property
+    def named_screens(self) -> dict[str, Screen]:
+        """Every screen from a real API response, keyed as a failure should say it."""
+        return {
+            "default job-detail screen": self.default,
+            "protected job-detail screen": self.protected,
+            "default screen of the marked-detail job": self.detail_default,
+            "protected screen of the marked-detail job": self.detail_protected,
+            "refused-retry screen": self.refused,
+        }
 
     @property
     def both_screens(self) -> dict[str, str]:
@@ -270,12 +387,12 @@ class ScreenProbe:
 
     @property
     def every_screen(self) -> dict[str, str]:
-        return {
-            **self.both_screens,
-            "default screen of the marked-detail job": self.detail_default_screen,
-            "protected screen of the marked-detail job": self.detail_protected_screen,
-            "refused-retry screen": self.refused_screen,
-        }
+        return {name: screen.text for name, screen in self.named_screens.items()}
+
+    @property
+    def every_markup(self) -> dict[str, str]:
+        """The same five screens as the browser would receive them."""
+        return {name: screen.markup for name, screen in self.named_screens.items()}
 
 
 def _store(handle: Any, config: PlatformConfig) -> JobStore:
@@ -292,7 +409,7 @@ def screen_probe(
     """SEC-004's Action, carried through to the screen, with every result frozen.
 
     Module-scoped for the reason `test_api.py`'s `redaction_probe` is: two worker
-    runs, one API process, and five renders serve every assertion below, and at
+    runs, one API process, and six renders serve every assertion below, and at
     function scope the same setup would be replayed once per assertion.
     """
     absent = toolchain_absent()
@@ -370,16 +487,23 @@ def screen_probe(
         attempt_page: dict[str, Any] = attempts.json()
         assert len(attempt_page["attempts"]) == 1, attempt_page
 
+        # The control screen: the same components and the same renderer, over a real
+        # reply with one field replaced. Fabricated deliberately and only here — no
+        # component puts an API value into an attribute in a form the text also
+        # carries, so there is no real reply that could demonstrate the gap.
+        control_job = {**done_job.json(), "state": ATTRIBUTE_CONTROL_STATE}
+
         yield ScreenProbe(
             job=job.json(),
             attempt=attempt_page["attempts"][0],
             refusal=refusal.json(),
             correlation_id=str(job.json()["correlation_id"]),
-            default_screen=rendered_screen(job.json(), attempt_page),
-            protected_screen=rendered_screen(job.json(), protected_attempts.json()),
-            detail_default_screen=rendered_screen(detail_job.json(), detail_attempts.json()),
-            detail_protected_screen=rendered_screen(detail_job.json(), detail_protected.json()),
-            refused_screen=rendered_screen(done_job.json(), done_attempts.json(), refusal.json()),
+            default=rendered_screen(job.json(), attempt_page),
+            protected=rendered_screen(job.json(), protected_attempts.json()),
+            detail_default=rendered_screen(detail_job.json(), detail_attempts.json()),
+            detail_protected=rendered_screen(detail_job.json(), detail_protected.json()),
+            refused=rendered_screen(done_job.json(), done_attempts.json(), refusal.json()),
+            attribute_control=rendered_screen(control_job, done_attempts.json()),
         )
 
 
@@ -446,6 +570,134 @@ def test_sec_004_the_correlation_identifier_is_on_the_screen_and_is_not_masked(
     """A redacted correlation identifier would make diagnosis impossible."""
     for name, screen in screen_probe.both_screens.items():
         assert screen_probe.correlation_id in screen, f"missing from the {name}"
+
+
+# --------------------------------------------------------------------------- #
+# The same search, against the markup a browser would be handed
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("key", sorted(SCREEN_MARKERS))
+def test_sec_004_no_marker_under_a_redacted_key_reaches_the_markup_of_any_screen(
+    screen_probe: ScreenProbe, key: str
+) -> None:
+    """Both of this key's markers, searched in what the browser would receive.
+
+    Not a duplicate of the text search above and not a replacement for it. The text is
+    the markup with every tag removed, so an attribute value, and an element CSS would
+    hide, are in the one and not the other — and either has already been delivered to
+    the reader's machine, which is the thing SEC-004 forbids. The payload marker and
+    the marker placed inside `error_detail` are both searched, because the two reach a
+    screen by different routes.
+    """
+    for name, markup in screen_probe.every_markup.items():
+        assert SCREEN_MARKERS[key] not in markup, (
+            f"the payload value under {key} leaked into the markup of the {name}"
+        )
+        assert DETAIL_MARKERS[key] not in markup, (
+            f"the error_detail value under {key} leaked into the markup of the {name}"
+        )
+
+
+def test_sec_004_the_ordinary_markers_are_in_the_markup_too(screen_probe: ScreenProbe) -> None:
+    """The detection control, carried onto the stronger channel.
+
+    A markup search that found nothing at all would satisfy the eight absences above
+    for the wrong reason. The two values nothing masks are therefore found in the
+    markup as well: the ordinary payload marker, and the ordinary value inside
+    `error_detail` on the representation that may show it.
+    """
+    assert PAYLOAD_ORDINARY_MARKER in screen_probe.default.markup
+    assert DETAIL_ORDINARY_MARKER in screen_probe.detail_protected.markup
+
+
+def test_sec_004_no_withheld_value_reaches_the_default_screen_under_any_key(
+    screen_probe: ScreenProbe,
+) -> None:
+    """The whole default representation searched for the values it withholds.
+
+    Every other assertion in this module names the field it inspects. This one searches
+    by **value**: whatever the default representation withholds must be absent from that
+    screen's markup regardless of the key carrying it.
+
+    Two plants established why, and the second is the one that matters.
+
+    Shipping the withheld detail from ``attempt_view`` under an innocuous ``debug_hint``
+    key made the value leave the API — verified directly — while all seventy-one
+    assertions here still passed. But it never reached a screen: this dashboard renders
+    named fields and no unknown key, so the leak stopped at the boundary rather than at
+    a test. That is a real property of the design and not something these tests earn
+    credit for.
+
+    Rendering the withheld value into an attribute *did* reach the markup, and this
+    assertion caught it by value where the field-named ones caught it by name. It is the
+    key-independent half: a future component that spreads an attempt object, or a future
+    API key nobody thought to exclude, would be caught here and nowhere else.
+    """
+    withheld = (*DETAIL_MARKERS.values(), DETAIL_ORDINARY_MARKER)
+    for name, screen in screen_probe.named_screens.items():
+        if name.startswith("protected"):
+            continue
+        for marker in withheld:
+            assert marker not in screen.markup, (
+                f"a value the default representation withholds reached the {name} "
+                f"markup: {marker!r}. It need not be under error_detail — this "
+                f"assertion searches by value for that reason"
+            )
+
+
+def test_sec_004_protected_detail_is_not_even_delivered_to_the_default_screen(
+    screen_probe: ScreenProbe,
+) -> None:
+    """Withheld means not delivered, not merely not shown.
+
+    The text of the default screen already lacks the value inside `error_detail`. This
+    is the stronger form of the same claim: it is not in that screen's markup either,
+    so the default representation does not hand it to the browser and then keep it out
+    of sight.
+    """
+    markup = screen_probe.detail_default.markup
+    assert DETAIL_ORDINARY_MARKER not in markup
+    assert PROTECTED_FIELD not in markup
+
+
+def test_sec_004_the_markup_carries_what_the_visible_text_drops(
+    screen_probe: ScreenProbe,
+) -> None:
+    """Why the two searches are not one search, measured on the real screens.
+
+    Every screen's markup carries `class=` attributes and none of that reaches the
+    text, because the tag stripping in `visibleText` removes attributes along with the
+    tags holding them. The state badge is the concrete case: the job's state is
+    lowercased into a class name, and that spelling of it is on no line a reader sees.
+    """
+    for name, screen in screen_probe.named_screens.items():
+        assert 'class="' in screen.markup, f"the {name} has no attribute to compare"
+        assert "class=" not in screen.text, f"the {name} text kept an attribute"
+    attribute_spelling = f"badge-{str(screen_probe.job['state']).lower()}"
+    assert attribute_spelling in screen_probe.default.markup
+    assert attribute_spelling not in screen_probe.default_screen
+
+
+def test_sec_004_a_marker_reachable_only_through_an_attribute_is_caught_by_the_markup(
+    screen_probe: ScreenProbe,
+) -> None:
+    """The control that keeps the markup assertions from being vacuous.
+
+    A marker is put where only an attribute can carry it — `Badge` lowercases the state
+    it is given into a class name — and both searches are then run against the same
+    render. The markup search finds it; the text search does not. That is the coverage
+    the text assertions in this module do not have, and a marked value that reached a
+    screen by this route would have satisfied every one of them.
+    """
+    control = screen_probe.attribute_control
+    assert ATTRIBUTE_CONTROL_STATE in control.text, "the state itself is read on screen"
+    assert ATTRIBUTE_CONTROL_IN_MARKUP in control.markup, (
+        "the markup carries the attribute spelling of it"
+    )
+    assert ATTRIBUTE_CONTROL_IN_MARKUP not in control.text, (
+        "and no text search can see it, which is why the markup is searched at all"
+    )
 
 
 # --------------------------------------------------------------------------- #

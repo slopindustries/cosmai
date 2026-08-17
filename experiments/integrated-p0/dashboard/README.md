@@ -71,4 +71,6 @@ Protected debug detail is never on the default screen. When an attempt has some,
 
 ## `npm run text`
 
-Renders the detail screen to plain text through Vite's SSR build. It exists so that `SEC-004`'s screen assertions can run in `pytest` without adding a browser automation dependency to a project whose entire frontend is four packages. It is the same component tree the browser renders, so a marker absent from the text is absent from the screen — but it is text, not pixels, and the scenario's `Result` section records that distinction rather than glossing it.
+Renders the detail screen through Vite's SSR build and prints **two** sections: the visible text, and the markup a browser would receive. It exists so that `SEC-004`'s screen assertions can run in `pytest` without adding a browser automation dependency to a project whose entire frontend is four packages.
+
+The markup half is the stronger of the two, which is the opposite of what the gate first assumed. A value hidden by CSS or parked in an attribute is absent from a screenshot and present in what was delivered to the reader's machine — recoverable by view-source. So a screenshot would have missed exactly the leak `SEC-004` exists to prevent, while the markup catches it. The one channel neither reaches is a value rendered into an image, and this dashboard renders none.
