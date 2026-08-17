@@ -1,6 +1,6 @@
 # SEC-001 — The platform refuses a secret-store path inside the repository working tree
 
-- Status: `DRAFT`
+- Status: `ACCEPTED_FOR_POC`
 - Family: `SEC`
 - Related contract and version: [CONTRACT-JOB@0.1](../../contracts/experimental/CONTRACT-JOB-0.1.md) — "Provenance and security"
 - Related Open Question or Decision Packet: [OQ-007](../../docs/open-questions/OQ-007-credential-scope.md)

@@ -1,6 +1,6 @@
 # SEC-003 — Invalid platform configuration fails loudly and is not retryable
 
-- Status: `DRAFT`
+- Status: `ACCEPTED_FOR_POC`
 - Family: `SEC`
 - Related contract and version: [CONTRACT-JOB@0.1](../../contracts/experimental/CONTRACT-JOB-0.1.md)
 - Related Open Question or Decision Packet: [OQ-007](../../docs/open-questions/OQ-007-credential-scope.md), [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md)

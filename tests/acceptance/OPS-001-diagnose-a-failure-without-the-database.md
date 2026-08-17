@@ -1,6 +1,6 @@
 # OPS-001 — An operator explains a failure without touching the database
 
-- Status: `DRAFT`
+- Status: `ACCEPTED_FOR_POC`
 - Family: `OPS`
 - Related contract and version: [CONTRACT-JOB@0.1](../../contracts/experimental/CONTRACT-JOB-0.1.md)
 - Related Open Question or Decision Packet: [OQ-005](../../docs/open-questions/OQ-005-operations-contract.md) H1

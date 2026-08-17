@@ -1,6 +1,6 @@
 # SEC-004 — The redaction boundary holds across logs, errors, API responses, and screenshots
 
-- Status: `DRAFT`
+- Status: `ACCEPTED_FOR_POC`
 - Family: `SEC`
 - Related contract and version: [CONTRACT-JOB@0.1](../../contracts/experimental/CONTRACT-JOB-0.1.md) — "Provenance and security"
 - Related Open Question or Decision Packet: [OQ-005](../../docs/open-questions/OQ-005-operations-contract.md), [OQ-007](../../docs/open-questions/OQ-007-credential-scope.md)

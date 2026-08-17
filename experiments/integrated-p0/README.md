@@ -13,7 +13,9 @@ Build only the source- and normalization-independent platform core:
 
 P0-A must not explore or select sources or create acquisition, Raw, snapshot, or normalization contracts, ports, fixtures, test doubles, persistence, UI behavior, or implementations. Synthetic handlers may exercise generic success and failure behavior but must not imitate a collector, importer, Raw payload, snapshot producer, or normalizer.
 
-Create the P0-A gate record from [PLATFORM-CORE-GATE-TEMPLATE.md](PLATFORM-CORE-GATE-TEMPLATE.md). P0-B starts only after that gate records `GO` or an explicitly accepted `CONDITIONAL GO`.
+`[결정]` **The P0-A gate is accepted `GO` as of 2026-08-17, with no conditions.** The record is [PLATFORM-CORE-GATE-2026-08-17.md](PLATFORM-CORE-GATE-2026-08-17.md), written from [PLATFORM-CORE-GATE-TEMPLATE.md](PLATFORM-CORE-GATE-TEMPLATE.md); the experiment behind it is [EXP-001](EXP-001-platform-core.md) and every `PASS` claim was put to an [adversarial review](ADVERSARIAL-REVIEW-2026-08-17.md) first.
+
+Read the gate's "What this gate does not claim" section before building on any of it. P0-A completion is not evidence that a real collector, dataset importer, Raw model, snapshot, or normalizer will work.
 
 ## P0-B
 

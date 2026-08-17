@@ -1,6 +1,6 @@
 # OPS-004 — Health and metrics distinguish a working platform from a stalled one
 
-- Status: `DRAFT`
+- Status: `ACCEPTED_FOR_POC`
 - Family: `OPS`
 - Related contract and version: [CONTRACT-JOB@0.1](../../contracts/experimental/CONTRACT-JOB-0.1.md) — "Expected behavior", observability
 - Related Open Question or Decision Packet: [OQ-005](../../docs/open-questions/OQ-005-operations-contract.md) H2

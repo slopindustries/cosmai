@@ -1,12 +1,12 @@
 # P0-A Platform Core Completion Gate
 
-- Status: `DRAFT` — awaiting the captain's signature
+- Status: **`GO`** — accepted 2026-08-17
 - Governing decision: [DP-005](../../docs/decisions/DP-005-two-part-pre-p1-execution.md)
 - Integrated experiment: [EXP-001](EXP-001-platform-core.md), `COMPLETED`, outcome `SUPPORTED`
 - Reviewed code revision: `f83fe3c9f9a0cf13de1d2d34995a1d45654cf00c` (`f83fe3c`), branch `p0a/platform-core`
 - Evidence directory: [`evidence/2026-08-17-f83fe3c/`](evidence/2026-08-17-f83fe3c/)
 - Review date and timezone: 2026-08-17, Asia/Seoul (UTC+09:00)
-- Reviewers: the project owner, with an [adversarial review](ADVERSARIAL-REVIEW-2026-08-17.md) of every `PASS` claim
+- Reviewers: the project owner (accepting), with an [adversarial review](ADVERSARIAL-REVIEW-2026-08-17.md) of every `PASS` claim as the independent axis
 
 ## Gate question
 
@@ -56,7 +56,7 @@ Each row is a criterion from the [P0 Charter](../../docs/p0-charter.md) "P0-A ex
 | 7 | Operator surfaces bind to loopback by default | `PASS` | `SEC-002`, 25 passed; a non-loopback bind is **refused**, not merely defaulted away from, and `0.0.0.0` is not silently corrected; no PostgreSQL TCP listener; `inet_server_addr() IS NULL` | Evidence about binding, not authorization |
 | 8 | The platform rejects a secret-store path inside the repository working tree | `PASS` | `SEC-001`, 25 passed, both entrypoints; a link resolving inside the tree refused and one resolving outside accepted, proving resolved-path comparison; **an unreadable store outside the tree still starts**, proving the guard never opens the file | Location only. File permissions are checked by the launcher and not re-checked at startup |
 | 9 | The gate lists every acquisition and normalization behavior deferred to P0-B | `PASS` | The deferred-domain inventory below, now reconciled item by item against [DP-005](../../docs/decisions/DP-005-two-part-pre-p1-execution.md) §Excluded, which is the binding authority. `[확인 사실]` The nine-item list is present in EXP-001's first commit, so "maintained from the first commit" holds | The first draft cited EXP-001 as the source while EXP-001 cited the gate — circular, and six DP-005 behaviors were missing as a result. They are added below. Enforcement is mechanical for Python and SQL identifiers only — see items 5 and 8 |
-| 10 | The gate records `GO` or an explicitly accepted `CONDITIONAL GO` | `DRAFT` | This document | Requires the captain's signature |
+| 10 | The gate records `GO` or an explicitly accepted `CONDITIONAL GO` | `PASS` | This document, accepted 2026-08-17 with no conditions | — |
 
 Two further charter requirements are not numbered exit criteria and are recorded for completeness:
 
@@ -135,8 +135,8 @@ Listed separately from the limitation column because each is a place where a rea
 
 ## Decision
 
-- Outcome: `GO` — **proposed**, pending signature.
-- `[결정]` (proposed): The source- and normalization-independent platform core is executable, tested, and bounded. P0-B may begin with source exploration under B1.
+- Outcome: **`GO`**, accepted 2026-08-17. No conditions.
+- `[결정]` The source- and normalization-independent platform core is executable, tested, and bounded. P0-B may begin with source exploration under B1.
 - **Accepted conditions: none.** Criterion 6's condition was discharged rather than carried: the markup a browser receives is now asserted over, including a key-independent search for values the default representation withholds, and both were shown to fire against planted leaks. No dependency was added and [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md) D6's floor stands.
 - The items in "What this gate does not claim" are **not** conditions. Each is a boundary of what was measured rather than a defect in what was built, and each is carried into P0-B rather than fixed here.
 - Blocking failures: none in the platform. **Three in this document's first draft**, all found by the [adversarial review](ADVERSARIAL-REVIEW-2026-08-17.md) and all fixed at the revision now under review: a `mypy` error introduced by the gate commit itself, so the gate's own "clean, strict" claim was false at the revision it named; an evidence directory named for a revision whose tree could not have produced its contents — **the second time in two commits**, which is what showed the naming was bound to nothing; and three of four recorded hashes failing their own verification instruction, because the scenarios rewrote the artifacts on every run.

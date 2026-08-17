@@ -1,6 +1,6 @@
 # JOB-007 — Parallel claims never create conflicting active ownership
 
-- Status: `DRAFT`
+- Status: `ACCEPTED_FOR_POC`
 - Family: `JOB`
 - Related contract and version: [CONTRACT-JOB@0.1](../../contracts/experimental/CONTRACT-JOB-0.1.md) — invariant I2
 - Related Open Question or Decision Packet: [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md) H2

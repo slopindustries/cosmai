@@ -1,10 +1,10 @@
 # Project State
 
 - Project: CosmaSignal
-- Version: 0.3
+- Version: 0.4
 - Updated: 2026-08-17
-- Phase: P0-A — Platform Core Construction and Verification
-- Next gate: P0-A Completion Gate
+- Phase: P0-B — Domain Integration, Evidence Synthesis, and Disposition
+- Next gate: P1 Entry Gate (inside P0-B)
 
 ## Delivery lifecycle
 
@@ -17,6 +17,8 @@ Delivery has two active stages before P1. Work packages inside a stage do not cr
 | P1 — Clean Reconstruction | Rebuild from accepted contracts and promoted evidence rather than harden P0 code. | P0-B P1 Entry Gate is accepted. | A clean, continuously operable prototype baseline. | Defined by the future P1 charter. |
 
 No stage advances automatically because code appears to work. Update this file and the affected artifact statuses when a gate is accepted.
+
+`[결정]` **The P0-A Completion Gate was accepted `GO` on 2026-08-17** with no conditions, at revision `f83fe3c`. Its record, the evidence it links, and an adversarial review of every `PASS` claim are in [`experiments/integrated-p0/`](../experiments/integrated-p0/PLATFORM-CORE-GATE-2026-08-17.md). P0-A produced no acquisition or normalization evidence and the gate says so in its own words; the nine things it explicitly does not claim are the boundary P0-B inherits.
 
 ## 1. Current program goal through P0-B
 

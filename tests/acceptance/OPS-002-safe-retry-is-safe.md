@@ -1,6 +1,6 @@
 # OPS-002 — Retry from the operator surface, and it is genuinely safe
 
-- Status: `DRAFT`
+- Status: `ACCEPTED_FOR_POC`
 - Family: `OPS`
 - Related contract and version: [CONTRACT-JOB@0.1](../../contracts/experimental/CONTRACT-JOB-0.1.md) — invariant I1, and the `FAILED → PENDING` transition
 - Related Open Question or Decision Packet: [OQ-005](../../docs/open-questions/OQ-005-operations-contract.md) H2
