@@ -185,6 +185,39 @@ Slice results are appended as they are produced. The formal evidence run in S6 s
 
 SEC-004 requires a marker under an ordinary key precisely so that "nothing leaked" is distinguishable from "nothing was looked at." The failing case here is the same shape one step earlier: had the scenario asked only that a sensitive value be absent, the unchanged string would have satisfied it — the marker was absent from the output for the trivial reason that the output was the input. Supporting measurements: the failing assertion above, and the passing control asserting an ordinary key's value survives.
 
+### S1 — schema, migrations, and test isolation
+
+```text
+[측정] Two of the contract's invariants are enforced by the database, provable without application code.
+```
+
+- procedure: `psql -f` against a fresh clone of the migrated template, no Python involved
+- observed:
+  - a second attempt with `finished_at IS NULL` on one job → `duplicate key value violates unique constraint "job_attempt_one_open_per_job"`; open attempts remain 1 (**I2, claim half**)
+  - after closing attempt 1, a second attempt inserts normally and total attempts becomes 2 — so the index constrains concurrency rather than reclaim
+  - setting `finished_at` without an `outcome` → `violates check constraint "job_attempt_closes_with_an_outcome"`
+  - a duplicate `effect_key` → `violates unique constraint "platform_effect_pkey"`; effects remain 1 (**I1, database half**)
+  - `attempt_count` above `max_attempts` → `violates check constraint "job_attempts_stay_within_budget"` (**I4**)
+  - `state = 'WEIRD'` → `violates check constraint "job_state_is_known"`
+- environment: PostgreSQL 18.4, migration `0001_platform_core.sql`
+- captured_at: 2026-08-17
+- limitation: **this is only the claim half of I2.** The contract's fencing rule also requires refusing a stale worker's late write, and no index can express that — a reclaimed worker's own attempt is already closed, but nothing in SQL alone stops it updating the `job` row. That half is owed by the state machine and is `JOB-006`'s evidence.
+
+```text
+[측정] Test isolation holds under parallel workers, and the concurrency fixture deliberately does not isolate.
+```
+
+- procedure: `./scripts/with-database.sh uv run pytest -q` and the same with `-n 4`
+- observed: 219 passed sequentially in 4.7 s; 219 passed in 2.8 s across four workers, no flake across repeats. Without the launcher, 164 pass and 55 skip with a message naming the launcher rather than failing on a missing database.
+- captured_at: 2026-08-17
+- limitation: isolation is per test, by cloning a migrated template. The `concurrency` fixture is the deliberate exception — it hands several worker processes one database, because that is what `JOB-006`, `JOB-007`, and `JOB-008` are evidence about. It is currently unused; no concurrency scenario has run yet.
+
+```text
+[추론] Writing the invariants as database constraints moved three of them out of reach of an implementation mistake.
+```
+
+I1's suppression, I2's claim exclusivity, and I4's attempt budget now fail at insert time regardless of what the state machine believes. The state machine still owes the fencing half of I2, the transition rules, and I3 — none of which a constraint can express — so this narrows what the concurrency scenarios have to establish rather than replacing them. Supporting measurements: the pure-SQL run above, and the two invariants it could not cover.
+
 ## Interpretation
 
 ```text

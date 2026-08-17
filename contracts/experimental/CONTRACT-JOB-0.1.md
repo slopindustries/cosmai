@@ -36,7 +36,7 @@ Authoritative SQL lives in `experiments/integrated-p0/platform_core/db/migration
 |---|---|---|---|
 | `id` | uuid | yes | Job identity. Stable across attempts. |
 | `handler` | text | yes | Name of a registered handler. Not a source, adapter, or provider identifier. |
-| `payload` | jsonb | yes | Opaque to the platform. Passed to the handler unchanged. |
+| `payload` | jsonb | yes, column is `not null` | Opaque to the platform. Passed to the handler unchanged. JSON `null` is a legal value; an absent column is not, so "no payload given" and "the payload is null" stay distinguishable. |
 | `state` | text | yes | `PENDING` \| `RUNNING` \| `SUCCEEDED` \| `FAILED` |
 | `attempt_count` | int | yes | Attempts started, including abandoned ones. Starts at 0. |
 | `max_attempts` | int | yes | Attempt budget. Must be ≥ 1. |
@@ -79,6 +79,8 @@ The only durable effect a P0-A handler may produce. Fixed by [DP-006](../../docs
 ### `schema_migrations`
 
 `version text primary key`, `applied_at timestamptz`. Applied in filename order by `platform_core.db`.
+
+Unlike the three tables above, this one is not created by a migration. The applier has to read it to decide whether the first migration has run, so it bootstraps the table itself before consulting it. It is listed here because it is part of the schema a reader will find, not because it belongs in a migration file.
 
 ## Semantics
 
@@ -145,6 +147,10 @@ This rule is what makes I2 an invariant rather than a hope. A lease that is only
 
 `error_summary` is the operator-visible string and is redacted. `error_detail` is protected debug detail: it is never included in an API response by default, and it is emitted to logs only at the debug level. An unstructured exception message is never the only external error contract — `error_class` is always set.
 
+**A database failure is classified by its SQLSTATE, not given a class of its own.** The table above names no "database unreachable" row, and adding one would imply the platform can act on it differently from any other transient condition, which it cannot. Instead: SQLSTATE class `08` (connection), `53` (insufficient resources), and `57` (operator intervention) are `PLATFORM_TRANSIENT`, because a retry is the correct response and may succeed. Everything else — a database that does not exist, a socket directory with no socket, a schema that does not match — is `CONFIGURATION_INVALID`, matching that row's "process refuses to start": no number of retries fixes a database that was never created.
+
+This rule is what keeps a mid-job connection drop and a startup misconfiguration from collapsing into one indistinguishable failure. It was written after implementing the connection layer exposed that the table had no answer.
+
 ## Provenance and security
 
 - **Required provenance fields:** `correlation_id` on every job, attempt, log event, and API response. This is platform provenance, not source provenance; source and Raw provenance are P0-B concerns.
@@ -190,3 +196,4 @@ A job with `handler = "succeed"`, `max_attempts = 3`, and an opaque payload: cla
 |---|---|---|---|
 | `0.1` | 2026-08-17 | Initial experimental version, written before implementation | [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md), [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) |
 | `0.1` | 2026-08-17 | Clarified completion fencing, redaction key matching, and the `error_summary` obligation. No behavior change: each records what the text already required but did not say precisely enough to implement one way. | Surfaced while implementing `obs/` and `errors.py` against this contract |
+| `0.1` | 2026-08-17 | Added the database-failure classification rule, which the error table had no answer for. Clarified that `payload` is a `not null` column carrying a nullable JSON value, and that `schema_migrations` is bootstrapped rather than migrated. | Surfaced while implementing `db/` against this contract |
