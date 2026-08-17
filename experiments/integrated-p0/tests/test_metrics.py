@@ -23,6 +23,7 @@ def test_a_fresh_registry_reads_as_zero(metrics: MetricsRegistry) -> None:
     assert reading.claim_conflicts == 0
     assert reading.suppressed_duplicate_effects == 0
     assert reading.abandoned_attempts == 0
+    assert reading.rejected_completions == 0
     assert reading.attempt_duration.count == 0
     assert reading.lease_recovery_latency.count == 0
 
@@ -52,10 +53,12 @@ def test_the_remaining_counters_are_independent(metrics: MetricsRegistry) -> Non
     metrics.record_suppressed_duplicate_effect()
     metrics.record_suppressed_duplicate_effect()
     metrics.record_abandoned_attempt(3)
+    metrics.record_rejected_completion(4)
     reading = metrics.read()
     assert reading.claim_conflicts == 1
     assert reading.suppressed_duplicate_effects == 2
     assert reading.abandoned_attempts == 3
+    assert reading.rejected_completions == 4
 
 
 def test_durations_aggregate(metrics: MetricsRegistry) -> None:
@@ -116,6 +119,7 @@ def test_a_reading_serializes_to_plain_values(metrics: MetricsRegistry) -> None:
         "claim_conflicts",
         "suppressed_duplicate_effects",
         "abandoned_attempts",
+        "rejected_completions",
         "attempt_duration_ms",
         "lease_recovery_latency_ms",
     }
@@ -124,9 +128,11 @@ def test_a_reading_serializes_to_plain_values(metrics: MetricsRegistry) -> None:
 def test_reset_returns_every_metric_to_zero(metrics: MetricsRegistry) -> None:
     metrics.record_transition("RUNNING")
     metrics.record_claim_conflict()
+    metrics.record_rejected_completion()
     metrics.record_attempt_duration_ms(1.0)
     metrics.reset()
     reading = metrics.read()
     assert reading.transitions == dict.fromkeys(TARGET_STATES, 0)
     assert reading.claim_conflicts == 0
+    assert reading.rejected_completions == 0
     assert reading.attempt_duration.count == 0

@@ -218,6 +218,40 @@ SEC-004 requires a marker under an ordinary key precisely so that "nothing leake
 
 I1's suppression, I2's claim exclusivity, and I4's attempt budget now fail at insert time regardless of what the state machine believes. The state machine still owes the fencing half of I2, the transition rules, and I3 — none of which a constraint can express — so this narrows what the concurrency scenarios have to establish rather than replacing them. Supporting measurements: the pure-SQL run above, and the two invariants it could not cover.
 
+### S1 — state machine, fencing, and JOB-001
+
+```text
+[측정] A worker that lost its lease cannot record a completion, and its refusal changes nothing.
+```
+
+- procedure: claim a job as worker A with a 1 s lease; expire the lease; reclaim as worker B; snapshot the `job` and `job_attempt` rows; call `complete_success` as A; compare
+- observed:
+  - reclaim closed attempt 1 as `ABANDONED` with `error_class = LEASE_ABANDONED`, and open attempts remained 1 — so the claim statement closed the old attempt before opening the new one
+  - A's completion returned `accepted=False` with the reason naming both fence halves
+  - the `job` row and the `job_attempt` row were **byte-identical to their pre-call snapshots**, compared field by field including `updated_at`
+  - `platform_effect` remained empty
+  - `rejected_completions=1`, `abandoned_attempts=1`, `lease_recovery_latency` recorded once at 1000.2 ms
+  - the refusal logged at `WARNING` carrying the job's `correlation_id` (I5 holds on the refusal path)
+  - worker B then completed normally and the job reached `SUCCEEDED`
+- environment: PostgreSQL 18.4, `platform_core.jobs.store`, single process
+- captured_at: 2026-08-17
+- limitation: the stale worker is simulated by expiring the lease directly rather than by a process that actually stalls. `JOB-006` is the real form and needs two processes.
+
+```text
+[측정] JOB-001 executes.
+```
+
+- procedure: `./scripts/with-database.sh uv run pytest -k job_001`
+- observed: 7 passed. Full suite 262 passed sequentially and under `-n 4`; ruff, mypy strict across 34 files, and the boundary guard all clean.
+- captured_at: 2026-08-17
+- limitation: `JOB-002` through `JOB-008` remain `NOT RUN`. The store supports their paths — retry exhaustion, lease recovery, duplicate suppression, and parallel claim exclusivity each pass in single-process form — but a single-process test is not the evidence those scenarios ask for.
+
+```text
+[추론] Making the refusal return a value rather than raise is what made "changes nothing" checkable.
+```
+
+An exception would have left the caller to decide whether anything had been written, and the natural implementation — attempt the write, catch the violation — would already have touched the row. Fencing the write inside the statement's own `WHERE` means a refused completion never reaches the row at all, which is why the before-and-after comparison above is exact rather than approximate. Supporting measurements: the identical row snapshots, and the empty `platform_effect`.
+
 ## Interpretation
 
 ```text

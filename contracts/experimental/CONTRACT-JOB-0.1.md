@@ -103,7 +103,10 @@ Unlike the three tables above, this one is not created by a migration. The appli
 | `RUNNING` | `PENDING` | Retryable failure, `attempt_count < max_attempts` | Attempt closed `RETRYABLE_FAILURE`, lease cleared, `available_at` set by backoff |
 | `RUNNING` | `FAILED` | Retryable failure, `attempt_count >= max_attempts` | Attempt closed `RETRYABLE_FAILURE`, `terminal_reason` set |
 | `RUNNING` | `FAILED` | Permanent failure | Attempt closed `PERMANENT_FAILURE`, `terminal_reason` set |
+| `RUNNING` (lease expired) | `FAILED` | Reclaim finds the budget already spent | Previous attempt closed `ABANDONED`, `terminal_reason = LEASE_ABANDONED`, no new attempt opened |
 | `FAILED` | `PENDING` | Operator safe retry | `attempt_count` reset to 0, `available_at = now()`, prior attempts retained |
+
+**`attempt_no` counts attempts ever made; `attempt_count` counts budget spent.** They are equal until the first safe retry and must not be conflated. A retry resets the budget to 0 while retaining prior attempts, so deriving `attempt_no` from `attempt_count` would reissue `attempt_no = 1` and collide with the retained row. `attempt_no` is therefore one greater than the highest ever recorded for that job, and only `attempt_count` returns to zero.
 
 **A lease-expiry reclaim consumes an attempt.** Without this, a handler that reliably kills its worker would be retried forever. The cost is that a worker crash unrelated to the job also spends budget; this is recorded as a known limitation rather than solved in P0-A.
 
@@ -146,6 +149,8 @@ This rule is what makes I2 an invariant rather than a hope. A lease that is only
 | `CONFIGURATION_INVALID` | Invalid platform configuration, or a job rejected at creation | No | Process refuses to start, or the job is not persisted | Correct the configuration |
 
 `error_summary` is the operator-visible string and is redacted. `error_detail` is protected debug detail: it is never included in an API response by default, and it is emitted to logs only at the debug level. An unstructured exception message is never the only external error contract — `error_class` is always set.
+
+**An exception the handler did not classify is `PLATFORM_PERMANENT`.** The platform has no basis for claiming a retry would help with a failure it could not name, and treating the unknown as retryable means a genuinely broken handler spends its whole budget on every job. The exception's text goes to protected detail, never to `error_summary`. This is a P0-A choice made safe by synthetic handlers that always classify; P0-B should revisit it, because an unclassified exception from a real acquisition path is more often transient than not.
 
 **A database failure is classified by its SQLSTATE, not given a class of its own.** The table above names no "database unreachable" row, and adding one would imply the platform can act on it differently from any other transient condition, which it cannot. Instead: SQLSTATE class `08` (connection), `53` (insufficient resources), and `57` (operator intervention) are `PLATFORM_TRANSIENT`, because a retry is the correct response and may succeed. Everything else — a database that does not exist, a socket directory with no socket, a schema that does not match — is `CONFIGURATION_INVALID`, matching that row's "process refuses to start": no number of retries fixes a database that was never created.
 
@@ -197,3 +202,4 @@ A job with `handler = "succeed"`, `max_attempts = 3`, and an opaque payload: cla
 | `0.1` | 2026-08-17 | Initial experimental version, written before implementation | [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md), [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) |
 | `0.1` | 2026-08-17 | Clarified completion fencing, redaction key matching, and the `error_summary` obligation. No behavior change: each records what the text already required but did not say precisely enough to implement one way. | Surfaced while implementing `obs/` and `errors.py` against this contract |
 | `0.1` | 2026-08-17 | Added the database-failure classification rule, which the error table had no answer for. Clarified that `payload` is a `not null` column carrying a nullable JSON value, and that `schema_migrations` is bootstrapped rather than migrated. | Surfaced while implementing `db/` against this contract |
+| `0.1` | 2026-08-17 | Added the reclaim-into-exhausted-budget transition, separated `attempt_no` from `attempt_count`, and classified an unclassified handler exception. The first two were reachable states the transition table did not name. | Surfaced while implementing `jobs/` against this contract |

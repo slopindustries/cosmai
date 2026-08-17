@@ -2,8 +2,9 @@
 
 The contract's observability requirement names exactly what has to exist:
 counters for transitions by target state, claim conflicts, suppressed duplicate
-effect insertions, and abandoned attempts; durations for attempt execution and
-lease recovery latency. This module is that list and nothing more.
+effect insertions, abandoned attempts, and completions the fencing rule refused;
+durations for attempt execution and lease recovery latency. This module is that
+list and nothing more.
 
 In-memory is sufficient because P0-A is single-host by declaration. A metrics
 backend would add an operational dependency without reducing a named
@@ -14,6 +15,12 @@ is the target state, and it must be one of the four states the contract defines.
 SEC-004 requires that metric labels carry no payload-derived value, and a
 registry that accepts an arbitrary label string is one payload interpolation away
 from breaking that.
+
+The four states themselves are not spelled here. ``platform_core.jobs.state`` is
+where the state machine lives, and a second copy of a closed set is a copy that
+can disagree with the CHECK constraint without anything noticing. Instrumentation
+importing the state machine it labels is the direction that keeps one owner;
+``platform_core.jobs`` therefore imports nothing, so the dependency stays acyclic.
 """
 
 from __future__ import annotations
@@ -25,8 +32,10 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Final
 
+from platform_core.jobs.state import JOB_STATES
+
 #: The job states of CONTRACT-JOB@0.1. The only permitted metric label values.
-TARGET_STATES: Final[tuple[str, ...]] = ("PENDING", "RUNNING", "SUCCEEDED", "FAILED")
+TARGET_STATES: Final[tuple[str, ...]] = JOB_STATES
 
 
 @dataclass(frozen=True)
@@ -60,6 +69,7 @@ class MetricsReading:
     claim_conflicts: int
     suppressed_duplicate_effects: int
     abandoned_attempts: int
+    rejected_completions: int
     attempt_duration: DurationReading
     lease_recovery_latency: DurationReading
 
@@ -69,6 +79,7 @@ class MetricsReading:
             "claim_conflicts": self.claim_conflicts,
             "suppressed_duplicate_effects": self.suppressed_duplicate_effects,
             "abandoned_attempts": self.abandoned_attempts,
+            "rejected_completions": self.rejected_completions,
             "attempt_duration_ms": self.attempt_duration.as_dict(),
             "lease_recovery_latency_ms": self.lease_recovery_latency.as_dict(),
         }
@@ -111,18 +122,22 @@ class MetricsRegistry:
         self._claim_conflicts = 0
         self._suppressed_duplicate_effects = 0
         self._abandoned_attempts = 0
+        self._rejected_completions = 0
         self._attempt_duration = _Durations()
         self._lease_recovery_latency = _Durations()
 
     def record_transition(self, target_state: str, count: int = 1) -> None:
         """Count one state transition, labelled by the state it arrived at."""
-        if target_state not in self._transitions:
+        # A JobState member is a str whose value is the label, so a caller may
+        # pass either; str() collapses the two spellings before the check.
+        label = str(target_state)
+        if label not in self._transitions:
             raise ValueError(
                 f"unknown target state {target_state!r}; "
                 f"permitted labels are {', '.join(TARGET_STATES)}"
             )
         with self._lock:
-            self._transitions[target_state] += count
+            self._transitions[label] += count
 
     def record_claim_conflict(self, count: int = 1) -> None:
         """Count one worker finding a job already claimed."""
@@ -138,6 +153,16 @@ class MetricsRegistry:
         """Count one attempt closed because its lease expired."""
         with self._lock:
             self._abandoned_attempts += count
+
+    def record_rejected_completion(self, count: int = 1) -> None:
+        """Count one completion the fencing rule refused.
+
+        The contract calls a stale worker's late write "the observable symptom",
+        so this counter is the evidence that the refusal happened rather than
+        that nothing was ever written.
+        """
+        with self._lock:
+            self._rejected_completions += count
 
     def record_attempt_duration_ms(self, milliseconds: float) -> None:
         """Record how long one attempt's execution took."""
@@ -166,6 +191,7 @@ class MetricsRegistry:
                 claim_conflicts=self._claim_conflicts,
                 suppressed_duplicate_effects=self._suppressed_duplicate_effects,
                 abandoned_attempts=self._abandoned_attempts,
+                rejected_completions=self._rejected_completions,
                 attempt_duration=self._attempt_duration.read(),
                 lease_recovery_latency=self._lease_recovery_latency.read(),
             )
@@ -177,5 +203,6 @@ class MetricsRegistry:
             self._claim_conflicts = 0
             self._suppressed_duplicate_effects = 0
             self._abandoned_attempts = 0
+            self._rejected_completions = 0
             self._attempt_duration = _Durations()
             self._lease_recovery_latency = _Durations()
