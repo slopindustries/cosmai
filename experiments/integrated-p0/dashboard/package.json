@@ -1,0 +1,24 @@
+{
+  "name": "cosma-p0a-dashboard",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Disposable P0-A operator dashboard. Three screens over the operator API.",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "text:build": "vite build --ssr src/detail-text.tsx --outDir dist-text --logLevel warn",
+    "text": "npm run --silent text:build && node dist-text/assets/detail-text.js"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}
