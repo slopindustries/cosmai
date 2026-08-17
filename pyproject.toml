@@ -13,25 +13,36 @@ package = false
 
 [dependency-groups]
 dev = [
+    "fastapi>=0.115",
     "httpx>=0.28",
     "mypy>=1.14",
+    "psycopg[binary]>=3.2",
     "pytest>=8.3",
+    "pytest-xdist>=3.6",
     "ruff>=0.9",
+    "uvicorn>=0.34",
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
+# Executable P0-A tests live beside the code they test, under the experiment root,
+# because they are disposable P0 code rather than the promotable scenario documents
+# and repository checks that `tests/` holds. See DP-006 D1 and tests/README.md.
+testpaths = ["tests", "experiments/integrated-p0/tests"]
+# `experiments/integrated-p0` is on the path because its directory name contains a
+# hyphen and is therefore not importable as a package. The disposable P0 modules
+# under it are reached only through this entry, never through an installed package.
+pythonpath = [".", "experiments/integrated-p0"]
 addopts = "--strict-markers -ra"
 markers = [
     "requires_credential: needs a real credential; skipped unless --run-credential is given",
     "network: performs an outbound request; skipped unless --run-network is given",
+    "concurrency: runs multiple worker processes against one database",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-extend-exclude = [".venv", "var"]
+extend-exclude = [".venv", "var", "experiments/integrated-p0/dashboard"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -39,3 +50,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+# `var/` is ignored runtime state — a local PostgreSQL cluster, logs, and a
+# relocated tool cache. It holds no project source. Mirrors the ruff exclusion.
+exclude = ["^var/"]
