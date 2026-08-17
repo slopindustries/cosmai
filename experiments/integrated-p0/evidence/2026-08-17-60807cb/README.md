@@ -1,8 +1,20 @@
-# `OPS` evidence — 2026-08-17, base revision `5b26d47`
+# P0-A evidence — 2026-08-17, revision `60807cb`
 
-Evidence for `OPS-001` … `OPS-004`, whose `Verification` sections all point at
-`experiments/integrated-p0/evidence/<date>-<sha7>/`. Linked experiment record:
-[EXP-001](../../EXP-001-platform-core.md).
+Evidence for the `OPS`, `SEC`, and `JOB` families, whose `Verification` sections all
+point at `experiments/integrated-p0/evidence/<date>-<sha7>/`. Linked experiment
+record: [EXP-001](../../EXP-001-platform-core.md).
+
+**The directory is named for the revision whose code produced these artifacts.** It
+was first named `5b26d47`, the revision the work started from — which was misleading,
+because that revision has no `/events` endpoint at all, so a reviewer trusting the
+name would have been trusting the wrong thing. There is one directory rather than one
+per slice, for the same reason a gate reviews one revision.
+
+Three of the artifacts are now written by the tests that assert over them —
+`-k ops_003` writes the correlated events and the log, `-k sec_004` writes the
+screens. An artifact produced by a separate collector can drift from the code that
+was asserted, and a reviewer has no way to notice; one written from the same fixture
+cannot.
 
 ## What is here
 
@@ -66,10 +78,10 @@ directory is treated as uniformly synthetic.
 ## Integrity
 
 ```
-a802c5f6dd64179f0a2d739cc02c23df8f85f9017f05b44a72f45dce210a392f  platform.jsonl
-f65f4e55cbbefb2e5095d5f087d19231be253e279976017cc3d5837ee1141af1  ops-003-correlated-events.json
+5a15e4dadd8c536c6d22907325662f008181f574de26ed408b853ab4a27c4512  platform.jsonl
+09c619b32afb7d59f471b1ec2ebc0477117a637179d915848633342c7155d6a2  ops-003-correlated-events.json
 57a3d5ed8bda3c4e0bd47c856fdcf9f0acaefd2d66ee22efab38a69b7abf7d9c  sec-002-listeners.txt
-1e0447304f5ea133e8fdd727a84a2e867321bb13f57931d923d7655c41e0d68d  sec-004-detail-screen.txt
+9ab04609775e7b45e67063563332a76464830d15ff0927c47667b555c8b011b3  sec-004-detail-screen.txt
 ```
 
 Verify with `shasum -a 256 -c` against the list above, from inside this directory.
@@ -77,8 +89,8 @@ Verify with `shasum -a 256 -c` against the list above, from inside this director
 **These four files are not byte-reproducible.** They carry generated UUIDs, database
 timestamps, process ids, and counts taken from a live host, so a second capture
 produces a different file with the same structure. What is reproducible is the assertion set:
-`./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k ops_003`
-asserts every property these artefacts illustrate, and it is the authority if the two
+`./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k "ops_003 or sec_004"`
+asserts every property these artefacts illustrate, and rewrites them, and it is the authority if the two
 ever disagree.
 
 ## Reading `ops-003-correlated-events.json`

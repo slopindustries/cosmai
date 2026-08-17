@@ -22,7 +22,7 @@ default job-detail screen
 ==============================================================================
 
 job
-d470fe62-3d83-4eec-b220-0c419d39e406
+4309ee4a-cd19-4ff8-9d65-5f435cf6a4d1
 FAILED
 what ran, when, and how it ended
 handler
@@ -32,13 +32,13 @@ FAILED
 terminal reason
 PLATFORM_PERMANENT
 correlation id
-df3cf2a5-86a4-4886-a729-46c8b99c8101
+40b49c0b-8c80-4358-95e7-843b344c121f
 created at
-2026-08-17T19:58:52.056457+09:00
+2026-08-17T20:06:06.726295+09:00
 last changed at
-2026-08-17T19:58:52.245961+09:00
+2026-08-17T20:06:06.861155+09:00
 available at
-2026-08-17T19:58:52.056457+09:00
+2026-08-17T20:06:06.726295+09:00
 lease owner
 —
 lease expires at
@@ -80,12 +80,12 @@ finished
 summary
 protected detail
 1
-shk-macbook-50563
+shk-macbook-69335
 PERMANENT_FAILURE
 PLATFORM_PERMANENT
 no
-2026-08-17T19:58:52.241509+09:00
-2026-08-17T19:58:52.245961+09:00
+2026-08-17T20:06:06.857902+09:00
+2026-08-17T20:06:06.861155+09:00
 the permanent failure injector refused this attempt
 present, withheld
 
@@ -94,7 +94,7 @@ protected job-detail screen
 ==============================================================================
 
 job
-d470fe62-3d83-4eec-b220-0c419d39e406
+4309ee4a-cd19-4ff8-9d65-5f435cf6a4d1
 FAILED
 what ran, when, and how it ended
 handler
@@ -104,13 +104,13 @@ FAILED
 terminal reason
 PLATFORM_PERMANENT
 correlation id
-df3cf2a5-86a4-4886-a729-46c8b99c8101
+40b49c0b-8c80-4358-95e7-843b344c121f
 created at
-2026-08-17T19:58:52.056457+09:00
+2026-08-17T20:06:06.726295+09:00
 last changed at
-2026-08-17T19:58:52.245961+09:00
+2026-08-17T20:06:06.861155+09:00
 available at
-2026-08-17T19:58:52.056457+09:00
+2026-08-17T20:06:06.726295+09:00
 lease owner
 —
 lease expires at
@@ -151,12 +151,12 @@ finished
 summary
 protected detail
 1
-shk-macbook-50563
+shk-macbook-69335
 PERMANENT_FAILURE
 PLATFORM_PERMANENT
 no
-2026-08-17T19:58:52.241509+09:00
-2026-08-17T19:58:52.245961+09:00
+2026-08-17T20:06:06.857902+09:00
+2026-08-17T20:06:06.861155+09:00
 the permanent failure injector refused this attempt
 {
   "attempt_no": 1
@@ -167,7 +167,7 @@ default screen of the marked-detail job
 ==============================================================================
 
 job
-414ed595-c081-4878-ae42-46983e8fced7
+8c840c6c-7cd5-489e-99d5-d265f3c1cb59
 FAILED
 what ran, when, and how it ended
 handler
@@ -177,13 +177,13 @@ FAILED
 terminal reason
 PLATFORM_PERMANENT
 correlation id
-80e9261a-8496-4756-9a3d-7eed3f1238d7
+02dee8f7-8837-4e05-8d35-6b4238d74710
 created at
-2026-08-17T19:58:52.434626+09:00
+2026-08-17T20:06:07.034422+09:00
 last changed at
-2026-08-17T19:58:52.437653+09:00
+2026-08-17T20:06:07.037324+09:00
 available at
-2026-08-17T19:58:52.434626+09:00
+2026-08-17T20:06:07.034422+09:00
 lease owner
 —
 lease expires at
@@ -219,8 +219,8 @@ worker-under-test
 PERMANENT_FAILURE
 PLATFORM_PERMANENT
 no
-2026-08-17T19:58:52.435595+09:00
-2026-08-17T19:58:52.437653+09:00
+2026-08-17T20:06:07.035440+09:00
+2026-08-17T20:06:07.037324+09:00
 the screen probe refused this attempt
 present, withheld
 
@@ -229,7 +229,7 @@ protected screen of the marked-detail job
 ==============================================================================
 
 job
-414ed595-c081-4878-ae42-46983e8fced7
+8c840c6c-7cd5-489e-99d5-d265f3c1cb59
 FAILED
 what ran, when, and how it ended
 handler
@@ -239,13 +239,13 @@ FAILED
 terminal reason
 PLATFORM_PERMANENT
 correlation id
-80e9261a-8496-4756-9a3d-7eed3f1238d7
+02dee8f7-8837-4e05-8d35-6b4238d74710
 created at
-2026-08-17T19:58:52.434626+09:00
+2026-08-17T20:06:07.034422+09:00
 last changed at
-2026-08-17T19:58:52.437653+09:00
+2026-08-17T20:06:07.037324+09:00
 available at
-2026-08-17T19:58:52.434626+09:00
+2026-08-17T20:06:07.034422+09:00
 lease owner
 —
 lease expires at
@@ -280,8 +280,8 @@ worker-under-test
 PERMANENT_FAILURE
 PLATFORM_PERMANENT
 no
-2026-08-17T19:58:52.435595+09:00
-2026-08-17T19:58:52.437653+09:00
+2026-08-17T20:06:07.035440+09:00
+2026-08-17T20:06:07.037324+09:00
 the screen probe refused this attempt
 {
   "token": "[REDACTED]",
@@ -301,7 +301,7 @@ refused-retry screen
 ==============================================================================
 
 job
-cb8a4edb-4746-4dff-a6eb-8482ce8ee325
+a33c4471-714e-440e-9e14-6e3797ae1857
 SUCCEEDED
 what ran, when, and how it ended
 handler
@@ -311,13 +311,13 @@ SUCCEEDED
 terminal reason
 —
 correlation id
-5c87251c-b26d-4e51-a0d1-cec16b1ae42c
+bf886de4-6634-4ffe-97a0-c57c86160831
 created at
-2026-08-17T19:58:52.265340+09:00
+2026-08-17T20:06:06.878951+09:00
 last changed at
-2026-08-17T19:58:52.417012+09:00
+2026-08-17T20:06:07.011781+09:00
 available at
-2026-08-17T19:58:52.265340+09:00
+2026-08-17T20:06:06.878951+09:00
 lease owner
 —
 lease expires at
@@ -353,11 +353,11 @@ finished
 summary
 protected detail
 1
-shk-macbook-50569
+shk-macbook-69344
 SUCCEEDED
 —
 unknown
-2026-08-17T19:58:52.412825+09:00
-2026-08-17T19:58:52.417012+09:00
+2026-08-17T20:06:07.006968+09:00
+2026-08-17T20:06:07.011781+09:00
 —
 none

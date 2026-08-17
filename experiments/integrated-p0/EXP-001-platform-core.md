@@ -4,11 +4,11 @@
 
 - Experiment ID: `EXP-001`
 - Type: `INTEGRATED_P0`
-- Status: `RUNNING`
+- Status: `COMPLETED`
 - Related Open Question or Decision Packet: OQ-005, OQ-006, OQ-007; [DP-005](../../docs/decisions/DP-005-two-part-pre-p1-execution.md), [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md)
 - Owner: Project team
 - Created at: 2026-08-17T00:00:00+09:00
-- Last executed at: in progress, 2026-08-17
+- Last executed at: 2026-08-17, revision `60807cb`
 
 The hypothesis, falsification condition, exit condition, and timebox below were fixed before the status became `RUNNING`. Any later revision is appended with its reason rather than overwriting the original boundary.
 
@@ -452,7 +452,7 @@ Two further findings need no action now and are recorded so they are not mistake
 [추론] Evidence capture was split by what the artifact's nature is, not by convenience.
 ```
 
-`experiments/integrated-p0/evidence/2026-08-17-5b26d47/` holds what does not depend on the final revision: the environment, a real structured-log sample, the correlated event set `OPS-003` demands as an artifact, and the `SEC-002` readings. The full pytest transcript stays with S6, because a copy taken now would describe a working tree nobody can check out. The split is what keeps descope ladder item 3 from leaving the gate with prose and no artifacts.
+`experiments/integrated-p0/evidence/2026-08-17-60807cb/` holds what does not depend on the final revision: the environment, a real structured-log sample, the correlated event set `OPS-003` demands as an artifact, and the `SEC-002` readings. The full pytest transcript stays with S6, because a copy taken now would describe a working tree nobody can check out. The split is what keeps descope ladder item 3 from leaving the gate with prose and no artifacts.
 
 One judgement in that directory was reversed on review. `sec-002-listeners.txt` first committed the whole `lsof` listing, reasoning that `SEC-002` calls a claim in a document insufficient. That reasoning holds against a *filtered* listing, and the replacement is not one: it records how many sockets were listening and how many were PostgreSQL, both complete answers to a narrower question, with the total kept so a zero cannot read as a failed command. The original named unrelated processes on this machine, their pids, and their ports — host state that is not this project's data, and `public` in [Data Handling](../../docs/conventions/data-handling.md) means redistributable.
 
@@ -484,24 +484,166 @@ The gap is real and stays recorded: a future contributor who does not read `dash
 
 ## Interpretation
 
+Each inference below names the measurements it rests on. The section is deliberately
+harder on the evidence than the slice notes above, because the slice notes report what
+was observed and this one reports what may be concluded — and the gap between those
+two is where a gate goes wrong.
+
 ```text
-[추론] not yet available
+[추론] H1 is supported, and the support is narrower than the hypothesis as written.
 ```
+
+H1 claims a source- and normalization-independent platform core can expose *useful*
+execution, recovery, operator, and safety evidence. None of its three falsification
+conditions fired. No platform behaviour needed a source, an acquisition step, a Raw
+payload, a snapshot, or a normalized result to be specified or tested. Sixteen
+scenarios were written before their implementations and all sixteen executed. The
+synthetic handlers exercise success, transient and permanent failure, self-inflicted
+process death either side of a durable effect, and a stall past a lease — without any
+of them imitating a collector, importer, snapshot producer, or normalizer, which the
+boundary guard enforces mechanically for Python and SQL.
+
+The word carrying the weight is *useful*, and the honest reading is narrower than the
+claim. What P0-A produced is evidence about **the platform's own behaviour under its
+own failures.** Whether that evidence is useful to P0-B is not something P0-A can
+observe: it becomes true or false when a real collector meets this job model, and the
+`REOPENED` path in the gate exists precisely because that verdict is still outstanding.
+Recording H1 as supported means the falsification conditions did not fire, not that
+the platform has been shown to be a good foundation.
+
+```text
+[추론] H2 is supported for a single-row durable effect and says nothing beyond it.
+```
+
+The measurements are strong within their boundary: no conflicting active ownership
+across twenty concurrent repetitions, every expired lease reclaimed in 130–168 ms, a
+live worker that lost its lease refused at completion time with its late write
+provably changing nothing, and keyed rather than blanket suppression demonstrated by a
+control that produced twenty rows and zero suppressions under the same race.
+
+`[확인 사실]` The durable effect is one row with a primary-key conflict. That is the
+easiest possible instance of the problem H2 names. A P0-B acquisition or normalization
+effect will span several statements and probably several tables, where the question
+becomes transactional rather than a matter of one unique index — and nothing measured
+here speaks to it. **This is the largest gap P0-A leaves**, and the gate must carry it
+as unresolved rather than as narrowed.
+
+```text
+[추론] Writing each scenario before its implementation was the single most productive
+decision, measured by defects it caught.
+```
+
+Four defects were found by scenarios rather than by review, and each was found because
+the scenario demanded a control the implementation had no reason to provide.
+`redact_text` returned a sensitive value unchanged whenever a harmless pair preceded
+it, and it was only caught because SEC-004 required a marker under an ordinary key to
+survive — without that control, the unchanged string would have satisfied the
+assertion for the trivial reason that the output was the input. `JOB-008`'s
+distinct-key case is what makes its colliding case mean anything. `JOB-005`'s
+suppressed-duplicate counter is the only observation separating two interruption
+points that both end with one effect row. `JOB-006` asserts that the stalled worker
+*tried*, because a scenario where it never tries proves nothing.
+
+`[추론]` Three of my own documents were wrong in ways only implementation exposed: a
+scenario asking for a safe retry the contract does not permit, a scenario asking which
+error class a health check produces, and a boundary guard that read English prose as
+SQL. In each case the subagent implementing against the document reported the conflict
+rather than resolving it, which is what made them visible as specification failures
+rather than being absorbed as implementation quirks.
+
+```text
+[추론] The platform's invariants are enforced in three different places, and the
+distinction matters for what P1 may inherit.
+```
+
+I1, I2's claim half, and I4 are database constraints — they hold regardless of what
+any code believes, and were verified with `psql` alone. I2's fencing half and I3 are
+application logic, because no constraint can express "this worker still owns the
+lease". I5 is a discipline enforced by tests. `[추론]` Only the first group is
+evidence about a *design*; the second is evidence about *this implementation*, which
+DP-001 disposes of. P0-B should re-establish the second group against real effects
+rather than assume it, and `PoC Contract 0.1` should record which invariants a
+reconstruction must re-derive as opposed to re-declare.
+
+```text
+[추론] Two mechanisms protect the P0-A/P0-B boundary and only one of them is a test.
+```
+
+The boundary guard parses Python and SQL, and it fired once on real code. The
+dashboard is TypeScript and is checked by file name only, where the vocabulary held
+because the substitutions were fixed before the code existed — `payload` rather than
+`raw payload`. The grep found nothing, which is a measurement, not a guarantee: a
+future contributor who does not read `dashboard/README.md` gets no warning from a
+test. `[추론]` The gate should treat the boundary as **mechanically enforced for the
+backend and conventionally enforced for the frontend**, and P0-B should decide whether
+that asymmetry survives a dashboard that grows domain screens.
 
 ## Result
 
-- Outcome: `SUPPORTED | REFUTED | INCONCLUSIVE` — not yet determined
-- Falsification condition met: `NOT TESTED`
-- Exit condition met: `NO`
-- Known limitations: to be recorded
+- Outcome: `SUPPORTED` — for both H1 and H2, within the boundaries recorded above and
+  not beyond them.
+- Falsification condition met: `NO`. None of H1's three conditions and none of H2's
+  four were observed. `[확인 사실]` H2's transient-SQLSTATE path and any multi-statement
+  durable effect were never exercised, so those are untested rather than passed.
+- Exit condition met: `YES`. Every P0-A exit criterion in the [P0 Charter](../../docs/p0-charter.md)
+  has a result with linked evidence, recorded in the gate record beside this file.
+- Known limitations, in the order a P0-B reader should weigh them:
+  1. **The durable effect is a single row.** The idempotency boundary is untested for a
+     multi-statement or multi-table effect, which is what P0-B will have.
+  2. **The transient database-failure branch is unexercised.** No scenario kills a
+     connection mid-statement, so SQLSTATE classes `08`, `53`, and `57` are written and
+     reviewable but unmeasured.
+  3. **Nothing is authenticated.** Anything on the host reaches the API and the
+     database. This is evidence about binding and idempotency, never about authority.
+  4. **`SEC-004` step 4 is not executed.** The screens are asserted as text, not
+     captured as pixels, so a value hidden by CSS would pass.
+  5. **The dashboard's vocabulary is held by convention**, not by the guard.
+  6. **Single host, one PostgreSQL version, four worker processes.** No evidence about
+     clock skew beyond a lease, throughput, fairness, or starvation — a starved job is
+     possible and undetected.
+  7. **`tests/conftest.py` imports experiment code** so that the secret-store guard has
+     one implementation. The root test session therefore stops guarding when P0 is
+     disposed of, which belongs in the P0-B disposition register.
+  8. **Retryability is declared by synthetic handlers.** No evidence about classifying a
+     genuinely ambiguous failure, which is a real P0-B question for source errors.
 
 ## Impact and next action
 
-- Uncertainty reduced: to be recorded
-- New uncertainty discovered: to be recorded
-- Proposed next experiment: P0-B B1 source exploration, after the P0-A Completion Gate is accepted
-- Proposed contract change: to be recorded
-- Proposed Decision Packet update: [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md) is proposed for acceptance at the gate together with the evidence showing whether each of its choices held
+- **Uncertainty reduced.** OQ-006's H1 and H2 have platform-level answers for a
+  single-row effect: the PostgreSQL job model holds claim exclusivity, lease recovery,
+  retry exhaustion, and keyed duplicate suppression under four contending processes.
+  OQ-005's H1 is answered — three navigation objects were sufficient and a test now
+  guards against a fourth appearing unnoticed. OQ-007's P0-A half is closed: the
+  secret-store location guard exists on both entrypoints and on the test session as one
+  implementation. None of the three Open Questions moves to `RESOLVED`, because each
+  requires P0-B evidence its own document names.
+- **New uncertainty discovered**, none of which existed as a written question this
+  morning:
+  - Does the fencing rule hold when the durable effect is transactional rather than a
+    single insert? This is the sharp form of OQ-006 H1 and the gap the gate carries.
+  - Should a connect-time failure ever be retryable? P0-A answers no because
+    `SEC-001` and `SEC-003` depend on identical failure across restarts, but a P0-B
+    worker whose database blinks during a collection run may need the other answer.
+  - Can one correlation identifier span a batch? P0-A has no fan-out, and a P0-B
+    collection over many pages is exactly that shape.
+  - Does the frontend need mechanical vocabulary enforcement once the dashboard grows
+    domain screens?
+- Proposed next experiment: P0-B B1 source exploration, after the P0-A Completion Gate
+  is accepted. **Before its first outbound probe**, `docs/conventions/p0-security.md`
+  requires the agent sandbox to be narrowed and the adjustment recorded — that
+  obligation has not been met and P0-A's broad sandbox must not carry into P0-B.
+- **Proposed contract change.** `CONTRACT-JOB@0.1` was amended five times during
+  implementation, each amendment recorded with what surfaced it and each written while
+  the affected scenarios still read `NOT RUN`. It is not a promotion candidate. What
+  P0-B should carry into `PoC Contract 0.1` is the distinction this experiment drew
+  between invariants a schema enforces and invariants an implementation enforces, since
+  only the first survives a reconstruction unchanged.
+- Proposed Decision Packet update: [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md)
+  is proposed for acceptance at the gate. Each of D1–D8 held under execution; D4's and
+  D5's arguments in particular were never tested against the friction they predicted,
+  because no schema evolution or complex query arose in one day. The packet's recorded
+  tension with Project State section 4 — that it declines three named defaults without
+  contrary evidence — is the one item a reviewer should decide rather than ratify.
 
 ## Artifacts
 

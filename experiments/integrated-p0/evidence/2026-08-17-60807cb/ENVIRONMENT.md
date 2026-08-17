@@ -1,4 +1,4 @@
-# Environment for the 2026-08-17 `OPS` evidence capture
+# Environment for the 2026-08-17 P0-A evidence capture
 
 Follows the Environment section of `experiments/EXPERIMENT-TEMPLATE.md`. Every value
 here is `[확인 사실]` unless labelled otherwise: each was read back from the tool or
@@ -6,23 +6,17 @@ the cluster that produced it, not copied from a document.
 
 ## Code revision
 
-- Base commit: `5b26d47a2dcbd9593ddb7760ad715997ca27cf81` (`5b26d47`), branch
-  `p0a/platform-core`. The directory name carries this short hash.
-- **The captured artefacts were produced from a working tree that was ahead of that
-  commit.** T5a's own changes were uncommitted at capture time, so `5b26d47` names
-  the base rather than the exact text. The gate record must cite the commit that
-  lands the files below; until it exists, `5b26d47` plus this list is the revision.
+- Commit `60807cba3e65e094c5870e46499dffe4577bdfd7` (`60807cb`), branch `p0a/platform-core`. The directory name
+  carries this short hash, and every artefact here was produced by this text.
+- Working tree clean at capture, apart from the artefacts in this directory, which the
+  scenarios rewrite when they run.
 
-| Path | State at capture |
-|---|---|
-| `experiments/integrated-p0/platform_core/api/app.py` | modified — `/jobs`, `/jobs/{id}/retry`, `/events`, `/metrics`, reworked `/health` |
-| `experiments/integrated-p0/platform_core/api/__main__.py` | modified — structured log directed to `COSMA_LOG_FILE` |
-| `experiments/integrated-p0/platform_core/worker.py` | modified — same log wiring |
-| `experiments/integrated-p0/platform_core/config.py` | modified — `COSMA_LOG_FILE` setting and its guard |
-| `experiments/integrated-p0/platform_core/obs/logging.py` | modified — `StructuredLogger.resolved` |
-| `experiments/integrated-p0/platform_core/jobs/store.py` | modified — `list_jobs`, `count_jobs`, `count_by_state` |
-| `experiments/integrated-p0/platform_core/handlers/synthetic.py` | modified — `apply_effect_then_fail` |
-| `experiments/integrated-p0/tests/test_ops.py` | new — `OPS-001` … `OPS-004` |
+An earlier version of this file recorded a caveat that no longer applies: the
+artefacts were first captured from a working tree ahead of its base commit, and the
+directory was named for that base. Both are now resolved — the code is committed and
+the directory is named for it. Three of the four artefacts are additionally written by
+the tests that assert over them (`-k ops_003`, `-k sec_004`), so they cannot describe
+behaviour the assertions did not check.
 
 ## Runtime and dependency versions
 

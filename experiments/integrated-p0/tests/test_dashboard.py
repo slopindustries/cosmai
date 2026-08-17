@@ -219,7 +219,7 @@ def rendered_screen(
 
 #: Where SEC-004's Verification says the screens belong.
 EVIDENCE_SCREEN = (
-    EXPERIMENT_ROOT / "evidence" / "2026-08-17-5b26d47" / "sec-004-detail-screen.txt"
+    EXPERIMENT_ROOT / "evidence" / "2026-08-17-60807cb" / "sec-004-detail-screen.txt"
 )
 
 EVIDENCE_HEADER = """SEC-004 — the job-detail screens as an operator reads them
