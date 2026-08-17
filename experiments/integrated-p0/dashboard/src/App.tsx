@@ -27,7 +27,7 @@ export function App(): JSX.Element {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>CosmaSignal P0-A operator surface</h1>
+        <h1>Cosmai P0-A operator surface</h1>
         <p className="note">
           Disposable P0-A instrumentation over the operator API. Two screens: the
           job list, and one job in detail with its attempts and a retry.

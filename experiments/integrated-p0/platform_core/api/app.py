@@ -246,7 +246,7 @@ def create_app(
     """
     registry = MetricsRegistry() if metrics is None else metrics
     app = FastAPI(
-        title="CosmaSignal P0-A operator API",
+        title="Cosmai P0-A operator API",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,

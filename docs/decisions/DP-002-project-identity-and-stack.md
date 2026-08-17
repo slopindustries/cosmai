@@ -7,8 +7,8 @@
 
 ## Decision
 
-- `[결정]` Project and GitHub organization display name: **CosmaSignal**.
-- `[결정]` Local directory name: `cosma-signal`.
+- ~~`[결정]` Project and GitHub organization display name: **CosmaSignal**.~~ **Superseded by [DP-007](DP-007-project-rename-to-cosmai.md), 2026-08-17: the display name is Cosmai.** The original text is kept rather than rewritten, because a decision record that silently reads as the current answer stops being a record.
+- ~~`[결정]` Local directory name: `cosma-signal`.~~ **Superseded by [DP-007](DP-007-project-rename-to-cosmai.md): `cosmai`.**
 - `[결정]` Use a monorepo for the backend, dashboard, contracts, experiments, and tests.
 - `[결정]` Backend language: Python.
 - `[결정]` Primary database: PostgreSQL.

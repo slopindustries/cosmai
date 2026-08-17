@@ -1,4 +1,4 @@
-# CosmaSignal agent instructions
+# Cosmai agent instructions
 
 ## Mission
 

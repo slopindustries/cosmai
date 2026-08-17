@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Run a command against the CosmaSignal local PostgreSQL cluster.
+# Run a command against the Cosmai local PostgreSQL cluster.
 #
 #   ./scripts/with-database.sh uv run pytest
 #   ./scripts/with-database.sh sh -c 'psql -h "$COSMA_DB_HOST" "$COSMA_DB_NAME"'
@@ -33,8 +33,8 @@ EX_CONFIG=78
 
 # Regenerated on every run rather than edited in place, so repeated runs and a
 # moved repository both converge on the same result.
-conf_begin="# BEGIN cosma-signal managed settings"
-conf_end="# END cosma-signal managed settings"
+conf_begin="# BEGIN cosmai managed settings"
+conf_end="# END cosmai managed settings"
 
 cluster_is_running() {
   pg_ctl --pgdata="$PGDATA" status >/dev/null 2>&1

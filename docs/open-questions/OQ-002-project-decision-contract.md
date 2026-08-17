@@ -9,7 +9,7 @@
 
 ## Question
 
-Which user or R&D decision should CosmaSignal improve, and what evidence must the system provide for that decision?
+Which user or R&D decision should Cosmai improve, and what evidence must the system provide for that decision?
 
 ## Why this cannot be decided yet
 

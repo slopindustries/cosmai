@@ -56,3 +56,5 @@ Raw 대화 원문과 session snapshot은 이 저장소의 working tree 안에 �
 ## 기록 목록
 
 - [HIST-001 — 초기 데이터 파이프라인 구상에서 폐기형 P0 결정까지](HIST-001-initial-concept-to-p0.md)
+
+These documents use the project's earlier name, **CosmaSignal**. [DP-007](../decisions/DP-007-project-rename-to-cosmai.md) renamed it to Cosmai on 2026-08-17 and deliberately left history untouched: a record rewritten to match the present no longer records anything.

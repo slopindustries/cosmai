@@ -1,5 +1,5 @@
 {
-  description = "CosmaSignal optional development shell. The supported setup path is uv.";
+  description = "Cosmai optional development shell. The supported setup path is uv.";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
@@ -17,7 +17,7 @@
     {
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
-          name = "cosma-signal";
+          name = "cosmai";
 
           # Nix supplies non-Python system runtimes. uv owns the Python interpreter
           # and every Python package, in this shell exactly as outside it, so the two
@@ -39,7 +39,7 @@
           # banner for explicit `nix develop` only.
           shellHook = ''
             if [ -z "''${DIRENV_IN_ENVRC:-}" ]; then
-              echo "cosma-signal: optional Nix shell. Nothing in this repository requires it; see README.md."
+              echo "cosmai: optional Nix shell. Nothing in this repository requires it; see README.md."
             fi
           '';
         };

@@ -1,4 +1,4 @@
-"""Session-wide guards and markers for the CosmaSignal test suite.
+"""Session-wide guards and markers for the Cosmai test suite.
 
 The secret-store location guard below is the test-session half of the obligation
 recorded in ``docs/conventions/secret-setup.md``. The application-startup half now

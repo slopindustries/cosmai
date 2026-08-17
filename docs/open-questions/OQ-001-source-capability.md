@@ -9,7 +9,7 @@
 
 ## Question
 
-Which one REST API source and which one existing dataset can lawfully and usefully test CosmaSignal's first integrated ingestion flow?
+Which one REST API source and which one existing dataset can lawfully and usefully test Cosmai's first integrated ingestion flow?
 
 ## Why this cannot be decided yet
 

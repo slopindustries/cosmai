@@ -131,7 +131,7 @@ wheels = [
 ]
 
 [[package]]
-name = "cosma-signal"
+name = "cosmai"
 version = "0.0.0"
 source = { virtual = "." }
 

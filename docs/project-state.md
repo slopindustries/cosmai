@@ -1,6 +1,6 @@
 # Project State
 
-- Project: CosmaSignal
+- Project: Cosmai
 - Version: 0.4
 - Updated: 2026-08-17
 - Phase: P0-B — Domain Integration, Evidence Synthesis, and Disposition
@@ -64,7 +64,7 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 
 ### Project and lifecycle
 
-- `[결정]` Project and GitHub organization name: **CosmaSignal**.
+- `[결정]` Project and GitHub organization name: **Cosmai**.
 - `[결정]` P0 is a disposable Architecture Discovery Prototype.
 - `[결정]` P1 will be reconstructed after P0-B accepts Architecture Synthesis, `PoC Contract 0.1`, artifact disposition, and a P1 reconstruction plan.
 - `[결정]` The repository is a monorepo for backend, dashboard, contracts, experiments, and tests.

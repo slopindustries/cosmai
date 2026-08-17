@@ -1,7 +1,7 @@
 [project]
-name = "cosma-signal"
+name = "cosmai"
 version = "0.0.0"
-description = "CosmaSignal development environment. Intentionally defines no importable package."
+description = "Cosmai development environment. Intentionally defines no importable package."
 requires-python = ">=3.13"
 dependencies = []
 
