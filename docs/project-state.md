@@ -75,7 +75,12 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 - `[결정]` Dashboard: React and TypeScript.
 - `[결정]` P0-B must support both REST API collection and existing dataset import.
 
-Framework and library selections such as FastAPI, SQLAlchemy, Alembic, HTTPX, React Router, TanStack Query, and MUI are strong P0 defaults but remain replaceable if an experiment produces contrary evidence.
+Framework and library selections such as FastAPI, SQLAlchemy, Alembic, HTTPX, React Router, TanStack Query, and MUI are strong P0 defaults. Two different questions follow from that and the answer differs:
+
+- **Adopting one is optional.** A default is a starting point, not an obligation, and AGENTS.md still applies: an abstraction that reduces no named uncertainty should not be introduced. Declining a default requires a recorded reason, not contrary evidence — there is nothing to have evidence about until something is in use.
+- **Replacing one already in use requires contrary evidence**, because work has been built on it and the cost of changing is real.
+
+`[결정]` This distinction was added on 2026-08-17 by [DP-006](decisions/DP-006-p0a-platform-foundation.md). The original sentence said only that these defaults "remain replaceable if an experiment produces contrary evidence", which read strictly would have required P0-A to adopt every one of them before it could decline any. DP-006 declined five, and the ambiguity was flagged there rather than resolved silently. The reviewer accepted the adoption-versus-replacement reading and asked for this clarification so that P0-B does not meet the same question again with FastAPI and HTTPX.
 
 ### P0-A boundary
 

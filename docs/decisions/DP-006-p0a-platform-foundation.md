@@ -1,6 +1,6 @@
 # DP-006 — P0-A Platform Foundation Choices
 
-- Status: `DRAFT`
+- Status: `ACCEPTED_FOR_POC`
 - Date: 2026-08-17
 - Owners: Project team
 - Related Open Questions: OQ-005, OQ-006, OQ-007
@@ -16,11 +16,13 @@ Every choice below is either a gap DP-003 explicitly left open or a departure fr
 
 ## Acceptance status
 
-This packet is written before the work it governs so that no consequential choice is resolved silently. It is proposed for acceptance at the P0-A Completion Gate, together with the evidence that shows whether each choice held. Until then its status is `DRAFT` and each decision below is a recorded proposal, not a project constraint.
+`[결정]` **Accepted 2026-08-17**, at the P0-A Completion Gate, with the reading in the next section accepted and one required change recorded below.
+
+It was written before the work it governs, so that no consequential choice was resolved silently, and it stayed `DRAFT` through execution while the evidence showing whether each choice held accumulated in [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md). All eight decisions held. D4's and D5's arguments were never tested against the friction they predicted, because no schema evolution and no complex query arose in one day — that is a limit on the evidence, not a defect in the decision.
 
 ## A tension with Project State, stated rather than assumed away
 
-`[확인 사실]` [Project State](../project-state.md) section 4 says: *"Framework and library selections such as FastAPI, SQLAlchemy, Alembic, HTTPX, React Router, TanStack Query, and MUI are strong P0 defaults but remain replaceable if an experiment produces contrary evidence."*
+`[확인 사실]` [Project State](../project-state.md) section 4 **said, before this packet was accepted**: *"Framework and library selections such as FastAPI, SQLAlchemy, Alembic, HTTPX, React Router, TanStack Query, and MUI are strong P0 defaults but remain replaceable if an experiment produces contrary evidence."* The sentence has since been clarified as this packet's required change; it is quoted here as it stood, because the tension below is what prompted the clarification.
 
 D4, D5, and D6 decline Alembic, SQLAlchemy, and three frontend libraries **without** contrary evidence. Read strictly, that sentence sets a bar this packet does not clear, so the reading it relies on is recorded here for the gate reviewer to accept or reject rather than left implicit.
 
@@ -29,6 +31,8 @@ D4, D5, and D6 decline Alembic, SQLAlchemy, and three frontend libraries **witho
 `[추론]` The asymmetry is deliberate and in the project's favour. Adopting a default costs configuration time now and produces no evidence about whether it was needed. Declining one costs a later import if P1 wants it. Under [DP-001](DP-001-p0-lifecycle.md), P1 is reconstructed from contracts rather than from this code, so a P0-A decision not to adopt a library constrains P1 not at all.
 
 **If the reviewer rejects this reading, the correct outcome is to adopt the named defaults in P0-A, not to keep the choice unrecorded.** That is why the tension is written down instead of resolved in a commit message.
+
+`[결정]` **The reviewer accepted this reading on 2026-08-17**, and asked additionally that the sentence itself be clarified so the ambiguity does not recur. [Project State](../project-state.md) section 4 now separates the two questions explicitly: adopting a default is optional and needs a recorded reason, while replacing one already in use needs contrary evidence. That matters for P0-B, which meets the same question again with FastAPI and HTTPX.
 
 ---
 
@@ -308,8 +312,13 @@ The table is disposable with the rest of P0. What survives is the recorded obser
 - Whether `platform_effect`'s single-table idempotency boundary survives contact with a real durable effect in P0-B. This is the substance of OQ-006 H1.
 - CI environment, still undefined. DP-003 listed it and this packet does not close it.
 
+## Required changes
+
+- [x] Clarify [Project State](../project-state.md) section 4 so that adopting a library default and replacing one already in use are separate questions with separate bars. Done 2026-08-17 as the condition of this packet's acceptance.
+
 ## Change record
 
 | Version | Date | Change | Evidence or decision |
 |---|---|---|---|
 | Draft | 2026-08-17 | Initial draft, written before the work it governs | EXP-001 |
+| Accepted | 2026-08-17 | `ACCEPTED_FOR_POC`. All eight decisions held under execution; the adoption-versus-replacement reading accepted; Project State section 4 clarified as the required change | [P0-A Completion Gate](../../experiments/integrated-p0/PLATFORM-CORE-GATE-2026-08-17.md), [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) |

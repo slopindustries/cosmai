@@ -145,7 +145,9 @@ Listed separately from the limitation column because each is a place where a rea
 
   `[확인 사실]` The first four are recorded in EXP-001's Observations with the measurement that exposed each. **One correction to the first draft's claim:** the safe-retry conflict is recorded in EXP-001's Interpretation and in `JOB-008`'s revision note, but not as an Observation, and `test_job_concurrency.py` still says resolving it "needs a Decision Packet" while the scenario was amended in place instead. AGENTS.md requires a consequential ambiguity to become an Open Question or Decision Packet rather than be resolved silently. **This is an open action, recorded here rather than closed.**
 - P0-A work package to reopen for each blocker: none.
-- **Also proposed for acceptance:** [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md), currently `DRAFT`. All eight of its decisions held under execution. Its recorded tension with Project State section 4 — declining three named library defaults without contrary evidence, on the argument that nothing was in use so the question was adoption rather than replacement — is the one item a reviewer should decide rather than ratify. If that reading is rejected, the correct outcome is to adopt those defaults in P0-A, not to leave the choice unrecorded.
+- **[DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md) is `ACCEPTED_FOR_POC` as of 2026-08-17.** All eight of its decisions held under execution. Its recorded tension with Project State section 4 — declining five named library defaults without contrary evidence, on the argument that nothing was in use so the question was adoption rather than replacement — was the one item put to the reviewer to decide rather than ratify.
+
+  `[결정]` The reviewer accepted that reading and required the sentence itself be clarified, which is now done: Project State section 4 separates adopting a default (optional, needs a recorded reason) from replacing one already in use (needs contrary evidence). The clarification matters beyond this packet — P0-B meets the same question again with FastAPI and HTTPX, and would otherwise have had to re-argue it.
 
 ## Reopen rule
 
