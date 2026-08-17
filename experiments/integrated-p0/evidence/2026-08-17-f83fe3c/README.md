@@ -1,4 +1,4 @@
-# P0-A evidence — 2026-08-17, revision `1396644`
+# P0-A evidence — 2026-08-17, revision `f83fe3c`
 
 Evidence for the `OPS`, `SEC`, and `JOB` families, whose `Verification` sections all
 point at `experiments/integrated-p0/evidence/<date>-<sha7>/`. Linked experiment
@@ -24,7 +24,7 @@ So capture is now **opt-in**:
 
 ```sh
 ./scripts/with-database.sh uv run pytest -k "ops_003 or sec_004" \
-    --capture-evidence=experiments/integrated-p0/evidence/2026-08-17-1396644
+    --capture-evidence=experiments/integrated-p0/evidence/2026-08-17-f83fe3c
 ```
 
 An ordinary run writes nothing here. That is what makes the hashes below verifiable —
@@ -95,10 +95,10 @@ directory is treated as uniformly synthetic.
 ## Integrity
 
 ```
-ed1bfa2bca2385a9e52530babdff1c1daa951ca6ebabeee0908167f64053ecd6  platform.jsonl
-c041cdd0124449b96743a395b9b8e5776ff22b76c4728769d6514d52e656470f  ops-003-correlated-events.json
+83d6e9daf7e922cddfd18dc4033fde6f24571993ddaee36726c95c89944d9e83  platform.jsonl
+acecc1cad455a6ac435199b1557c82972bccfc2642c5d70f865706fa4e132fca  ops-003-correlated-events.json
 57a3d5ed8bda3c4e0bd47c856fdcf9f0acaefd2d66ee22efab38a69b7abf7d9c  sec-002-listeners.txt
-7c85425a24864dac62e14661d374105e1292b2fa977ae2410cd342f059f504a1  sec-004-detail-screen.txt
+d9f73d2ad69d511b07ea0d8f6738bf342399f80e15a9f0946e37d0e234ab11ff  sec-004-detail-screen.txt
 ```
 
 Verify with `shasum -a 256 -c` against the list above, from inside this directory.

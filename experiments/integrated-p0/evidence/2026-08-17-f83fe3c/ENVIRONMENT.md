@@ -6,7 +6,7 @@ the cluster that produced it, not copied from a document.
 
 ## Code revision
 
-- Commit `139664424cf4ae21aa3ce054ba129afd617b9420` (`1396644`), branch `p0a/platform-core`. The directory name carries this
+- Commit `f83fe3c9f9a0cf13de1d2d34995a1d45654cf00c` (`f83fe3c`), branch `p0a/platform-core`. The directory name carries this
   short hash.
 - **What the name claims, and how a reviewer checks it.** These artifacts were captured
   by the code at this commit, and the commit that adds them changes no code — so the
@@ -91,13 +91,13 @@ uv run ruff check .
 uv run mypy .
 ```
 
-`[측정]` 2026-08-17, at this revision: `507 passed, 2 skipped in 53.57s` sequential. The
+`[측정]` 2026-08-17, at this revision: `520 passed, 2 skipped in 54.3s` sequential. The
 two skips are the evidence-capture tests, which run only under `--capture-evidence=DIR`;
-with capture requested the suite is 509. `ruff check .` clean; `mypy .` strict clean over
+with capture requested the suite is 522. `ruff check .` clean; `mypy .` strict clean over
 46 source files; `pytest tests/environment` 21 passed.
 
 `[측정]` Per-scenario selectors at this revision: `ops_001` 14, `ops_002` 11, `ops_003` 8,
-`ops_004` 11, `sec_001` 25, `sec_002` 25, `sec_003` 44, `sec_004` 59. Each matches the
+`ops_004` 11, `sec_001` 25, `sec_002` 25, `sec_003` 44, `sec_004` 72. Each matches the
 count in that scenario's own `Result` section.
 
 Two statements that used to stand here are gone because the conditions they described

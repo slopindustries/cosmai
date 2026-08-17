@@ -3,8 +3,8 @@
 - Status: `DRAFT` — awaiting the captain's signature
 - Governing decision: [DP-005](../../docs/decisions/DP-005-two-part-pre-p1-execution.md)
 - Integrated experiment: [EXP-001](EXP-001-platform-core.md), `COMPLETED`, outcome `SUPPORTED`
-- Reviewed code revision: `139664424cf4ae21aa3ce054ba129afd617b9420` (`1396644`), branch `p0a/platform-core`
-- Evidence directory: [`evidence/2026-08-17-1396644/`](evidence/2026-08-17-1396644/)
+- Reviewed code revision: `f83fe3c9f9a0cf13de1d2d34995a1d45654cf00c` (`f83fe3c`), branch `p0a/platform-core`
+- Evidence directory: [`evidence/2026-08-17-f83fe3c/`](evidence/2026-08-17-f83fe3c/)
 - Review date and timezone: 2026-08-17, Asia/Seoul (UTC+09:00)
 - Reviewers: the project owner, with an [adversarial review](ADVERSARIAL-REVIEW-2026-08-17.md) of every `PASS` claim
 
@@ -25,21 +25,21 @@ The nine things this gate does not claim have their own section below.
 Every command below was run at the reviewed revision. The first draft of this block did not survive that check: it cited a test count from one tree and a lint result from another, and its `mypy` claim was false at the revision it named.
 
 ```sh
-./scripts/with-database.sh uv run pytest        # 507 passed, 2 skipped in 53.6 s
-./scripts/with-database.sh uv run pytest -n 4   # 507 passed, 2 skipped
+./scripts/with-database.sh uv run pytest        # 520 passed, 2 skipped in 54.3 s
+./scripts/with-database.sh uv run pytest -n 4   # 520 passed, 2 skipped
 uv run ruff check . && uv run mypy .            # clean; strict, 46 source files
 uv run pytest tests/environment                 # 21 passed — the boundary guard
 cd experiments/integrated-p0/dashboard && npm run build
 ```
 
-The two skips are the evidence-capture tests, which run only under `--capture-evidence=DIR`; with capture requested the suite is 509. Capturing is a separate act, which is why the recorded hashes can be verified at all:
+The two skips are the evidence-capture tests, which run only under `--capture-evidence=DIR`; with capture requested the suite is 522. Capturing is a separate act, which is why the recorded hashes can be verified at all:
 
 ```sh
 ./scripts/with-database.sh uv run pytest -k "ops_003 or sec_004" \
-    --capture-evidence=experiments/integrated-p0/evidence/2026-08-17-1396644
+    --capture-evidence=experiments/integrated-p0/evidence/2026-08-17-f83fe3c
 ```
 
-`[확인 사실]` Full transcript: [`pytest-output.txt`](evidence/2026-08-17-1396644/pytest-output.txt). Environment, tool versions, and per-selector counts: [`ENVIRONMENT.md`](evidence/2026-08-17-1396644/ENVIRONMENT.md). The four artifact hashes in that directory's `README.md` verify with `shasum -a 256 -c`.
+`[확인 사실]` Full transcript: [`pytest-output.txt`](evidence/2026-08-17-f83fe3c/pytest-output.txt). Environment, tool versions, and per-selector counts: [`ENVIRONMENT.md`](evidence/2026-08-17-f83fe3c/ENVIRONMENT.md). The four artifact hashes in that directory's `README.md` verify with `shasum -a 256 -c`.
 
 ## Charter exit criteria
 
@@ -64,7 +64,7 @@ Two further charter requirements are not numbered exit criteria and are recorded
 |---|---|---|
 | PostgreSQL runtime, migration mechanism, source-neutral transaction foundations | `PASS` | `0001_platform_core.sql` applied idempotently; the schema's constraints verified with `psql` alone, no Python involved |
 | API and worker process lifecycle, health, configuration validation, safe shutdown | `PASS` | `SEC-003`, 44 passed, cases a–f; a stop signal lets the running attempt finish first; `OPS-004`, 11 passed, health reflects the database and recovers without a restart |
-| Structured logs, metrics, **correlation**, redaction — and DP-005's "telemetry foundations" | `PASS` | `OPS-003`, 8 passed. One `correlation_id` returned the events of two worker processes across a process death, with a control proving an unrelated job's events are excluded. Captured artifact: [`ops-003-correlated-events.json`](evidence/2026-08-17-1396644/ops-003-correlated-events.json) and the log it was filtered from. Omitted from the first draft of this table, which left a DP-005 bullet unlinked |
+| Structured logs, metrics, **correlation**, redaction — and DP-005's "telemetry foundations" | `PASS` | `OPS-003`, 8 passed. One `correlation_id` returned the events of two worker processes across a process death, with a control proving an unrelated job's events are excluded. Captured artifact: [`ops-003-correlated-events.json`](evidence/2026-08-17-f83fe3c/ops-003-correlated-events.json) and the log it was filtered from. Omitted from the first draft of this table, which left a DP-005 bullet unlinked |
 
 ## Synthetic-handler coverage
 
