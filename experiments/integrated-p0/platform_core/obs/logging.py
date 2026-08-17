@@ -100,6 +100,19 @@ class StructuredLogger:
         stream = path.open("a", encoding="utf-8")
         return cls(stream=stream, level=level, clock=clock, owns_stream=True)
 
+    @classmethod
+    def resolved(cls, path: Path | None, level: str = DEFAULT_LEVEL) -> StructuredLogger:
+        """The logger an entrypoint runs with: the configured file, or standard error.
+
+        Both process entrypoints make the same choice, and OPS-003 depends on their
+        making it identically — its whole claim is that one identifier reaches the
+        events of several processes, which is only true if the processes write to
+        the same place. The choice therefore lives here rather than twice in the two
+        ``__main__`` modules. ``PlatformConfig`` is deliberately not the argument:
+        ``config`` imports this module, so taking the path keeps that one-way.
+        """
+        return cls(level=level) if path is None else cls.to_path(path, level=level)
+
     @property
     def level(self) -> str:
         return self._level

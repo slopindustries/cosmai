@@ -81,7 +81,12 @@ A retry button that re-runs work is easy. A retry that is safe has to hold two t
 
 ## Result
 
-- Last executed at: not executed
-- `NOT RUN`
-- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md)
+- Last executed at: 2026-08-17
+- `PASS`
+- Linked experiment measurement: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — 11 passed via `./scripts/with-database.sh uv run pytest experiments/integrated-p0/tests -k ops_002`. Evidence directory: `experiments/integrated-p0/evidence/2026-08-17-5b26d47/`.
+- All four cases executed. `POST /jobs/{id}/retry` accepts only from `FAILED`; cases b and c return `409` naming the state the job was in and the state a retry requires, and their job rows compare equal field by field including `updated_at`; case d returns `404` and the job count is unchanged.
+- Ambiguity resolved in favour of the Action text, and recorded rather than assumed: this scenario's *Input fixture* line says the exhausted job is the one `JOB-003` produces, but `JOB-003` uses `fail_transient`, which fails *before* it reaches its effect — so that fixture cannot satisfy Action step 1's "a handler that applies its durable effect on an attempt that then fails". A synthetic injector `apply_effect_then_fail` was added for exactly this. Without it, case a's "the effect count is the same before and after" would have been true for the uninteresting reason that there was never an effect to duplicate.
+- How the counter assertion was read: metrics are per process, so "moved by exactly 1" is observed as `0` in the shutdown report of the worker that exhausted the job and `1` in the report of the worker that ran the retried attempt. Two registries rather than one delta, which is a consequence of `CONTRACT-JOB@0.1` keeping metrics in process memory, and it still distinguishes "suppressed" from "never attempted" because the second process is the one that re-derived the key.
+- Case d also emits a refusal event, which this scenario's telemetry section did not require. A `404` on a retry is the case where an operator was acting on a stale list, and leaving it out of the log would make the one confusing outcome the only unexplainable one.
 - Known limitation: the retry is unauthenticated, as is everything on the loopback binding (`SEC-002`). Anything running on the host can retry any job, so this is evidence that retry is *idempotent*, not that it is *authorized*. Authorization is outside P0 and must be revisited before anything real is stored.
+- Known limitation: case c's lease is held by a name this process claimed under, not by a separate worker process. The refusal path never reads `lease_owner`, so the holder's identity is not what is under test; `JOB-006` is where a real second process contends.

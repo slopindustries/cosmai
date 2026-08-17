@@ -56,7 +56,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from platform_core.errors import ConfigurationInvalidError
-from platform_core.obs.logging import DEFAULT_LEVEL, require_known_level
+from platform_core.obs.logging import DEFAULT_LEVEL, LOG_SUFFIX, require_known_level
 from platform_core.obs.redaction import REDACTION_MARKER, is_redacted_key
 
 PREFIX: Final = "COSMA_"
@@ -120,6 +120,10 @@ class PlatformConfig:
     api_host: str
     api_port: int
     log_level: str
+    #: Where both entrypoints write their structured log, or ``None`` for standard
+    #: error. ``None`` is the ordinary case; a path is what makes the events of
+    #: several processes reachable from one place (OPS-003).
+    log_file: Path | None = None
     unrecognized_variables: tuple[str, ...] = ()
 
     def warnings(self) -> tuple[str, ...]:
@@ -165,6 +169,40 @@ def _level(value: str) -> str:
         return require_known_level(value)
     except ConfigurationInvalidError as error:
         raise _Rejected(error.summary) from None
+
+
+def _log_file(value: str) -> Path | None:
+    """Where the structured log is written, or ``None`` for standard error.
+
+    OPS-003 requires the events of several processes to be reachable through one
+    correlation identifier, and its preconditions leave the transport an
+    implementation choice. This is that choice: every process writes JSON Lines
+    into one file, and the operator API filters it. The alternative — a table —
+    would put telemetry inside the schema CONTRACT-JOB@0.1 fixes, so it would need
+    a migration and a contract amendment to reach the same result.
+
+    The file is **not** where the request says it is. A request names a correlation
+    identifier and nothing else; the path is operator configuration, resolved once
+    at startup, so no query can turn into a read of an arbitrary file.
+
+    Two refusals rather than corrections, for the reasons ``_loopback_host`` gives:
+    a suffix other than ``.jsonl`` would be silently dropped by the repository's
+    ``*.log`` rule and lost as gate evidence, and a directory that does not exist
+    would fail at the first event rather than at startup.
+    """
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    if path.suffix != LOG_SUFFIX:
+        raise _Rejected(
+            f"must name a file ending in {LOG_SUFFIX}, because the repository ignores "
+            "*.log and gate evidence has to stay reviewable"
+        )
+    if not path.parent.is_dir():
+        raise _Rejected(
+            f"must name a file in an existing directory, but {path.parent} is not one"
+        )
+    return path
 
 
 def _loopback_host(value: str) -> str:
@@ -215,6 +253,11 @@ SETTINGS: Final[Sequence[Setting]] = (
     Setting("COSMA_API_HOST", "api_host", _loopback_host, default=DEFAULT_API_HOST),
     Setting("COSMA_API_PORT", "api_port", _port, default="8000"),
     Setting("COSMA_LOG_LEVEL", "log_level", _level, default=DEFAULT_LEVEL),
+    # Absent means standard error, which is what every process does unless an
+    # operator asks for one shared file. The default is the empty string rather
+    # than ``None`` because ``None`` is how this table spells "required"; a
+    # *stated* empty value is still refused above, as every other setting's is.
+    Setting("COSMA_LOG_FILE", "log_file", _log_file, default=""),
 )
 
 KNOWN_NAMES: Final[frozenset[str]] = frozenset(setting.name for setting in SETTINGS)

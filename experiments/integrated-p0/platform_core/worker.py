@@ -431,10 +431,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             error_summary=invalid.summary,
         )
         return EXIT_CONFIGURATION_INVALID
-    logger = StructuredLogger(level=config.log_level)
-    for warning in config.warnings():
-        logger.warning("worker.configuration_warning", detail=warning)
-    return Worker(config, options, logger).run()
+    # Standard error unless an operator configured a file. OPS-003 needs several
+    # processes' events reachable from one place; `StructuredLogger.resolved` is
+    # where that choice lives so this and the API entrypoint cannot diverge.
+    logger = StructuredLogger.resolved(config.log_file, config.log_level)
+    try:
+        for warning in config.warnings():
+            logger.warning("worker.configuration_warning", detail=warning)
+        return Worker(config, options, logger).run()
+    finally:
+        # Closes only a stream this logger opened; standard error is left alone.
+        logger.close()
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised as a process, not imported

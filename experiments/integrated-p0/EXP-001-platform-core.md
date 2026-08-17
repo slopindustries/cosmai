@@ -401,6 +401,61 @@ Two further findings need no action now and are recorded so they are not mistake
 
 `secret-setup.md` asks for "the same guard" at application startup and at test-session start. Two implementations of one guard is a contradiction: they can disagree, and the one that disagrees is the leak. The cost is the import direction noted above, whose failure mode is a loud collection error when P0 is deleted — strictly better than a silent divergence nobody is looking for. Supporting measurements: the paired entrypoint cases above, and the root-equality assertion that fires if the two halves ever measure different trees.
 
+### S5 — the operator surface
+
+```text
+[측정] Every operator question was answered without the database, and the seal that proves it fires.
+```
+
+- procedure: `OPS-001`, three failure shapes, six questions each, answered through HTTP only. `psycopg.connect` and `psycopg.Connection.connect` are both replaced for the duration of every assertion, and a control test shows the replacement raises.
+- observed: 14 passed. All six questions answered from `GET /jobs`, `GET /jobs/{id}`, and `GET /jobs/{id}/attempts`. **No fourth navigation object was required**, and a test asserts the set of consulted paths is a subset of health, jobs, and attempts, so a fourth added later fails rather than passing unnoticed.
+- three derived fields were added to answer questions 5 and 6 without the operator doing the contract's arithmetic: `attempts_remaining`, `attempt_budget_spent`, `error_class_retryable`. All are computed from columns the contract already fixes; no stored field was added.
+- captured_at: 2026-08-17
+- limitation: OQ-005's evidence list also asks "by which version". P0-A has no versioned producer, so the question has no answer here and is left absent rather than approximated by the code revision.
+
+```text
+[측정] Retry through the operator surface does not bypass the idempotency boundary.
+```
+
+- procedure: `OPS-002`. A job applies its effect on an attempt that then fails, exhausts its budget, is retried through `POST /jobs/{id}/retry`, and runs to `SUCCEEDED`.
+- observed: 11 passed. The effect count is identical before and after, and the suppressed-duplicate counter reads 0 in the exhausting worker's report and 1 in the retried worker's — which is what separates "suppressed" from "never attempted". Refusals on a `SUCCEEDED` job and a `RUNNING` job return `409` naming both the current and the required state, and their job rows compare equal field by field including `updated_at`. A retry on an unknown identity returns `404` and creates nothing.
+- captured_at: 2026-08-17
+- limitation: unauthenticated, like everything on the loopback binding. This is evidence that retry is idempotent, not that it is authorized.
+
+```text
+[측정] One correlation identifier reconstructs a history that crosses a process death.
+```
+
+- procedure: `OPS-003`. A worker applies its effect and ends its own process; a second worker reclaims and finishes; `GET /events?correlation_id=` is asked once.
+- observed: 8 passed. Nine events returned for one identifier, carrying two distinct `worker_id` values with an identical `correlation_id` — invariant I5 across a boundary no in-memory context survives. The claim of each attempt, `job.effect_applied` once, `job.attempt_abandoned` with `LEASE_ABANDONED`, `job.effect_suppressed` naming the `effect_key`, and the terminal transition are all present. The control holds: an unrelated job's events are in the same file and absent from the response.
+- captured_at: 2026-08-17
+- limitation: correlation is per job. P0-A has no operation fanning out across several jobs, which is exactly the shape a P0-B collection run over many pages will have.
+
+```text
+[측정] Health reflects the database, not the API's own liveness, and recovers without a restart.
+```
+
+- procedure: `OPS-004`. A second API process was pointed at a database that did not exist — the variant the scenario permits — and that database was then created while the process kept running. Stopping the shared cluster was rejected because it would take the rest of the run down.
+- observed: 11 passed. Unhealthy with a reason naming the database, then healthy again with the same `pid` and exactly one `api.started` event. Transition counts match the jobs run; the `FAILED` count moves by exactly 1; three control counters stay at 0 across both steps.
+- captured_at: 2026-08-17
+- limitation: metrics are per process and in memory, so the platform can report that nothing has been claimed but not that no worker is running. Step 5 shows the consequence.
+
+```text
+[추론] A scenario of mine asked which error class a health check produces. The answer is none.
+```
+
+`OPS-004` originally classified an unreachable database as `PLATFORM_TRANSIENT` under the contract's SQLSTATE rule, and the implementation measured `CONFIGURATION_INVALID` instead. Both the scenario and the contract were wrong in different ways. `[측정]` A connect-time failure carries `sqlstate = None`, so the rule's transient branch is unreachable from a failure to connect; the contract meanwhile already listed "a socket directory with no socket" under `CONFIGURATION_INVALID`, contradicting my scenario independently of what psycopg reports. `[추론]` The deeper error was mine and was a category one: health reports reachability, and no job failed, so nothing is classified. The contract now separates the three situations it had collapsed — a connect failure at startup, which must stay non-retryable because `SEC-001` and `SEC-003` depend on a supervisor failing identically; a statement failure on a live connection, which is where the `08`/`53`/`57` branches actually apply; and a running process whose database goes away, which classifies nothing.
+
+`[확인 사실]` **The transient branch is unexercised.** No scenario kills a connection mid-statement, so classes `08`, `53`, and `57` have never been reached. The contract now says so, and the gate must record it as written-but-unmeasured rather than as verified behavior.
+
+```text
+[추론] Evidence capture was split by what the artifact's nature is, not by convenience.
+```
+
+`experiments/integrated-p0/evidence/2026-08-17-5b26d47/` holds what does not depend on the final revision: the environment, a real structured-log sample, the correlated event set `OPS-003` demands as an artifact, and the `SEC-002` readings. The full pytest transcript stays with S6, because a copy taken now would describe a working tree nobody can check out. The split is what keeps descope ladder item 3 from leaving the gate with prose and no artifacts.
+
+One judgement in that directory was reversed on review. `sec-002-listeners.txt` first committed the whole `lsof` listing, reasoning that `SEC-002` calls a claim in a document insufficient. That reasoning holds against a *filtered* listing, and the replacement is not one: it records how many sockets were listening and how many were PostgreSQL, both complete answers to a narrower question, with the total kept so a zero cannot read as a failed command. The original named unrelated processes on this machine, their pids, and their ports — host state that is not this project's data, and `public` in [Data Handling](../../docs/conventions/data-handling.md) means redistributable.
+
 ## Interpretation
 
 ```text

@@ -59,7 +59,7 @@ from psycopg.types.json import Jsonb
 
 from platform_core.config import PlatformConfig
 from platform_core.errors import ConfigurationInvalidError, ErrorClass, PlatformError
-from platform_core.jobs.state import AttemptOutcome, JobState
+from platform_core.jobs.state import JOB_STATES, AttemptOutcome, JobState
 from platform_core.obs.correlation import correlation_context, new_correlation_id
 from platform_core.obs.logging import StructuredLogger
 from platform_core.obs.metrics import MetricsRegistry
@@ -371,6 +371,41 @@ from job
 where id = %(job_id)s
 """
 
+# The same columns as READ_JOB, because an operator scanning a list and an operator
+# opening one job should not be reading two different shapes of the same row.
+#
+# The `%(state)s::text is null` form is what makes one statement serve both the
+# filtered and the unfiltered list. The cast is required rather than cosmetic:
+# without it the server cannot infer a type for a parameter compared only against
+# null. Newest first, because the failure an operator is looking for is almost
+# always the most recent one; `id` breaks ties so that paging is stable when two
+# jobs share a creation instant.
+LIST_JOBS = """
+select id, handler, payload, state, attempt_count, max_attempts, available_at,
+       lease_owner, lease_expires_at, terminal_reason, correlation_id,
+       created_at, updated_at
+from job
+where %(state)s::text is null or state = %(state)s::text
+order by created_at desc, id desc
+limit %(limit)s offset %(offset)s
+"""
+
+COUNT_JOBS = """
+select count(*) as matched
+from job
+where %(state)s::text is null or state = %(state)s::text
+"""
+
+# Every state that has at least one job, for the platform-health summary. States
+# with none are absent from the result and are filled in by the caller, so a
+# reader never has to know whether a missing key means zero or means the state
+# does not exist.
+COUNT_BY_STATE = """
+select state, count(*) as jobs
+from job
+group by state
+"""
+
 # `error_detail` is selected. Which representation may show it is decided one
 # layer up, by `api.app`, and SEC-004 requires the default one not to — a read
 # that omitted the column here would make the protected representation impossible
@@ -659,6 +694,55 @@ class JobStore:
         with self._cursor() as cursor:
             cursor.execute(READ_JOB, {"job_id": job_id})
             return cursor.fetchone()
+
+    def list_jobs(
+        self,
+        state: JobState | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """A page of jobs, newest first, optionally of one state only.
+
+        The operator path OPS-001 takes to *find* a failure before inspecting it.
+        ``state`` is a ``JobState`` rather than a string so that the closed set of
+        the CHECK constraint is the only thing that can reach the statement.
+        """
+        parameters = {
+            "state": None if state is None else state.value,
+            "limit": int(limit),
+            "offset": int(offset),
+        }
+        with self._cursor() as cursor:
+            cursor.execute(LIST_JOBS, parameters)
+            return cursor.fetchall()
+
+    def count_jobs(self, state: JobState | None = None) -> int:
+        """How many jobs the same filter matches, so a page can say what it is part of.
+
+        A second statement, and therefore a second instant: under a concurrent
+        write it can disagree with the page it accompanies by one job. That is
+        acceptable for an operator count and is not acceptable for anything that
+        decides a transition, which is why no transition reads it.
+        """
+        with self._cursor() as cursor:
+            cursor.execute(COUNT_JOBS, {"state": None if state is None else state.value})
+            row = cursor.fetchone()
+        return 0 if row is None else int(row["matched"])
+
+    def count_by_state(self) -> dict[str, int]:
+        """Jobs per state, with every state present even when it holds none.
+
+        Read by ``/health``. Its second job is to be a statement the database has
+        to answer *from the platform schema*: a database that exists but has no
+        ``job`` table fails here, which is the honest answer for platform health
+        and is what a bare ``select 1`` would have called healthy.
+        """
+        counted = dict.fromkeys(JOB_STATES, 0)
+        with self._cursor() as cursor:
+            cursor.execute(COUNT_BY_STATE)
+            for row in cursor.fetchall():
+                counted[str(row["state"])] = int(row["jobs"])
+        return counted
 
     def read_attempts(self, job_id: UUID) -> list[dict[str, Any]]:
         """Every attempt of one job, oldest first, with the protected column included.

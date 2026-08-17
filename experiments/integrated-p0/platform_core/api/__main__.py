@@ -176,20 +176,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             error_summary=invalid.summary,
         )
         return EXIT_CONFIGURATION_INVALID
-    logger = StructuredLogger(level=config.log_level)
-    for warning in config.warnings():
-        logger.warning("api.configuration_warning", detail=warning)
+    # Standard error unless an operator configured a file. OPS-003 needs the API
+    # and the workers to write to one place; which place is `COSMA_LOG_FILE`, and
+    # the choice itself lives on the logger so both entrypoints make it identically.
+    logger = StructuredLogger.resolved(config.log_file, config.log_level)
     try:
-        listener = listening_socket(config.api_host, config.api_port)
-    except OSError as refused:
-        logger.error(
-            "api.bind_refused",
-            host=config.api_host,
-            port=config.api_port,
-            error_summary=str(refused),
-        )
-        return EXIT_UNAVAILABLE
-    return serve(config, logger, listener)
+        for warning in config.warnings():
+            logger.warning("api.configuration_warning", detail=warning)
+        try:
+            listener = listening_socket(config.api_host, config.api_port)
+        except OSError as refused:
+            logger.error(
+                "api.bind_refused",
+                host=config.api_host,
+                port=config.api_port,
+                error_summary=str(refused),
+            )
+            return EXIT_UNAVAILABLE
+        return serve(config, logger, listener)
+    finally:
+        # Closes only a stream this logger opened; standard error is left alone.
+        logger.close()
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised as a process, not imported

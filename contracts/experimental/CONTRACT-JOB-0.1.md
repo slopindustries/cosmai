@@ -169,6 +169,14 @@ This rule is what makes I2 an invariant rather than a hope. A lease that is only
 
 This rule is what keeps a mid-job connection drop and a startup misconfiguration from collapsing into one indistinguishable failure. It was written after implementing the connection layer exposed that the table had no answer.
 
+**The rule classifies a failure the platform records. It does not describe reachability.** Three situations are involved and only the first two produce an error class at all:
+
+- **Failing to connect at startup** carries no SQLSTATE — psycopg reports it with `sqlstate = None` — so it always lands in `CONFIGURATION_INVALID` and the process refuses to start. That is the intended outcome, and `SEC-001` and `SEC-003` depend on it: a supervisor that restarts must fail identically rather than eventually succeed.
+- **A statement failing on an established connection** does carry a SQLSTATE, and this is where the `08`, `53`, and `57` branches apply. Class `08007` in particular is the unknown-outcome case [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md) names.
+- **A running process whose database becomes unreachable** classifies nothing, because no job failed. It reports unhealthy with a reason and returns to healthy when the database returns, without restarting. Dying there would convert a transient fault into an outage, and the process holds nothing that cannot be reclaimed — an expired lease is claimable by definition.
+
+`[확인 사실]` The transient branch is **unexercised in P0-A**: no scenario kills a connection mid-statement, so classes `08`, `53`, and `57` have never been reached. The branch is written and reviewable but carries no measurement, and the gate must record it as such rather than as verified behavior.
+
 ## Provenance and security
 
 - **Required provenance fields:** `correlation_id` on every job, attempt, log event, and API response. This is platform provenance, not source provenance; source and Raw provenance are P0-B concerns.

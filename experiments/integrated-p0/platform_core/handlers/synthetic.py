@@ -5,6 +5,9 @@ exercising:
 
 ``succeed``            returns, leaving one effect. The base path of JOB-001.
 ``fail_transient``     raises a retryable failure until a stated attempt passes.
+``apply_effect_then_fail``
+                       applies its effect and *then* raises a retryable failure,
+                       so an effect exists before the operator retry in OPS-002.
 ``fail_permanent``     always raises a non-retryable failure.
 ``halt_before_effect`` kills its own process before the effect is applied.
 ``halt_after_effect``  kills its own process after the effect is applied.
@@ -94,6 +97,34 @@ def fail_transient(context: JobContext) -> None:
     context.apply_effect(effect_key_for(context), _effect_value(context, "fail_transient"))
 
 
+def apply_effect_then_fail(context: JobContext) -> None:
+    """Apply the durable effect, *then* fail through ``fail_until_attempt``.
+
+    OPS-002 case a needs a durable effect that already exists at the moment the
+    operator retries, so that the retried attempt has a suppression to produce and
+    the counter can distinguish "suppressed" from "never attempted". Every other
+    injector makes that impossible: ``succeed`` never fails, ``fail_transient``
+    fails *before* it reaches its effect, and the ``halt`` handlers do not fail at
+    all — they end their process, which is JOB-005's interruption rather than a
+    failure the operator would retry.
+
+    Without this handler, case a's "the effect count is the same before and after
+    the retry" would be true for the uninteresting reason that there was never an
+    effect to duplicate.
+
+    The order of the two statements is the whole handler. Reversing them would make
+    this ``fail_transient`` with extra steps.
+    """
+    context.apply_effect(effect_key_for(context), _effect_value(context, "apply_effect_then_fail"))
+    threshold = context.payload_field(FAIL_UNTIL_ATTEMPT_FIELD)
+    limit = context.max_attempts if not isinstance(threshold, int) else threshold
+    if context.attempt_no <= limit:
+        raise PlatformTransientError(
+            "the retryable failure injector refused this attempt after applying its effect",
+            {"attempt_no": context.attempt_no, "fails_through_attempt": limit},
+        )
+
+
 def fail_permanent(context: JobContext) -> None:
     """Always raise a failure the contract forbids retrying."""
     raise PlatformPermanentError(
@@ -172,6 +203,7 @@ def _halt(context: JobContext) -> None:
 SYNTHETIC_HANDLERS: Final[dict[str, Any]] = {
     "succeed": succeed,
     "fail_transient": fail_transient,
+    "apply_effect_then_fail": apply_effect_then_fail,
     "fail_permanent": fail_permanent,
     "halt_before_effect": halt_before_effect,
     "halt_after_effect": halt_after_effect,
