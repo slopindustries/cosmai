@@ -73,10 +73,11 @@ from platform_core.worker import EXIT_OK, parse_report
 from psycopg import sql
 
 from tests.conftest import (
-    EXPERIMENT_ROOT,
+    CAPTURE_OPTION,
     LEASE_SECONDS,
     WORKER,
     all_effects,
+    capture_directory,
     cloned_database,
     effects_of,
     keep_databases,
@@ -1403,25 +1404,32 @@ def test_ops_004_step_5_is_healthy_but_does_not_read_as_an_empty_queue(
 # the code that was asserted, and a reviewer has no way to tell.
 
 
-def evidence_directory() -> Path:
-    """The single directory named for the revision under review, or None."""
-    root = EXPERIMENT_ROOT / "evidence"
-    if not root.is_dir():
-        return root / "absent"
-    dated = sorted(child for child in root.iterdir() if child.is_dir())
-    return dated[-1] if dated else root / "absent"
+def test_ops_003_the_evidence_artifacts_are_written(
+    ops_003_run: Ops003Run, request: pytest.FixtureRequest
+) -> None:
+    """Write the correlated event set and the log it came from, when asked to.
 
+    Capture is opt-in through ``--capture-evidence=DIR``. An earlier version wrote
+    into the committed evidence directory on every run, which made the hashes
+    recorded there unverifiable and turned capture into a side effect of testing
+    rather than a deliberate act. The directory also has to be chosen *after* the
+    run, since it is named for the revision whose code produced the artefacts.
 
-def test_ops_003_the_evidence_artifacts_are_written(ops_003_run: Ops003Run) -> None:
-    """Write the correlated event set and the log it came from.
-
-    Regenerated on every run of this module, so neither file can describe behaviour
-    the assertions above did not check. The assertions remain the authority.
+    The assertions above remain the authority; this only writes what they checked.
     """
-    target = evidence_directory()
-    if not target.is_dir():
-        pytest.skip(f"no evidence directory at {target}")
+    target = capture_directory(request)
+    if target is None:
+        pytest.skip(f"capture not requested; pass {CAPTURE_OPTION}=DIR")
 
+    control: dict[str, Any] = {
+        "job_id": str(ops_003_run.other_job_id),
+        "correlation_id": ops_003_run.other_correlation_id,
+        "events_returned_by_its_own_identifier": len(ops_003_run.other_events.json["events"]),
+        "present_in_this_response": any(
+            record.get("job_id") == str(ops_003_run.other_job_id)
+            for record in ops_003_run.records
+        ),
+    }
     payload = {
         "captured_from": "experiments/integrated-p0/tests/test_ops.py::ops_003_run",
         "job_id": str(ops_003_run.job_id),
@@ -1429,17 +1437,7 @@ def test_ops_003_the_evidence_artifacts_are_written(ops_003_run: Ops003Run) -> N
         "response": ops_003_run.events.json,
         "job": ops_003_run.job.json,
         "attempts": ops_003_run.attempts.json,
-        "control": {
-            "job_id": str(ops_003_run.other_job_id),
-            "correlation_id": ops_003_run.other_correlation_id,
-            "events_returned_by_its_own_identifier": len(
-                ops_003_run.other_events.json["events"]
-            ),
-            "present_in_this_response": any(
-                record.get("job_id") == str(ops_003_run.other_job_id)
-                for record in ops_003_run.records
-            ),
-        },
+        "control": control,
         "unknown_identifier_returned": len(ops_003_run.unknown_events.json["events"]),
     }
     (target / "ops-003-correlated-events.json").write_text(
@@ -1454,4 +1452,4 @@ def test_ops_003_the_evidence_artifacts_are_written(ops_003_run: Ops003Run) -> N
     written = (target / "ops-003-correlated-events.json").read_text(encoding="utf-8")
     assert ops_003_run.correlation_id in written
     assert SENSITIVE_MARKER not in written
-    assert payload["control"]["present_in_this_response"] is False
+    assert control["present_in_this_response"] is False

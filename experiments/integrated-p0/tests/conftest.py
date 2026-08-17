@@ -90,6 +90,9 @@ XDIST_WORKER_VARIABLE = "PYTEST_XDIST_WORKER"
 
 KEEP_OPTION = "--keep-database"
 
+#: Opt-in evidence capture. See `capture_directory`.
+CAPTURE_OPTION = "--capture-evidence"
+
 #: The import root a spawned process needs on its path. ``platform_core`` lives
 #: inside it, and this file is two levels down from it.
 EXPERIMENT_ROOT = Path(__file__).resolve().parents[1]
@@ -139,6 +142,16 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         help="keep each test's cloned database instead of dropping it, for debugging",
+    )
+    parser.addoption(
+        CAPTURE_OPTION,
+        default=None,
+        metavar="DIR",
+        help=(
+            "write scenario evidence artefacts into DIR. Absent by default: an "
+            "ordinary run must not rewrite committed evidence, or the recorded "
+            "hashes can never hold and capture stops being a deliberate act"
+        ),
     )
 
 
@@ -508,6 +521,23 @@ def cloned_database(
 
 def keep_databases(request: pytest.FixtureRequest) -> bool:
     return bool(request.config.getoption(KEEP_OPTION))
+
+
+def capture_directory(request: pytest.FixtureRequest) -> Path | None:
+    """Where to write evidence artefacts, or ``None`` when none was asked for.
+
+    Capture is opt-in because the alternative was tried and failed: tests that wrote
+    into the committed evidence directory rewrote three artefacts on every run, so the
+    hashes recorded beside them could never verify, and a reviewer following the
+    directory's own instructions concluded the evidence had been tampered with.
+    """
+    stated = request.config.getoption(CAPTURE_OPTION)
+    if not stated:
+        return None
+    target = Path(str(stated)).expanduser().resolve()
+    if not target.is_dir():
+        raise pytest.UsageError(f"{CAPTURE_OPTION} names no directory: {target}")
+    return target
 
 
 @pytest.fixture
