@@ -17,6 +17,14 @@ directory for executable checks on the repository itself — the development
 environment, its launchers, and its guards — none of which are promotion
 candidates. It verifies no P0 behavior.
 
+``normaliz*`` is the one entry that collides with ordinary programming English.
+The prohibition targets the domain sense — `Normalized Schema 0.x`, the normalizer
+provider protocol, a normalization run — and the guard cannot tell that apart from
+"normalize this key to lowercase". Permitting the generic sense would let
+``normalized_result`` through later, so the ban stays blunt and P0-A code uses a
+different verb for the generic operation: ``casefold``, ``canonical``, or ``fold``.
+The cost is one renamed helper; the alternative is a guard that stops guarding.
+
 Known coverage limit: TypeScript and TSX identifiers are checked by path name
 only, because parsing them would mean carrying a second language toolchain into
 a Python test. The P0-A dashboard is three screens over a source-neutral API

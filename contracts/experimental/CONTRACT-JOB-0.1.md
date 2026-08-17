@@ -150,6 +150,10 @@ This rule is what makes I2 an invariant rather than a hope. A lease that is only
 - **Required provenance fields:** `correlation_id` on every job, attempt, log event, and API response. This is platform provenance, not source provenance; source and Raw provenance are P0-B concerns.
 - **Credential handling:** P0-A resolves no credential. The platform verifies only that the configured secret-store location lies outside the repository working tree, and refuses to start otherwise. `credential_ref` semantics belong to P0-B under [OQ-007](../../docs/open-questions/OQ-007-credential-scope.md).
 - **Redacted or prohibited fields:** any mapping key matching, case-insensitively, `password`, `token`, `secret`, `authorization`, `cookie`, `api_key`, `apikey`, or `credential` is replaced with a redaction marker in structured logs, error summaries, and API responses. `error_detail` is additionally protected as described above.
+
+  **Matching is containment, not equality.** A key is sensitive if a listed term appears in it once separators are removed, so `db_password`, `X-Api-Key`, and `refreshToken` are all redacted. Equality would let every one of those through while satisfying a literal reading of the list. Over-redaction is a legible loss; under-redaction is a leak.
+
+  **`error_summary` carries a failure class, never a payload value.** The key-based rule above is defined over mappings, and a summary is text, so applying it there is best effort by construction: a value written into prose with no key beside it cannot be matched. The obligation therefore sits on the producer — a summary states what failed and why, and quotes no input — with key-and-value masking in text as a second line of defence rather than the boundary itself. A scenario may not treat text masking as evidence that a summary is safe.
 - **Data class constraints:** every value handled in P0-A is synthetic and `public`. No fixture, log, or screenshot may contain a real credential.
 - **Outbound or source policy constraints:** P0-A makes no outbound request. The database is reachable only over a local Unix socket and has no TCP listener at all. Operator surfaces bind to loopback, and a non-loopback bind is refused as `CONFIGURATION_INVALID` rather than merely being off by default — the charter asks for a default, and P0-A has no reason to need the weaker form. `SEC-002` is the acceptance scenario.
 
@@ -185,3 +189,4 @@ A job with `handler = "succeed"`, `max_attempts = 3`, and an opaque payload: cla
 | Version | Date | Change | Evidence or decision |
 |---|---|---|---|
 | `0.1` | 2026-08-17 | Initial experimental version, written before implementation | [DP-006](../../docs/decisions/DP-006-p0a-platform-foundation.md), [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) |
+| `0.1` | 2026-08-17 | Clarified completion fencing, redaction key matching, and the `error_summary` obligation. No behavior change: each records what the text already required but did not say precisely enough to implement one way. | Surfaced while implementing `obs/` and `errors.py` against this contract |

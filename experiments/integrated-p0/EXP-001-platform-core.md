@@ -132,9 +132,58 @@ Concurrency, retries, failure injection, and cleanup are specified per scenario 
 
 Record direct experimental outcomes as `[측정]`. Include input size, environment, execution time, units, and error bounds or known limits.
 
+Slice results are appended as they are produced. The formal evidence run in S6 supersedes none of them; it repeats them from one recorded revision so the gate reads a single consistent set.
+
+### S0 — environment and boundary
+
 ```text
-[측정] not yet executed
+[측정] The repository-local cluster starts and is reachable over its Unix socket only.
 ```
+
+- procedure: `./scripts/with-database.sh sh -c 'psql -h "$COSMA_DB_HOST" -d "$COSMA_DB_NAME" -Atc "select current_database(), version(), inet_server_addr() is null"'`
+- observed: `cosma_p0|PostgreSQL 18.4 on aarch64-apple-darwin25.6.0, compiled by clang version 21.1.8, 64-bit|t`
+- corroboration: `lsof -nP -iTCP -sTCP:LISTEN` lists no PostgreSQL process
+- captured_at: 2026-08-17
+- limitation: this is partial `SEC-002` evidence covering the database only. The operator API does not exist yet, and no scenario has been run.
+
+```text
+[측정] The boundary guard fails on a real violation rather than only on a planted one.
+```
+
+- procedure: `uv run pytest tests/environment/test_p0a_boundary_guard.py` against S1 work in progress
+- observed: 10 findings across two files, all on the identifier `normaliz*`, none from comments or docstrings
+- classification: **specification failure**, not implementation failure. The `normaliz*` entry targets the domain sense (`Normalized Schema 0.x`, the normalizer provider protocol) and cannot distinguish it from "normalize a key to lowercase". Weakening the entry would let `normalized_result` pass later, so the guard was kept and the identifiers were renamed. The substitutes (`casefold`, `canonical`, `fold`) are recorded in the guard's own docstring so the next task does not rediscover this.
+- captured_at: 2026-08-17
+- limitation: says nothing about whether the guard's other entries are correctly scoped. Only `normaliz*` has been tested against real code so far.
+
+### S1 — configuration, logging, redaction, correlation, metrics
+
+```text
+[측정] The platform instrumentation layer passes its checks without a database.
+```
+
+- procedure: `uv run pytest`, `uv run ruff check .`, `uv run mypy .`
+- observed: 163 passed in 1.07 s; ruff clean; mypy strict clean across 19 source files; boundary guard green
+- environment: Python 3.13, dependencies from `uv.lock`, no PostgreSQL involved
+- captured_at: 2026-08-17
+- limitation: partial `SEC-003` and `SEC-004` coverage only. No entrypoint exists, so "the process exits non-zero" is observed through a configuration-loading subprocess rather than through the worker or API. `SEC-004` needs the API's two representations and a dashboard screenshot, none of which exist yet.
+
+```text
+[측정] The text-redaction path failed on a sensitive value that a harmless pair preceded.
+```
+
+- procedure: `redact_text('rejected: api_key=marker-must-not-leak-42')` during S1
+- observed: the input was returned unchanged. The pattern matched `key='rejected'` and swallowed `api_key=marker-must-not-leak-42` as its value, so the sensitive key was never tested. The same input without the leading pair masked correctly.
+- classification: **implementation failure.** The test asserted the contract; the pattern admitted any key rather than only a sensitive one.
+- resolution: the pattern is generated from the redacted-key set, so a harmless pair cannot shield a sensitive one. Regression tests cover a preceding harmless pair, several sensitive pairs in one string, six spellings of a separated key, and a detection control.
+- captured_at: 2026-08-17
+- limitation: key-based matching cannot reach a value written into prose with no key beside it. That limit is now stated as a producer obligation in the contract rather than left to the masking function.
+
+```text
+[추론] A detection control is what turned this from an untested path into a caught defect.
+```
+
+SEC-004 requires a marker under an ordinary key precisely so that "nothing leaked" is distinguishable from "nothing was looked at." The failing case here is the same shape one step earlier: had the scenario asked only that a sensitive value be absent, the unchanged string would have satisfied it — the marker was absent from the output for the trivial reason that the output was the input. Supporting measurements: the failing assertion above, and the passing control asserting an ordinary key's value survives.
 
 ## Interpretation
 
