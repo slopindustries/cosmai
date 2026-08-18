@@ -29,6 +29,15 @@ from typing import Any, Literal, NamedTuple, Self, get_args
 
 #: The contract this package implements. Raised when a change would break an
 #: add-on written against the previous value; see DP-008 D3.
+#:
+#: `[확인 사실]` 1.0 was amended in place on 2026-08-18 to forbid an importer from
+#: declaring `[declares].endpoints`, which had parsed and then been ignored. Under
+#: the rule above that tightening is breaking and would deserve 1.1 — it was made in
+#: place because **no add-on existed to break**, and because `addon_api` is
+#: `ACCEPTED_FOR_POC` rather than `CONTRACTED` (DP-008 defers that until P0-B
+#: evidence supports it). Recorded here so the exception reads as a decision with a
+#: stated reason rather than as the rule not being followed. The reason expires the
+#: moment a second party writes an add-on.
 CONTRACT_VERSION = "1.0"
 
 Kind = Literal["collector", "importer", "normalizer"]
@@ -167,6 +176,17 @@ class Declarations:
     The operator approves these into the source row's outbound profile before
     they become permission. An add-on cannot widen its own allowlist, so this
     block is a request the host reads when presenting a source for approval.
+
+    ``needs_credential`` is the field most easily misread. It does **not** grant an
+    add-on the ability to resolve a credential — no context does, for any kind
+    (DP-008 D4). It tells the *platform* that this source's requests must carry
+    one, so the platform resolves it, attaches it, and strips it back out of
+    anything it records. An add-on declaring it still never sees a value.
+
+    A declaration a kind's capabilities cannot honour is refused at load time by
+    :func:`_check_kind_consistency` rather than ignored, because a silently ignored
+    declaration is undiscoverable: the author believes they requested something and
+    nothing ever says otherwise.
     """
 
     hosts: tuple[str, ...] = ()
@@ -345,10 +365,14 @@ def _check_kind_consistency(manifest: AddonManifest, where: str) -> None:
             raise ManifestError(
                 f"{where}: only a normalizer declares an output contract version"
             )
-    if manifest.kind == "importer" and manifest.declares.hosts:
+    if manifest.kind == "importer" and (manifest.declares.hosts or manifest.declares.endpoints):
+        # `needs_credential` and `streams` stay legal for an importer and that is
+        # deliberate: the platform may need a credential to open a protected input,
+        # and `ImportContext` carries `advance_cursor`. Only the two network-shaped
+        # declarations are meaningless without `fetch`.
         raise ManifestError(
-            f"{where}: an importer receives no network capability, "
-            "so [declares].hosts must be empty"
+            f"{where}: an importer receives no network capability, so "
+            "[declares].hosts and [declares].endpoints must be empty"
         )
 
 

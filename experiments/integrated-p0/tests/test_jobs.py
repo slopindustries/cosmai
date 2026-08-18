@@ -53,6 +53,7 @@ from platform_core.jobs.state import (
 )
 from platform_core.jobs.store import CLAIM_NEXT, Backoff, JobStore
 from platform_core.obs.metrics import MetricsRegistry
+from psycopg import sql
 from psycopg.rows import dict_row
 
 from tests.conftest import (
@@ -178,15 +179,41 @@ def test_job_001_produces_exactly_one_durable_effect(job_001_run: ScenarioRun) -
     assert effect["applied_at"] is not None
 
 
+#: What migration `0001` creates, plus the applier's own ledger.
+PLATFORM_TABLES = frozenset({"job", "job_attempt", "platform_effect", "schema_migrations"})
+
+#: What migration `0002_domain.sql` creates (DP-008 D5). Listed rather than derived so
+#: that a new domain table makes the test below fail and be read, instead of being
+#: absorbed silently into a wildcard.
+DOMAIN_TABLES = frozenset(
+    {"source", "source_cursor", "raw_envelope", "raw_item", "snapshot", "snapshot_item"}
+)
+
+
 def test_job_001_writes_no_table_beyond_the_three_and_the_migration_ledger(
-    job_001_run: ScenarioRun,
+    job_001_run: ScenarioRun, connection: psycopg.Connection[Any]
 ) -> None:
     """"No write to any table other than the three above and schema_migrations."
 
-    Enforced as an absence of tables rather than an absence of rows: P0-A has
-    exactly four, so a domain-shaped side channel would have to appear here first.
+    **Restated on 2026-08-18 for P0-B.** This asserted that the database held exactly
+    four tables, which was a true statement of the P0-A boundary and is now false:
+    [DP-008](../../../docs/decisions/DP-008-addon-architecture.md) D5 adds the domain
+    tables deliberately. Classified as a specification failure rather than an
+    implementation one — the code is right and the encoded claim expired.
+
+    The scenario's own obligation is unchanged and is now checked more directly. Under
+    P0-A a domain-shaped side channel would have shown up as an unexpected *table*,
+    because none existed. Now that they do exist, the signal is an unexpected *row*:
+    a platform scenario running a synthetic handler must leave every domain table
+    empty. That is stronger evidence for the same claim, not weaker.
     """
-    assert job_001_run.tables == {"job", "job_attempt", "platform_effect", "schema_migrations"}
+    assert job_001_run.tables == PLATFORM_TABLES | DOMAIN_TABLES
+
+    for table in sorted(DOMAIN_TABLES):
+        row = connection.execute(
+            sql.SQL("select count(*) from {}").format(sql.Identifier(table))
+        ).fetchone()
+        assert row is not None and row[0] == 0, f"a platform scenario wrote into {table}"
 
 
 def test_job_001_emits_one_event_per_transition_with_the_required_fields(

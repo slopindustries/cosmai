@@ -77,9 +77,19 @@ SECRET_SETUP_POINTER: Final = "docs/conventions/secret-setup.md"
 WORKING_TREE_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 
 #: Variables this stage recognises but does not turn into a configuration field.
-#: Naming them keeps ``scripts/with-secret-source.sh`` out of the
-#: unknown-variable report.
-RECOGNIZED_UNUSED: Final[frozenset[str]] = frozenset({SECRET_STORE_VARIABLE})
+#: Naming them keeps ``scripts/with-secret-source.sh`` and the add-on host out of
+#: the unknown-variable report.
+#:
+#: ``COSMA_ADDON_DIR`` is read by ``addon_host.settings`` rather than here (DP-008
+#: D1 keeps the add-on layer's settings in the add-on layer). Without this entry the
+#: report would say the variable "is ignored", which is false, and a standing false
+#: positive is worse than noise: SEC-003 case f exists to catch a **typo in a real
+#: setting name**, and an operator who learns to skip the warning loses that.
+ADDON_DIR_VARIABLE: Final = "COSMA_ADDON_DIR"
+
+RECOGNIZED_UNUSED: Final[frozenset[str]] = frozenset(
+    {SECRET_STORE_VARIABLE, ADDON_DIR_VARIABLE}
+)
 
 DEFAULT_API_HOST: Final = "127.0.0.1"
 

@@ -8,7 +8,7 @@
 - Related Open Question or Decision Packet: [DP-008](../../docs/decisions/DP-008-addon-architecture.md); informs [OQ-003](../../docs/open-questions/OQ-003-normalization-protocol.md), [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md) H3, [OQ-007](../../docs/open-questions/OQ-007-credential-scope.md)
 - Owner: Project team
 - Created at: 2026-08-18T09:00:00+09:00
-- Last executed at: 2026-08-18T10:30:00+09:00
+- Last executed at: 2026-08-18T12:10:00+09:00
 
 ## Question
 
@@ -59,7 +59,8 @@ implied one.
 
 - `addon_api` contract, `addon_host` discovery/loading/version gate, `domain` source-registry
   and cursor tables, capability implementations including the platform outbound guard.
-- Conformance suite, `addons/_template/`, the `addon_kit` generator, and a smallest
+- Conformance suite, the `addon_kit` generator and its template at `addon_kit/template/`
+  (outside the scanned `addons/` tree, so a template is never discovered), and a smallest
   conforming add-on.
 - Operator surfaces for installed add-ons, source configuration, credential submission, and
   version state.
@@ -108,7 +109,7 @@ Cleared. No test outcome changed; only reported locations were wrong.
    `0002_domain.sql`.
 3. **B0.3** — capability implementations, including the outbound guard that composes every
    request from a registered source profile.
-4. **B0.4** — conformance suite, `addons/_template/`, `addon_kit new`, and
+4. **B0.4** — conformance suite, `addon_kit new` and its template at `addon_kit/template/`, and
    `addons/normalizer.conformance/`.
 5. **B0.5** — operator surfaces.
 6. Run `ruff`, `mypy --strict`, and the full suite after each package. Classify any failure as
@@ -153,12 +154,102 @@ Cleared. No test outcome changed; only reported locations were wrong.
 ```
 
 ```text
+[측정] The P0-A evidence directory's own verifiable claim was already failing before
+  B0 touched any code, and for two independent reasons.
+
+  Its README said `git diff 07b0688..HEAD -- platform_core tests dashboard/src`
+  "must be empty". Measured: it is not.
+
+  (a) 07b0688 is two commits before 3b26f44, which added the directory, and is not
+      the revision f83fe3c the directory is named for. Baseline and name never agreed.
+  (b) The path list included experiments/integrated-p0/tests, which P0-B must add
+      files to, so the claim could not survive P0-B by construction.
+  (c) DP-007 changed two display strings under platform_core and dashboard/src,
+      which broke the remaining form of the claim before B0 began.
+```
+
+```text
+[추론] (c) is worth naming. DP-007 declined to rename the COSMA_ prefix on the
+  stated grounds that the churn would "spend that claim on a cosmetic edit", and
+  then spent it on two display strings for the same kind of reason. The packet's
+  conclusion stands; its rationale was inconsistent with its own effect. Corrected
+  in the evidence README rather than left for a later reader to find.
+```
+
+```text
 [측정] One test failed on first execution: a version range with a trailing comma
   (">=1.0,") was expected to be refused and was accepted. Classified as an
   EVALUATION failure — the parser skips empty clauses deliberately, a trailing
   comma has one reading, and TOML and Python both accept one. The expectation was
   corrected and the tolerance is now asserted with its reason; ",," stays refused
   because it states no constraint at all.
+```
+
+```text
+[측정] 2026-08-18, B0.1 + B0.2 + half of B0.4 complete.
+  Full suite: 667 passed, 2 skipped in 55 s (PostgreSQL 18.4, serial).
+  Baseline before B0 was 520 passed, 2 skipped. ruff and mypy --strict clean
+  over 68 source files. platform_core gained one line and no dependency.
+
+  New tests by area:
+    addon_api contract            40
+    addon_host                    43
+    addon_kit + template          16
+    domain (incl. atomicity)      34
+    direction + serializability   10
+    config (COSMA_ADDON_DIR)       2
+```
+
+```text
+[측정] The atomicity the P0-A gate recorded as its first limitation now has direct
+  evidence. A collection is four statements — envelope, items, cursor, fenced
+  completion — inside one `connection.transaction()`, completion last.
+
+  Interrupted after the writes and before completion: 0 raw_envelope rows,
+  0 raw_item rows, no cursor, job still RUNNING with one open attempt.
+  Lease taken by another worker before completion: the fence refuses, and Raw
+  and cursor roll back with it.
+  Both have positive controls: the same sequence with the lease still held
+  commits, and 1 item plus a cursor are present.
+```
+
+```text
+[측정] A correction found while writing those tests. A comment claimed the attempt
+  row rolls back with the effect. It does not: `claim_next` commits before the
+  collection transaction opens, so after an interruption the job is RUNNING with
+  an open attempt and recovery is the platform's existing lease-expiry path.
+  What one transaction buys is not an undone claim but an undone effect. The
+  comment was wrong; the test now asserts the real state.
+```
+
+```text
+[측정] A pre-existing P0-A test failed once the domain tables existed:
+  test_job_001_writes_no_table_beyond_the_three_and_the_migration_ledger
+  asserted the database holds exactly four tables.
+
+  Classified as a SPECIFICATION failure. The encoded claim was a true statement of
+  the P0-A boundary and DP-008 D5 supersedes it deliberately. Restated rather than
+  deleted: under P0-A a domain side channel would have appeared as an unexpected
+  table, because none existed; now that they exist the signal is an unexpected
+  *row*, and a platform scenario must leave every domain table empty. Stronger
+  evidence for the same claim.
+```
+
+```text
+[측정] Repo-wide ruff broke when the add-on template landed: the template file was
+  named handler.py but nearly every meaningful line is a substitution token, so it
+  is not Python. Renamed to .tmpl. No lint exclusion was needed, which is the test
+  that the diagnosis was right rather than the symptom being suppressed.
+```
+
+```text
+[측정] The contract was tightened once. `[declares].endpoints` on an importer parsed
+  and was then ignored, because ImportContext has no `fetch`. Now refused at load.
+  `needs_credential` and `streams` stay legal for an importer and that is recorded
+  as deliberate: the platform may need a credential to open a protected input, and
+  an importer holds a cursor. CONTRACT_VERSION stayed at 1.0, with the reason
+  recorded at the constant: the tightening is breaking under the project's own rule,
+  and was made in place only because no add-on existed to break.
 ```
 
 ## Interpretation

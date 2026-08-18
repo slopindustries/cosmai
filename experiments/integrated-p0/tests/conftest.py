@@ -71,6 +71,7 @@ from uuid import UUID
 
 import psycopg
 import pytest
+from domain.migrate import apply_domain_migrations
 from platform_core.config import DEFAULT_API_HOST, PlatformConfig, load_config
 from platform_core.db.connection import connect, connected
 from platform_core.db.migrate import apply_migrations
@@ -440,6 +441,12 @@ def _build_template(config: PlatformConfig) -> None:
         _create_database(maintenance, TEMPLATE_DATABASE, None)
     with connected(config, database=TEMPLATE_DATABASE, autocommit=True) as handle:
         apply_migrations(handle)
+        # Two directories, one bookkeeping table. The domain tables live under
+        # `domain/migrations/` because the P0-A boundary guard scans `platform_core/`
+        # for domain vocabulary in `.sql` files too, so a migration creating `source`
+        # there fails the build. The applier already took a directory, so this is a
+        # second call rather than a change to `platform_core`.
+        apply_domain_migrations(handle)
 
 
 @pytest.fixture

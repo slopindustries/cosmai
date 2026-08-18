@@ -40,6 +40,7 @@ from pathlib import Path
 
 import pytest
 from platform_core.config import (
+    ADDON_DIR_VARIABLE,
     DEFAULT_API_HOST,
     KNOWN_NAMES,
     RECOGNIZED_UNUSED,
@@ -300,6 +301,29 @@ def test_sec_003_the_known_and_recognized_names_do_not_overlap() -> None:
     assert not KNOWN_NAMES & RECOGNIZED_UNUSED
     assert unrecognized_variables(dict.fromkeys(RECOGNIZED_UNUSED, "x")) == ()
     assert unrecognized_variables(dict.fromkeys(KNOWN_NAMES, "x")) == ()
+
+
+def test_sec_003_the_add_on_directory_is_not_reported_as_ignored() -> None:
+    """``COSMA_ADDON_DIR`` is read by ``addon_host``, so calling it ignored is false.
+
+    The variable is not a ``Setting`` here — DP-008 D1 keeps the add-on layer's
+    settings in the add-on layer — but this module still has to know the name,
+    because the report's wording is a claim about behaviour and the claim would be
+    untrue. A standing false positive is worse than noise: this report exists to
+    catch a typo in a real setting name, and an operator who learns to skip it
+    loses the one thing it is for.
+    """
+    assert unrecognized_variables({ADDON_DIR_VARIABLE: "/somewhere"}) == ()
+
+
+def test_sec_003_a_typo_in_the_add_on_directory_is_still_caught() -> None:
+    """The positive control. Without it the assertion above proves nothing.
+
+    If the allowance were a prefix match, or the report had simply stopped working,
+    the test above would pass either way. This is the case it must still catch.
+    """
+    typo = f"{ADDON_DIR_VARIABLE}R"
+    assert unrecognized_variables({typo: "/somewhere"}) == (typo,)
 
 
 def test_sec_003_the_configuration_is_immutable(baseline: dict[str, str]) -> None:

@@ -4,14 +4,51 @@ Evidence for the `OPS`, `SEC`, and `JOB` families, whose `Verification` sections
 point at `experiments/integrated-p0/evidence/<date>-<sha7>/`. Linked experiment
 record: [EXP-001](../../EXP-001-platform-core.md).
 
-**The directory is named for the revision whose code produced these artifacts, and the
-name is checkable.** The commit adding this directory changes no code, so:
+**The directory is named for the revision whose code produced these artifacts.** The
+check is against that revision, and it is a check on the *P0-A* code paths:
 
 ```sh
-git diff 07b0688..HEAD -- experiments/integrated-p0/platform_core \
-                        experiments/integrated-p0/tests \
-                        experiments/integrated-p0/dashboard/src   # must be empty
+git diff f83fe3c..HEAD -- experiments/integrated-p0/platform_core \
+                        experiments/integrated-p0/dashboard/src
 ```
+
+### Corrected on 2026-08-18, and no longer claimed to be empty
+
+`[확인 사실]` This block previously used `07b0688` as the baseline and asserted the diff
+"must be empty". Both halves were wrong.
+
+- `07b0688` is *Make evidence capture opt-in*, two commits **before** `3b26f44` added this
+  directory, and it is not the revision the directory is named for. The baseline and the
+  name never agreed.
+- The path list included `experiments/integrated-p0/tests`, which P0-B necessarily adds
+  files to, so the claim could not survive P0-B by construction.
+
+`[측정]` What has changed under the two code paths since `f83fe3c`:
+
+| Change | Commit | Why |
+|---|---|---|
+| `dashboard/src/App.tsx` — `"CosmaSignal P0-A operator surface"` → `"Cosmai …"` | `d714b3b` | [DP-007](../../../docs/decisions/DP-007-project-rename-to-cosmai.md) |
+| `platform_core/api/app.py` — `title="CosmaSignal P0-A operator API"` → `"Cosmai …"` | `d714b3b` | DP-007 |
+| `platform_core/config.py` — `COSMA_ADDON_DIR` added to `RECOGNIZED_UNUSED` | B0 | See below |
+
+`[추론]` The first two are worth naming plainly, because DP-007 declined to rename the
+`COSMA_` prefix *on the grounds that* churn would "spend that claim on a cosmetic edit" —
+and then spent it on two display strings for the same kind of reason. The packet's
+conclusion still stands; its stated rationale was inconsistent with its own effect, and
+that is recorded here rather than left for a later reader to discover.
+
+The third is a one-line entry, not a behaviour change. Without it every process setting
+`COSMA_ADDON_DIR` logs that the variable "is ignored", which is false — `addon_host`
+reads it. A standing false positive in the unknown-variable report defeats the thing that
+report is for.
+
+**What the artifacts below still support.** They were produced by `f83fe3c` and none of
+the three changes above alters any behaviour they measure: two display strings and one
+membership test in a report none of these artifacts contain. The hashes are unchanged and
+still verify. What is no longer available is the stronger form of the claim — "no code has
+changed at all" — and re-capturing at a current revision is the only way to restore it.
+That is recorded as a limitation rather than repaired, because the artifacts are evidence
+for P0-A and P0-A is closed.
 
 Getting here took two corrections, both found by review. The directory was first named
 `5b26d47`, the revision the work started from, which has no `/events` endpoint at all.

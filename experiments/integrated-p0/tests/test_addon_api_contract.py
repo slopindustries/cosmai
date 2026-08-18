@@ -235,6 +235,38 @@ class TestKindConsistency:
         with pytest.raises(ManifestError, match="no network capability"):
             AddonManifest.parse(toml)
 
+    def test_an_importer_asking_for_an_endpoint_is_refused(self) -> None:
+        """An importer has no ``fetch``, so an endpoint it declared would be ignored.
+
+        Refused rather than ignored: a silently dropped declaration cannot be
+        discovered by its author, who has no error, no log, and no behaviour change
+        to notice.
+        """
+        toml = (
+            COLLECTOR_TOML.replace('kind = "collector"', 'kind = "importer"')
+            .replace('hosts = ["api.example.com"]\n', "")
+            .replace("needs_credential = true", "needs_credential = false")
+        )
+        with pytest.raises(ManifestError, match="endpoints"):
+            AddonManifest.parse(toml)
+
+    def test_an_importer_may_still_declare_streams_and_a_credential(self) -> None:
+        """The other half of the rule, so the refusal above is not read as blanket.
+
+        An importer holds a cursor, so ``streams`` is meaningful; and the platform —
+        never the add-on — may need a credential to open a protected input, so
+        ``needs_credential`` is meaningful too.
+        """
+        toml = (
+            COLLECTOR_TOML.replace('kind = "collector"', 'kind = "importer"')
+            .replace('hosts = ["api.example.com"]\n', "")
+            .replace('endpoints = ["/v1/items"]\n', "")
+        )
+        manifest = AddonManifest.parse(toml)
+        assert manifest.kind == "importer"
+        assert manifest.declares.streams == ("items",)
+        assert manifest.declares.needs_credential is True
+
 
 class TestConfigValidation:
     schema = (
