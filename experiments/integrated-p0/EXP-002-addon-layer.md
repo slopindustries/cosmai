@@ -389,7 +389,12 @@ Cleared. No test outcome changed; only reported locations were wrong.
   before anyone changes a test or a fixture. Routed to [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md),
   whose H2 is exactly about whether the claim model is sufficient, and it must be resolved
   before the P1 Entry Gate rather than carried silently.
-- **Deferred, recorded so it is not mistaken for done: `main` is unprotected.**
+- **Resolved 2026-08-18: `main` is now protected.** The repository was made public, which
+  removes the plan limit, and `main` now refuses force pushes and deletion with
+  `enforce_admins` on. `[측정]` Verified through the API: `allow_force_pushes: false`,
+  `allow_deletions: false`, `enforce_admins: true`. Pull requests remain a convention and
+  are deliberately not required; see `docs/branching.md`. The original finding follows.
+- **Original finding — `main` was unprotected.**
   `[측정]` Force-push and deletion protection was attempted on 2026-08-18 and refused:
   `GET /repos/slopindustries/cosmai/rulesets` and `.../branches/main/protection` both
   return `403 Upgrade to GitHub Pro or make this repository public`. This is a plan
