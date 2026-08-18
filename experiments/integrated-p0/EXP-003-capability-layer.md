@@ -4,7 +4,7 @@
 
 - Experiment ID: `EXP-003`
 - Type: `INTEGRATED_P0`
-- Status: `RUNNING` — steps 1-5 complete; step 6 outstanding
+- Status: `RUNNING` — procedure complete; blocked on the review's work items
 - Related Open Question or Decision Packet: [DP-008](../../docs/decisions/DP-008-addon-architecture.md) D4; blocked in part by [OQ-009](../../docs/open-questions/OQ-009-credential-shape.md); informs [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md), [OQ-007](../../docs/open-questions/OQ-007-credential-scope.md); opened [OQ-010](../../docs/open-questions/OQ-010-cursor-stream-read-back.md)
 - Owner: Project team
 - Created at: 2026-08-18T15:40:00+09:00
@@ -183,7 +183,8 @@ passes equally well against a guard that checks nothing.
 ## Interpretation
 
 ```text
-[추론] H2 is SUPPORTED for every outbound obligation except credential attachment. The
+[추론] **Superseded 2026-08-18 by the adversarial review — see the correction below.**
+       H2 is SUPPORTED for every outbound obligation except credential attachment. The
        strongest single piece of evidence is that the collector was written by someone
        else, from the documentation, before the platform side existed, and needed no
        change to run — which is what "the obligation stays on the platform" has to mean
@@ -219,11 +220,35 @@ passes equally well against a guard that checks nothing.
        reading and appeared on the first execution. Two of them (1 and 2) fail *silently*
        in production and loudly nowhere, which is the class this project's conventions
        are written against.
+
+[측정] CORRECTION, 2026-08-18, from step 6. The first paragraph above is wrong as
+       written. ADVERSARIAL-REVIEW-2026-08-18.md F1 measured that `max_pages` and
+       `max_records` are enforced by nothing on the platform: an add-on fetching 12
+       times and emitting 600 items against max_pages=2, max_records=3 succeeded. The
+       scope is therefore **except credential attachment, page limit, and record
+       limit** — three of six, not one.
+
+[추론] The way that error was made is worth more than the error. The integration test
+       passed because the one committed collector honours `max_pages` voluntarily, and
+       "the add-on cooperated" was read as "the platform enforced". That is the exact
+       reading the experiment was designed to avoid, made by the person who designed it.
+
+[추론] Two further claims in this record did not survive step 6. H2a is a property of
+       the test fixture rather than of the code (F3): `bind_capabilities` is called
+       only from tests, `worker.py` wires nothing, and the shared connection the
+       atomicity depends on is asserted only in a fixture docstring. And the mutation
+       evidence above is weaker than it reads (F6): three mutations went red, and an
+       independent reviewer found seven that stay green.
 ```
 
 ## Result
 
-- Outcome: `PARTIAL` — steps 1-5 complete; step 6 (adversarial review) running.
+- Outcome: `PARTIAL` — steps 1-6 complete; the review's findings are unrepaired.
+  `[측정]` Step 6 returned **3 blocking, 3 major, 3 moderate, 1 minor**, recorded in
+  [ADVERSARIAL-REVIEW-2026-08-18.md](ADVERSARIAL-REVIEW-2026-08-18.md) with a ranked work list.
+  Six of the ten were independently reproduced by the author. Three false claims in the
+  code were corrected immediately; nothing else was repaired, so this experiment cannot
+  close until the work items are done and this record is re-measured.
 - Falsification condition met: `NO` for H2 within its tested scope, `NO` for H2a.
 - Exit condition met: `RELEASED`. `[측정]` The 2.5-hour box opened at
   2026-08-18T17:03+09:00 (`040ad0c`) and steps 1-5 ran to 20:09, about 3h05m — over it.
@@ -244,9 +269,11 @@ passes equally well against a guard that checks nothing.
     `importer` has no registry of approved inputs. Both are refused by name.
   - **Multi-stream add-ons are refused**, which is OQ-010's interim position and not an
     answer to it.
-  - **No adversarial review has run.** A security control's failure mode is passing while
-    blocking nothing, and the mutation check above is the author's own — it shows the
-    tests are load-bearing, not that the rules are the right ones.
+  - **The adversarial review has run and its findings are unrepaired.** Three of them
+    are blocking: `max_pages`/`max_records` enforced nowhere (F1), an exception from
+    enlisted work escaping unclassified and stopping the worker (F2), and H2a's atomicity
+    resting on a fixture rather than on the code (F3). Until those are fixed this record
+    describes what was attempted, not what holds.
 
 ## Impact and next action
 
@@ -255,12 +282,16 @@ passes equally well against a guard that checks nothing.
 - New uncertainty discovered: OQ-010 (which cursor an add-on reads back). Two smaller
   facts now recorded rather than open: a stored cursor may not be `null`, and an item must
   name an envelope this run fetched.
-- Proposed next experiment: the adversarial review that closes this record, then the
-  conformance suite, then B1's source selection record, then the operator surfaces.
+- Proposed next action: the ten work items in
+  [ADVERSARIAL-REVIEW-2026-08-18.md](ADVERSARIAL-REVIEW-2026-08-18.md), in the order given there —
+  F2, F3, F1, F5, F4 first, since those five are what H2 and H2a actually rest on. Then
+  re-measure this record. Only then the conformance suite, B1's source selection record,
+  and the operator surfaces.
 
 ## Artifacts
 
 - Experiment record: this file
+- Adversarial review (step 6): [ADVERSARIAL-REVIEW-2026-08-18.md](ADVERSARIAL-REVIEW-2026-08-18.md)
 - Code: `experiments/integrated-p0/domain/outbound.py`,
   `experiments/integrated-p0/domain/transport.py`,
   `experiments/integrated-p0/addon_host/capabilities.py`, and their tests

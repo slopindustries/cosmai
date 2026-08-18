@@ -6,12 +6,18 @@ until `domain` existed the honest thing was a stated refusal. This module binds 
 
 Four obligations meet here and none of them belongs to the add-on.
 
-**Every outbound obligation stays on the platform.** `fetch` takes an endpoint *name*.
-`domain.outbound.resolve` turns it into a URL from the source's approved profile or refuses
-it by rule; `domain.transport` resolves the host once, checks every address, and connects to
-one it checked; each redirect goes back through `check_redirect` under the same policy. The
-add-on composes no URL, holds no credential, and opens no socket. That is H2, and this module
-is the whole of what it is being tested on.
+**The outbound obligations stay on the platform — four of the six.** `fetch` takes an
+endpoint *name*. `domain.outbound.resolve` turns it into a URL from the source's approved
+profile or refuses it by rule; `domain.transport` resolves the host once, checks every
+address, and connects to one it checked; each redirect goes back through `check_redirect`
+under the same policy. The add-on composes no URL, holds no credential, and opens no socket.
+
+`[측정]` **Corrected 2026-08-18.** This paragraph claimed *every* obligation.
+`ADVERSARIAL-REVIEW-2026-08-18.md` F1 measured that `max_pages` and `max_records` are enforced
+by nothing here — the one committed collector honours `max_pages` voluntarily, which is why
+the integration test passed while proving only that the add-on cooperates. F5 measures that
+`read_timeout_s` bounds each socket read rather than the whole response. Those are work
+items, not properties, until the counters and the deadline exist.
 
 **A refusal cannot be swallowed.** `fetch` raises a `PlatformError` on refusal, and add-on
 code could catch it — nothing stops `except Exception`. So the refusal is also *recorded*,
@@ -537,10 +543,12 @@ _REDIRECT_STATUSES: Final[frozenset[int]] = frozenset({301, 302, 303, 307, 308})
 
 
 def _limits_of(profile: OutboundProfile) -> Limits:
-    """Tell the add-on what the platform will enforce anyway.
+    """Tell the add-on this source's bounds. Two of them are advisory — see `Limits`.
 
-    Readable, not settable — `Limits`' own docstring. An add-on that ignores these is still
-    bounded; one that reads them can stop cleanly instead of being cut off.
+    `max_pages` and `max_records` are passed through and counted nowhere: `_fetch` has no
+    call counter and `_emit_raw` has no item counter. `ADVERSARIAL-REVIEW-2026-08-18.md` F1
+    measured that. This function's previous docstring said "what the platform will enforce
+    anyway", which was true of four of these six.
     """
     limits = {**DEFAULT_LIMITS, **profile.limits}
     return Limits(

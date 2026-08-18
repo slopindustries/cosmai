@@ -53,11 +53,30 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Limits:
-    """What the platform will enforce, told to the add-on so it can cooperate.
+    """The bounds on this source, told to the add-on. Not all of them are enforced.
 
     Readable and not settable. An add-on that knows the page limit can stop at it
-    cleanly instead of being cut off mid-request, but an add-on that ignores these
-    is still bounded — the platform enforces them whatever the add-on believes.
+    cleanly instead of being cut off mid-request.
+
+    **Corrected 2026-08-18.** This docstring said "an add-on that ignores these is
+    still bounded — the platform enforces them whatever the add-on believes", and
+    that was false for two of the six. The adversarial review of `27f712b`
+    (`experiments/integrated-p0/ADVERSARIAL-REVIEW-2026-08-18.md`, F1) measured an add-on
+    fetching 12 times and emitting 600 items against ``max_pages=2, max_records=3``,
+    and it succeeded.
+
+    As of that review:
+
+    - ``connect_timeout_s``, ``read_timeout_s``, ``max_response_bytes`` and
+      ``max_redirects`` are enforced by the platform. ``read_timeout_s`` bounds each
+      socket read rather than the whole response, which F5 measures.
+    - ``max_pages`` and ``max_records`` are **advisory**. Nothing counts them. An
+      add-on that ignores them is not bounded by them.
+
+    `[결정]` The wording is corrected before the counters are written rather than
+    after, because this is contract text an add-on author reads to decide what they
+    must defend against, and a control promised in the present tense is one nobody
+    writes twice.
     """
 
     connect_timeout_s: float
