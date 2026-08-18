@@ -38,6 +38,13 @@ class JobContext:
     """What a handler is given. Everything here is platform state, never domain state."""
 
     job_id: UUID
+    #: The attempt row this run is fenced by. Platform state, like everything else
+    #: here — an opaque identifier, not a handle, so it reaches no table. It is what
+    #: enlisted durable work stamps its own rows with, which is the only way a write
+    #: made during this attempt can later be traced to the attempt that made it.
+    #: Without it a durable effect spanning several tables can be written but not
+    #: attributed, and DP-010 made such effects the point.
+    attempt_id: UUID
     payload: Any
     attempt_no: int
     attempt_count: int

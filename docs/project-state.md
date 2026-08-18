@@ -177,6 +177,7 @@ The first two hypotheses can begin in P0-A. Acquisition and normalization hypoth
 | [OQ-007](open-questions/OQ-007-credential-scope.md) | `OPEN` | P0-A/P0-B | What does the platform protect before a source exists, and which real credentials may a domain worker resolve? | Secret guard and source credential contract |
 | [OQ-008](open-questions/OQ-008-operator-reexecution-authority.md) | `OPEN` | P0-B | May an operator re-execute work that already succeeded, and what distinguishes that from retrying a failure? | Operator action set in `PoC Contract 0.1` |
 | [OQ-009](open-questions/OQ-009-credential-shape.md) | `OPEN` | P0-B | How is a source's credential declared, and where does each part of it go? | Multi-part `credential_ref`, outbound header attachment, dashboard credential form |
+| [OQ-010](open-questions/OQ-010-cursor-stream-read-back.md) | `OPEN` | P0-B | Which cursor does an add-on read back when it writes several streams? | Multi-stream collectors and importers, conformance resume scenario |
 
 Stage expresses evidence routing, not long-term business importance.
 

@@ -4,11 +4,11 @@
 
 - Experiment ID: `EXP-003`
 - Type: `INTEGRATED_P0`
-- Status: `RUNNING`
-- Related Open Question or Decision Packet: [DP-008](../../docs/decisions/DP-008-addon-architecture.md) D4; blocked in part by [OQ-009](../../docs/open-questions/OQ-009-credential-shape.md); informs [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md), [OQ-007](../../docs/open-questions/OQ-007-credential-scope.md)
+- Status: `RUNNING` — steps 1-5 complete; step 6 outstanding
+- Related Open Question or Decision Packet: [DP-008](../../docs/decisions/DP-008-addon-architecture.md) D4; blocked in part by [OQ-009](../../docs/open-questions/OQ-009-credential-shape.md); informs [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md), [OQ-007](../../docs/open-questions/OQ-007-credential-scope.md); opened [OQ-010](../../docs/open-questions/OQ-010-cursor-stream-read-back.md)
 - Owner: Project team
 - Created at: 2026-08-18T15:40:00+09:00
-- Last executed at: 2026-08-18T15:40:00+09:00
+- Last executed at: 2026-08-18T20:09:00+09:00
 
 ## Question
 
@@ -52,6 +52,12 @@ the measurement.
 Stops at **2.5 hours**, or when the capability layer, the outbound guard, and the
 security scenarios below are complete, whichever comes first.
 
+`[결정]` **Amended 2026-08-18, after the box was exceeded and measured.** The owner
+released the time bound; the experiment now stops when the procedure below is complete,
+step 6 included. The original bound and the measured overrun stay in the Result section,
+because the point of writing a box down in advance is lost if it is rewritten to match
+what happened.
+
 If the box expires mid-package, the incomplete part is recorded as unfinished with what
 was and was not built. **The order of sacrifice is fixed in advance**, so that a running
 clock does not decide it: the `SEC` scenarios are reduced first, and the capability layer
@@ -87,7 +93,7 @@ and outbound guard are kept — those two are what test H2.
 
 ## Environment
 
-- Code revision: `fcf4b8a` at start
+- Code revision: `fcf4b8a` at start; `b91d51c` at the start of this package
 - Runtime and dependency versions: Python 3.13.7, psycopg 3.3.4, pytest 8.x, mypy strict, ruff
 - External service or database versions: PostgreSQL 18.4, repository-local cluster over a Unix socket
 - Relevant configuration with secrets removed: no credential is resolved in this package
@@ -130,35 +136,139 @@ passes equally well against a guard that checks nothing.
 ## Observations
 
 ```text
-[측정] Not yet recorded.
+[측정] 2026-08-18, procedure steps 1-5. Suite: 815 passed, 2 skipped.
+       ruff clean; mypy --strict clean over 78 files; both add-ons clean under
+       scripts/check-addons.sh.
+
+[측정] addons/collector.naver.blog — written on 2026-08-18 by a separate author against
+       the documentation alone, before any of this existed, and NOT modified for this
+       run — collected 10 items and a cursor through JobRunner, addon_host.capabilities,
+       domain.outbound, domain.transport, a TLS socket, and into PostgreSQL.
+       tests/test_outbound_transport.py::TestTheInstalledCollectorRunsThroughThePlatform.
+       It composed no URL, held no credential, and opened no socket.
+
+[측정] Two requests for one page of results, as the add-on's own docstring predicts: it
+       does not trust `total`, so it pays a second call to confirm exhaustion.
+
+[측정] SEC-002: an unregistered source_id and an ungranted endpoint are both refused with
+       zero requests sent. SEC-003: a redirect outside the profile is refused and not
+       followed (one hop sent, not two); a redirect inside it is followed. SEC-004: an
+       oversized body is refused as RESPONSE_TOO_LARGE while reading, and a server that
+       sleeps 6s is abandoned in under 3s against a 1s read timeout, measured on elapsed
+       wall-clock rather than on the exception alone.
+
+[측정] Mutation check on the three load-bearing rules, each removed in turn:
+         - drop _check_no_refusal_was_swallowed  -> 2 failed
+         - drop the items_emitted cross-check     -> 1 failed
+         - write immediately instead of enlisting -> 1 failed (the atomicity test)
+       Each mutation took down exactly the test that claims the rule.
+
+[측정] The add-on contract was not widened. `addon_api`'s shapes are unchanged; one
+       `FetchResponse` docstring sentence was corrected, and no add-on can observe the
+       difference. The widening landed on the platform instead: `JobContext` gained
+       `attempt_id`.
+
+[측정] Three defects found by running this rather than by reading it:
+       1. `CollectContext.cursor` is single-valued while `advance_cursor` names a stream.
+          collector.naver.blog reads the default stream and writes "items", so under the
+          naive reading it would restart from position 1 forever, silently. -> OQ-010.
+       2. `ConfigValidationError` is a plain Exception, so a bad source row was classified
+          as "the add-on raised an unexpected ConfigValidationError" — an add-on defect —
+          rather than CONFIGURATION_INVALID. Found by the first integration run.
+       3. `raw_envelope.attempt_id` and `source_cursor.updated_by_attempt` are both
+          `not null`, and `JobContext` carried no `attempt_id`. A durable effect could be
+          written but not attributed.
 ```
 
 ## Interpretation
 
 ```text
-[추론] Not yet recorded.
+[추론] H2 is SUPPORTED for every outbound obligation except credential attachment. The
+       strongest single piece of evidence is that the collector was written by someone
+       else, from the documentation, before the platform side existed, and needed no
+       change to run — which is what "the obligation stays on the platform" has to mean
+       if it means anything. The falsification condition named three things a collector
+       must not need; it needed none of them.
+
+[추론] Credential attachment is the untested obligation, and it is untested because
+       OQ-009 has not settled what a two-part credential looks like. `p0-security.md`
+       lists it among the outbound obligations, so H2 is not fully discharged. What this
+       run shows is that the *other* obligations do not require the add-on's cooperation;
+       whether the credential one can be added without widening the contract is open.
+
+[추론] H2a is SUPPORTED. TestCollectionIsAtomic proved the transaction at the store level
+       with no add-on involved, on purpose. This adds the half that was missing: a worker
+       whose lease is stolen mid-fetch persists neither Raw nor cursor, the job stays
+       claimable, and the positive control beside it persists all three.
+
+[추론] The weaker failure the falsification section named — "the guard can only be
+       satisfied by widening the add-on contract" — did not occur, and the measurement is
+       above: the contract's shapes are untouched. That is a real result and not an
+       absence of one, because the alternative was visible and available at three points
+       (the cursor stream, the envelope handle, the credential) and was taken at none.
+
+[추론] The unswallowable refusal is the part of this package least likely to have been
+       written without the failure mode in view. `fetch` raises a PlatformError, and
+       `except BaseException` is legal Python; without recording the refusal separately,
+       a collector could turn every outbound rule into a suggestion and still report
+       success. Its positive control matters as much as the assertion: the same
+       swallowing add-on against a granted endpoint succeeds, so the failure is the
+       refusal and not the `try` block.
+
+[추론] The three defects above share a shape worth naming: all three were invisible to
+       reading and appeared on the first execution. Two of them (1 and 2) fail *silently*
+       in production and loudly nowhere, which is the class this project's conventions
+       are written against.
 ```
 
 ## Result
 
-- Outcome: `INCONCLUSIVE` — the experiment is `RUNNING` and this section is not final.
-- Falsification condition met: `NOT TESTED`
-- Exit condition met: `NO`
-- Known limitations: to be recorded.
+- Outcome: `PARTIAL` — steps 1-5 complete; step 6 (adversarial review) running.
+- Falsification condition met: `NO` for H2 within its tested scope, `NO` for H2a.
+- Exit condition met: `RELEASED`. `[측정]` The 2.5-hour box opened at
+  2026-08-18T17:03+09:00 (`040ad0c`) and steps 1-5 ran to 20:09, about 3h05m — over it.
+  The sacrifice order fixed in advance was "reduce the `SEC` scenarios first, keep the
+  capability layer and the outbound guard"; nothing was sacrificed under it, because the
+  `SEC` scenarios landed as well. `[결정]` The project owner released the box on
+  2026-08-18 after that measurement, so step 6 runs rather than being recorded as cut.
+  The overrun is left on the record rather than erased: a box that is deleted once it is
+  exceeded stops being a box, and the next experiment's estimate is worth more if this
+  one's error is visible.
+- Known limitations:
+  - **No credential is attached anywhere.** Blocked by OQ-009 and stated in the
+    integration test's own docstring rather than implied.
+  - **The stub is not the provider.** Its response shape is the vendor documentation's;
+    no capture of the real source exists. collector.naver.blog's three `[가설]`
+    assumptions are not confirmed by these tests passing.
+  - **Only `collector` is bound.** `normalizer` has no result table (OQ-004) and
+    `importer` has no registry of approved inputs. Both are refused by name.
+  - **Multi-stream add-ons are refused**, which is OQ-010's interim position and not an
+    answer to it.
+  - **No adversarial review has run.** A security control's failure mode is passing while
+    blocking nothing, and the mutation check above is the author's own — it shows the
+    tests are load-bearing, not that the rules are the right ones.
 
 ## Impact and next action
 
-- Uncertainty reduced: to be recorded.
-- New uncertainty discovered: to be recorded.
-- Proposed next experiment: the conformance suite, then B1's source selection record,
-  then the operator surfaces — in that order, and all of them after H2 has an answer.
+- Uncertainty reduced: H2's non-credential half; H2a through a real add-on; the shape of
+  the transaction boundary for a multi-statement acquisition effect (OQ-006 H1).
+- New uncertainty discovered: OQ-010 (which cursor an add-on reads back). Two smaller
+  facts now recorded rather than open: a stored cursor may not be `null`, and an item must
+  name an envelope this run fetched.
+- Proposed next experiment: the adversarial review that closes this record, then the
+  conformance suite, then B1's source selection record, then the operator surfaces.
 
 ## Artifacts
 
 - Experiment record: this file
 - Code: `experiments/integrated-p0/domain/outbound.py`,
+  `experiments/integrated-p0/domain/transport.py`,
   `experiments/integrated-p0/addon_host/capabilities.py`, and their tests
-- Fixture or retrieval procedure: synthetic sources and a local stub only
+  (`tests/test_outbound_policy.py`, `tests/test_outbound_transport.py`,
+  `tests/test_capabilities.py`)
+- Fixture or retrieval procedure: synthetic sources and a local TLS stub only. The stub's
+  certificate is generated per session with `openssl` and trusted through a per-process
+  `ssl.SSLContext` passed to `SocketTransport`; nothing on a source row can widen it.
 - Data class and retention responsibility: `public`; no external or personal data
 
 ## Completion checklist
@@ -166,7 +276,7 @@ passes equally well against a guard that checks nothing.
 - [x] The hypothesis is falsifiable.
 - [x] The falsification and exit conditions were fixed before interpreting the result.
 - [x] Inputs, rights, environment, versions, and hashes are recorded.
-- [ ] The procedure is replayable without relying on undocumented session context.
-- [ ] Observations and interpretations use the project evidence labels correctly.
-- [ ] Secrets, restricted inputs, and raw conversations are absent.
-- [ ] The result includes limitations and a concrete next action.
+- [x] The procedure is replayable without relying on undocumented session context.
+- [x] Observations and interpretations use the project evidence labels correctly.
+- [x] Secrets, restricted inputs, and raw conversations are absent.
+- [x] The result includes limitations and a concrete next action.

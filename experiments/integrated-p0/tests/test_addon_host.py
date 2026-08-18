@@ -161,6 +161,7 @@ def job_context() -> JobContext:
     """A context shaped like a worker's, carrying nothing an add-on could use yet."""
     return JobContext(
         job_id=uuid4(),
+        attempt_id=uuid4(),
         payload=None,
         attempt_no=1,
         attempt_count=1,

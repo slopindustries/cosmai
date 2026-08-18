@@ -551,6 +551,7 @@ def test_an_effect_key_does_not_depend_on_the_attempt_number() -> None:
         effect_key_for(
             JobContext(
                 job_id=UUID(int=7),
+                attempt_id=UUID(int=70),
                 payload=payload,
                 attempt_no=number,
                 attempt_count=number,
@@ -568,6 +569,7 @@ def test_an_effect_key_does_not_depend_on_the_attempt_number() -> None:
 def test_a_job_without_a_stated_key_derives_one_from_its_identity() -> None:
     context = JobContext(
         job_id=UUID(int=7),
+        attempt_id=UUID(int=70),
         payload=None,
         attempt_no=2,
         attempt_count=2,

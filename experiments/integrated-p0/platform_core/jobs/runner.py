@@ -103,6 +103,7 @@ class JobRunner:
         enlisted: list[DurableWork] = []
         context = JobContext(
             job_id=claimed.job_id,
+            attempt_id=claimed.attempt_id,
             payload=claimed.payload,
             attempt_no=claimed.attempt_no,
             attempt_count=claimed.attempt_count,

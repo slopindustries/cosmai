@@ -91,18 +91,28 @@ class Limits:
 
 @dataclass(frozen=True)
 class FetchResponse:
-    """One response, already bounded, already stripped, already recorded.
+    """One response, already bounded, already stripped, already taken into Raw.
 
     By the time an add-on holds this the platform has applied the source's
     allowlist, revalidated any redirect, checked the resolved address range,
     enforced the timeouts and the size limit, removed ``Authorization``,
-    ``Cookie``, and provider-protected headers, and persisted the response bytes
-    as a Raw envelope under ``envelope_ref``.
+    ``Cookie``, and provider-protected headers, and taken the response bytes into
+    the Raw envelope this run will persist under ``envelope_ref``.
 
     That last point is why losslessness does not depend on the add-on. The
     envelope is recorded whether or not the add-on emits anything from it, so an
     add-on that carves the response badly has produced bad items over a preserved
     original rather than lost the original.
+
+    ``envelope_ref`` is a **run-scoped handle, not a row id**, and this paragraph is
+    a correction rather than a description: until 2026-08-18 the sentence above read
+    "persisted the response bytes", which was true of the design DP-008 assumed and
+    false of the one DP-010 settled. Raw and the fenced completion go into one
+    transaction with the completion last, so a worker that lost its lease persists
+    neither. The envelope becomes a row when the attempt completes, and never if it
+    does not. No add-on can observe the difference — none holds a database handle —
+    but a contract stating the wrong moment is the kind of claim this project treats
+    as a defect rather than as wording.
     """
 
     endpoint_ref: str
