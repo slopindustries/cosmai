@@ -2,6 +2,8 @@
 
 An Open Question is a consequential uncertainty that must not be silently settled in implementation.
 
+When the question changes a consequential project direction, the owner must be shown the material options, recommendation, evidence, tradeoffs, and blocked work. Implementation remains paused until the answer is recorded in a Decision Packet. Collecting bounded evidence that was already authorized may continue; choosing the direction may not.
+
 Use [OQ-TEMPLATE.md](OQ-TEMPLATE.md) for new questions.
 
 ## Status lifecycle

@@ -1,8 +1,8 @@
 # Project State
 
 - Project: CosmaSignal
-- Version: 0.3
-- Updated: 2026-08-17
+- Version: 0.4
+- Updated: 2026-08-18
 - Phase: P0-A — Platform Core Construction and Verification
 - Next gate: P0-A Completion Gate
 
@@ -120,6 +120,12 @@ The following accepted principles become executable domain behavior in P0-B, not
 - `[결정]` Normalized results are versioned and coexist; they are not updated in place as the single truth.
 - `[결정]` P0 includes at least one deterministic rule-based normalizer.
 - `[결정]` Dashboard control, logs, metrics, and debugging evidence are part of P0 instrumentation.
+
+### Project memory and agent workflow
+
+- `[결정]` [DP-006](decisions/DP-006-agent-workflow-and-project-memory.md) makes repository documents, rather than session memory, the project record.
+- `[결정]` Consequential directions require an explicit owner question and a recorded answer before implementation.
+- `[결정]` Agent work is separated into orchestrator, planner, worker, and attacker responsibilities and handed off through bounded task packets and review reports.
 
 ## 5. Architecture hypotheses
 

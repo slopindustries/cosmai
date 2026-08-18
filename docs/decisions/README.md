@@ -10,6 +10,7 @@ Active decisions:
 - [DP-002 — Project identity and initial technology constraints](DP-002-project-identity-and-stack.md)
 - [DP-003 — Development environment and Python packaging](DP-003-development-environment.md)
 - [DP-005 — Two-part pre-P1 execution](DP-005-two-part-pre-p1-execution.md)
+- [DP-006 — Documented memory and role-separated agent workflow](DP-006-agent-workflow-and-project-memory.md)
 
 Superseded decisions:
 
