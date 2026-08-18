@@ -53,6 +53,11 @@ Ask what would have to change if the answer were different:
 - *Is this what a source, an observation, or a snapshot **is**?* → domain foundation.
 - *Is this how an author writes and checks an add-on?* → add-on boundary (`addon_kit`).
 
+## Branches follow the areas
+
+A branch is named `<area>/<what>` and stays inside one area. See
+[branching](../branching.md).
+
 ## Two areas that do not exist yet
 
 Recorded so that work does not start in the wrong place by default.

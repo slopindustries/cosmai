@@ -15,6 +15,16 @@ Build evidence that allows the team to choose the architecture. Do not treat P0 
   imports `addon_api` and nothing else in this project; `tests/environment/test_addon_layer_direction.py`
   enforces that and will name the violation.
 
+## Branch and merge
+
+- Work on `<area>/<what>`, branched from `dev`. `docs/branching.md` has the whole rule.
+- **Every merge is a merge commit: `git merge --no-ff`.** Never squash, never rebase a
+  shared branch. Commit messages in this repository are part of the decision record, and
+  squashing deletes them.
+- `main` moves only at accepted gates and Decision Packets. Merges into it go through a
+  pull request — a convention, not an enforced control; `docs/branching.md` says why.
+- Commit or push only when asked.
+
 ## Decision boundary
 
 - Read `docs/project-state.md` before making changes.
