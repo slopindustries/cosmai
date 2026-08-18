@@ -339,6 +339,19 @@ Cleared. No test outcome changed; only reported locations were wrong.
   before anyone changes a test or a fixture. Routed to [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md),
   whose H2 is exactly about whether the claim model is sufficient, and it must be resolved
   before the P1 Entry Gate rather than carried silently.
+- **Deferred, recorded so it is not mistaken for done: `main` is unprotected.**
+  `[측정]` Force-push and deletion protection was attempted on 2026-08-18 and refused:
+  `GET /repos/slopindustries/cosmai/rulesets` and `.../branches/main/protection` both
+  return `403 Upgrade to GitHub Pro or make this repository public`. This is a plan
+  limit on private repositories, not a permission problem — the account holds `ADMIN`
+  on the repository and the token carries the `repo` scope.
+  `[결정]` Deferred by the owner rather than worked around. A local `pre-push` hook was
+  considered and not installed: it is bypassed by `--no-verify` and holds only in this
+  checkout, so it would read as protection while providing none, and a control that
+  looks stronger than it is is worse than a recorded absence.
+  `[추론]` The exposure is bounded while one person works and every change lands on a
+  branch. It stops being bounded the moment a second party pushes, so this belongs in
+  the P1 Entry Gate's inherited items rather than in a backlog.
 - Proposed next experiment: none. B0 continues.
 - Proposed contract change: none yet. `addon_api` is at `CONTRACT_VERSION = "1.0"`.
 - Proposed Decision Packet update: none yet.
