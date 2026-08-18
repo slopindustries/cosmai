@@ -28,6 +28,23 @@ This section applies only to P0-B. P0-A must not register a source, create an ou
 
 P0에서는 범용 URL fetcher를 만들지 않는다. 선택된 source의 bounded behavior를 검증하는 것이 목적이다.
 
+[DP-008](../decisions/DP-008-addon-architecture.md) 이후 이 절의 모든 의무는 애드온이 아니라 플랫폼이 진다.
+
+- 플랫폼이 제공하는 `fetch(endpoint_ref, params)`가 **유일한 outbound 경로**다. 애드온은 URL을 조립하지 않고 endpoint 이름만 지정한다.
+- 실제 URL은 등록된 source row의 `outbound_profile`에서 플랫폼이 만든다. Manifest의 `[declares]`는 요구이지 허가가 아니며, 운영자 승인을 거쳐 source row에 들어가야 권한이 된다.
+- 애드온은 credential을 받지 않는다. 플랫폼이 요청 시점에 해석해 붙이고, 응답에서 보호 헤더를 제거한 뒤 돌려준다.
+- `fetch`는 endpoint_ref를 받으므로 임의 URL을 받을 수 있는 형태가 아니다. 이 절의 첫 문장은 그대로 유효하다.
+
+## Add-on trust boundary
+
+[DP-008](../decisions/DP-008-addon-architecture.md)의 애드온은 **같은 프로세스 안에서 실행되는 신뢰된 코드**다. 이 사실을 명시적으로 기록해 두는 이유는, 계약이 격리처럼 보이기 때문이다.
+
+- `[확인 사실]` 인프로세스 애드온이 database driver를 직접 import해 DB에 접속하는 것을 막는 장치는 없다.
+- `[결정]` 이 설계가 막는 것은 **사고에 의한** 결합과 **사고에 의한** credential 노출이다. 적대적인 애드온은 막지 못한다.
+- `[결정]` 애드온이 저장소 안에 있고 리뷰를 거친다는 전제 위에서 P0는 이 자세를 수용한다. 리뷰 경계 밖의 애드온을 받아들이는 순간 이 전제는 깨진다.
+- `[결정]` 계약의 입출력은 직렬화 가능한 형태로만 작성한다. 서브프로세스 격리로 옮겨야 할 때 계약이 아니라 host만 바뀌도록 남겨 두는 것이 이 제약의 목적이다.
+- `[확인 사실]` 의존 방향은 테스트로 강제한다. 애드온은 `addon_api`만 import할 수 있고, `platform_core`는 애드온 계층을 import하지 않는다.
+
 ## Agent sandbox baseline
 
 Agent 실행 샌드박스는 application의 outbound source policy와 **독립적인 두 번째 강제 지점**이다. Application 쪽 검증에 결함이 있어도 샌드박스가 egress를 막는다.

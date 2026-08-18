@@ -4,7 +4,7 @@
 - Priority: P0-A platform evidence and P0-B domain evidence
 - Owner: Project team
 - Blocks: dashboard acceptance contract
-- Related experiments: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — `RUNNING`, covers the P0-A minimum experiment below. The `OPS` scenarios are written after the platform's failure paths exist, because a diagnosis surface cannot be specified against failures that have not been observed.
+- Related experiments: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — `COMPLETED` 2026-08-17, covers the P0-A minimum experiment below. The `OPS` scenarios are written after the platform's failure paths exist, because a diagnosis surface cannot be specified against failures that have not been observed.
 - Resolution Decision Packet: not created
 
 ## Question

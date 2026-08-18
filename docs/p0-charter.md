@@ -61,8 +61,8 @@ P0-B must:
 3. select one REST source and one dataset through `GO` or explicitly accepted `CONDITIONAL GO`;
 4. record a provisional decision consumer, output unit, evidence requirement, uncertainty representation, and human-review boundary;
 5. version experimental acquisition, Raw, snapshot, normalization, source-policy, credential-scope, operations, and error contracts;
-6. define and test the smallest collector, importer, and normalizer interfaces and test doubles;
-7. implement one selected REST collector, one selected dataset importer, and one deterministic `rule-baseline@0.1` normalizer;
+6. fix the add-on contract, host, manifest, version axes, conformance suite, template, generator, and the source-registry and cursor tables, per [DP-008](decisions/DP-008-addon-architecture.md);
+7. implement one selected REST collector, one selected dataset importer, and one deterministic `rule-baseline@0.1` normalizer **as add-ons**;
 8. preserve both input modes as untrusted, lossless Raw artifacts and observations;
 9. re-run identical and changed input to observe identity and duplicate policy;
 10. create a sealed normalization snapshot independently from collection;
@@ -70,6 +70,8 @@ P0-B must:
 12. operate, inspect, diagnose, and safely retry the domain flow through the dashboard;
 13. exercise multiple workers and realistic domain failures;
 14. synthesize the evidence, classify P0 artifacts, accept `PoC Contract 0.1`, and accept a P1 reconstruction plan.
+
+This list is a completeness obligation, not a strict sequence. `[추론]` Item 6 carries no source or decision semantics, so it does not depend on items 1–4 and runs in parallel with them. Every other dependency in the list is real.
 
 ## Architecture questions P0 must answer
 
@@ -119,7 +121,12 @@ Production IAM and secret-management products remain non-goals.
 - normalization failure after Raw persistence;
 - snapshot or manifest mismatch;
 - a provider result that fails output validation;
-- source-policy, redirect, DNS, response-bound, credential, and protected-debug failures.
+- source-policy, redirect, DNS, response-bound, credential, and protected-debug failures;
+- an add-on whose manifest requires a contract version the host does not support;
+- a source whose stored configuration is older than the installed add-on's config schema;
+- a job whose add-on is not installed;
+- an add-on requesting a host or endpoint the operator did not approve into its source row;
+- an add-on reporting a different emitted count than the platform recorded.
 
 ## P0-B exit criteria
 

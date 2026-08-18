@@ -4,7 +4,7 @@
 - Priority: P0-A secret-location and redaction guard; P0-B source credential scope
 - Owner: Project team
 - Blocks: credential handling contract, worker boundary contract, `SEC-001` and `SEC-002` evidence scope
-- Related experiments: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — `RUNNING`, covers only the P0-A minimum experiment below: the secret-store location guard (`SEC-001`), loopback boundary (`SEC-002`), configuration failure (`SEC-003`), and redaction (`SEC-004`). No credential is resolved and no `credential_ref` semantics are created, so H1, H2, and H3 remain untested.
+- Related experiments: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — `COMPLETED` 2026-08-17, covers only the P0-A minimum experiment below: the secret-store location guard (`SEC-001`), loopback boundary (`SEC-002`), configuration failure (`SEC-003`), and redaction (`SEC-004`). No credential is resolved and no `credential_ref` semantics are created, so H1, H2, and H3 remain untested.
 - Resolution Decision Packet: not created
 
 ## Question
@@ -42,6 +42,15 @@ No worker implementation exists, and the claim model in [OQ-006](OQ-006-job-conc
 - On-demand resolution scoped to the claimed job's `source_id`.
 - A separate store per source, located from `source_id`.
 - Injection at the network boundary by a proxy, so the worker never holds the value.
+
+### Proposed resolution path from DP-008
+
+[DP-008](../decisions/DP-008-addon-architecture.md) D6 selects on-demand resolution scoped to the claimed job's `source_id`, and adds two things the alternatives above did not state.
+
+- `[결정]` The **add-on never receives the credential.** The platform's `fetch` resolves it, attaches it, and strips protected headers from what it returns. This is the in-process form of the proxy alternative, and it narrows the exposed surface from "the worker" to "the platform's outbound path inside the worker".
+- `[결정]` The dashboard writes a submitted secret to the repository-external store and records only `credential_ref` in the source row. That path is **write-only and never reads a credential back**, so the API process is a writer and never a reader.
+
+`[확인 사실]` This does not resolve H1, H2, or H3. The worker process still holds the value for the life of the request inside `fetch`, so per-source scoping is still enforced by resolution discipline rather than by process boundary — which is exactly what H2 asks about. The question stays `OPEN`; DP-008 narrows what has to be tested, not whether it has to be.
 
 ## Minimum experiment
 

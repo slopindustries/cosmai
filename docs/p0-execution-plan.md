@@ -64,6 +64,24 @@ Complete `experiments/integrated-p0/PLATFORM-CORE-GATE-TEMPLATE.md`. A `GO` or a
 
 ## P0-B work packages
 
+B0 and B1 run in parallel. `[추론]` B0 contains no source or decision semantics, so neither OQ-001 nor OQ-002 blocks it; B2 onward needs both.
+
+### B0 — Add-on layer
+
+Governed by [DP-008](decisions/DP-008-addon-architecture.md). Experiment record:
+[EXP-002](../experiments/integrated-p0/EXP-002-addon-layer.md), `RUNNING`, owner Project team,
+**timebox 6 hours** recorded 2026-08-18. Implement under `experiments/integrated-p0/`:
+
+1. `addon_api` contract at `CONTRACT_VERSION = "1.0"`, and `addon_host` discovery, loading, and version gate.
+2. `domain` source registry, cursor, Raw, and snapshot tables in migration `0002_domain.sql`.
+3. Capability implementations, including the platform outbound guard that composes every request from a registered source profile.
+4. Conformance suite, `addons/_template/`, the `addon_kit` generator, and `addons/normalizer.conformance/` as the smallest conforming add-on.
+5. Operator surfaces: installed add-on list, source create and edit rendered from the add-on's config schema, credential submission, and version and migration state.
+
+B0 adds no dependency to `platform_core`. A dependency-direction test enforces that, and enforces that an add-on imports `addon_api` alone.
+
+`SEC-002`, `SEC-003`, and `SEC-004` test the platform's own guard, so they run here against a synthetic registered source, before the first real outbound request exists. Passing them in B0 does not discharge B1's obligation to narrow the agent sandbox before that first real request.
+
 ### B1 — Source exploration and selection
 
 - define a bounded REST API and dataset candidate set;
@@ -81,21 +99,21 @@ Probe code is disposable measurement code. It is not the integrated collector or
 - inspect representative source records;
 - version experimental acquisition, Raw, job/error specialization, snapshot, normalization, operations, source-policy, and credential-scope contracts;
 - draft `ACQ`, `RAW`, `SNP`, `NRM`, domain `OPS`, and domain `SEC` scenarios;
-- define the smallest collector, importer, and normalizer interfaces and test doubles needed to challenge those contracts;
-- record test-double limitations and real-source behaviors requiring direct verification.
+- express those contracts against B0's add-on contract rather than against platform code, and record any capability the add-on contract must gain to carry them;
+- record test-double limitations and real-source behaviors requiring direct verification. Under DP-008 a test double is itself an add-on — the smallest conforming one — so it is written and run the same way a real add-on is.
 
 Contracts and test doubles created here are hypotheses. They do not count as real-integration evidence.
 
 ### B3 — Concrete implementation
 
-Implement only the selected pair and the bounded deterministic baseline:
+Implement only the selected pair and the bounded deterministic baseline, each as an add-on under `addons/`:
 
-- one REST collector with required authentication, pagination, rate, retry, response, identity, and mapping behavior;
-- one dataset importer with required format, encoding, row identity, invalid/missing-row, duplicate, and changed-version behavior;
-- one deterministic `rule-baseline@0.1` normalizer consuming a sealed snapshot and producing validated versioned results;
+- one REST collector add-on with required authentication, pagination, rate, retry, response, identity, and mapping behavior;
+- one dataset importer add-on with required format, encoding, row identity, invalid/missing-row, duplicate, and changed-version behavior;
+- one deterministic `rule-baseline@0.1` normalizer add-on consuming a sealed snapshot and producing validated versioned results;
 - the Raw, snapshot, result-lineage, source-policy, credential-scope, and domain dashboard behavior required by the accepted experimental contracts.
 
-Run isolated component and contract tests before connecting each component to the platform core.
+Run the conformance suite and isolated component tests against each add-on before connecting it to the platform core. An add-on that needs a capability B0 did not grant is evidence about the contract, not a reason to widen a grant in place: record it and amend the contract with its version raised.
 
 ### B4 — Real-data integration and failure evidence
 
@@ -128,3 +146,11 @@ A P0-B failure that invalidates a P0-A premise sets the P0-A gate to `REOPENED`.
 ## Timeboxes
 
 P0-A and P0-B each receive a separately recorded timebox before their experiment status becomes `RUNNING`. The former M2 ten-day allocation is superseded. A timebox stops or reduces scope; it does not turn missing evidence into a pass.
+
+| Package | Timebox | Recorded | Experiment |
+|---|---|---|---|
+| P0-A | 1 day | 2026-08-17 | [EXP-001](../experiments/integrated-p0/EXP-001-platform-core.md) — `COMPLETED` |
+| B0 — Add-on layer | 6 hours | 2026-08-18 | [EXP-002](../experiments/integrated-p0/EXP-002-addon-layer.md) — `RUNNING` |
+| B1 — Source exploration | not yet recorded | — | not created |
+
+B1 must record its own owner and timebox before its status becomes `RUNNING`.

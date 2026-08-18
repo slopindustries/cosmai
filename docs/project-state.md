@@ -1,8 +1,8 @@
 # Project State
 
 - Project: Cosmai
-- Version: 0.4
-- Updated: 2026-08-17
+- Version: 0.5
+- Updated: 2026-08-18
 - Phase: P0-B — Domain Integration, Evidence Synthesis, and Disposition
 - Next gate: P1 Entry Gate (inside P0-B)
 
@@ -13,7 +13,7 @@ Delivery has two active stages before P1. Work packages inside a stage do not cr
 | Stage | Purpose | Entry condition | Required output | Exit condition |
 |---|---|---|---|---|
 | P0-A — Platform Core Construction and Verification | Build and test the source- and normalization-independent platform foundation. | Project identity, disposable-P0 lifecycle, technology constraints, evidence protocol, and safety baseline are accepted. | Executable platform core, handler-neutral job and failure evidence, platform operator instrumentation, and a reviewed P0-A gate record. | The P0-A Completion Gate records `GO` or an explicitly accepted `CONDITIONAL GO` without claiming acquisition or normalization evidence. |
-| P0-B — Domain Integration, Evidence Synthesis, and Disposition | Select sources; define and implement acquisition and normalization; verify the real-data flow; decide what P1 promotes, rebuilds, archives, deletes, or carries unresolved. | P0-A gate is accepted and the bounded P0-B experiment, safety review, and timebox are recorded. | Source decisions, domain contracts, concrete collector/importer/normalizer, real-data and failure evidence, Architecture Synthesis, disposition register, `PoC Contract 0.1`, and P1 reconstruction plan. | Every P0 Charter exit criterion is answered and the P1 Entry Gate accepts the contract, disposition, and reconstruction plan, or records an explicit blocker. |
+| P0-B — Domain Integration, Evidence Synthesis, and Disposition | Select sources; define and implement acquisition and normalization; verify the real-data flow; decide what P1 promotes, rebuilds, archives, deletes, or carries unresolved. | P0-A gate is accepted and the bounded P0-B experiment, safety review, and timebox are recorded. | Source decisions, domain contracts, the add-on contract and host, concrete collector/importer/normalizer add-ons, real-data and failure evidence, Architecture Synthesis, disposition register, `PoC Contract 0.1`, and P1 reconstruction plan. | Every P0 Charter exit criterion is answered and the P1 Entry Gate accepts the contract, disposition, and reconstruction plan, or records an explicit blocker. |
 | P1 — Clean Reconstruction | Rebuild from accepted contracts and promoted evidence rather than harden P0 code. | P0-B P1 Entry Gate is accepted. | A clean, continuously operable prototype baseline. | Defined by the future P1 charter. |
 
 No stage advances automatically because code appears to work. Update this file and the affected artifact statuses when a gate is accepted.
@@ -69,6 +69,7 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 - `[결정]` P1 will be reconstructed after P0-B accepts Architecture Synthesis, `PoC Contract 0.1`, artifact disposition, and a P1 reconstruction plan.
 - `[결정]` The repository is a monorepo for backend, dashboard, contracts, experiments, and tests.
 - `[결정]` [DP-005](decisions/DP-005-two-part-pre-p1-execution.md) divides all pre-P1 delivery into P0-A and P0-B.
+- `[결정]` [DP-008](decisions/DP-008-addon-architecture.md) makes collectors, importers, and normalizers in-repository add-ons behind a contract, superseding DP-005's P0-B order steps 4–6 and DP-006's module layout.
 
 ### Technology constraints
 
@@ -98,22 +99,43 @@ P0-A does not explore or select sources and does not implement acquisition, Raw,
 
 ### P0-B boundary
 
-P0-B owns all source and normalization work:
+P0-B owns all source and normalization work. [DP-008](decisions/DP-008-addon-architecture.md) splits it into two tracks that run in parallel and then converge:
 
 ```text
-bounded candidate exploration and rights review
-→ REST source and dataset selection
-→ provisional decision use
-→ acquisition, Raw, snapshot, normalization, operations, source-policy, and credential contracts
-→ collector/importer/normalizer interfaces and test doubles
-→ concrete collector/importer/rule-baseline implementation
-→ component, real-data, failure, replay, concurrency, and operator verification
-→ Architecture Synthesis and artifact disposition
-→ PoC Contract 0.1 and P1 reconstruction plan
-→ P1 Entry Gate
+add-on track                          source track
+(no source or decision semantics)     (blocked by OQ-001 and OQ-002)
+
+add-on contract, host, and            bounded candidate exploration
+  version gate                          and rights review
+→ source registry, cursor, Raw,       → REST source and dataset selection
+    and snapshot tables               → provisional decision use
+→ platform outbound guard
+→ conformance suite, template,
+    and generator
+→ add-on operator surfaces
+                        ↓                         ↓
+        acquisition, Raw, snapshot, normalization, operations,
+          source-policy, and credential contracts
+        → collector, importer, and normalizer add-on implementations
+        → component, real-data, failure, replay, concurrency, and operator verification
+        → Architecture Synthesis and artifact disposition
+        → PoC Contract 0.1 and P1 reconstruction plan
+        → P1 Entry Gate
 ```
 
+`[추론]` The add-on track carries no source or decision semantics, so neither OQ-001 nor OQ-002 blocks it. What OQ-002 blocks is the content of the normalizer's rules, not the protocol they are written against.
+
 Source probes are measurements inside P0-B. They are not integrated collector or importer implementations and cannot satisfy those obligations retroactively.
+
+### Add-on architecture
+
+`[결정]` Collectors, importers, and normalizers are in-repository add-ons behind a contract, accepted in [DP-008](decisions/DP-008-addon-architecture.md). A new source adds a directory, not platform code.
+
+- `[결정]` One package format and manifest; capabilities granted by `kind`. A collector receives a platform-composed `fetch`, an importer receives a platform-opened input, a normalizer receives a hash-verified snapshot.
+- `[결정]` An add-on never receives a credential, never composes a URL, and never holds a database handle. Every outbound obligation in the [P0 Security Baseline](conventions/p0-security.md) stays on the platform.
+- `[결정]` Add-ons depend on the contract package alone. `platform_core` gains no dependency on the add-on layer, and a dependency-direction test enforces both directions.
+- `[결정]` Four version axes carry defined failures: contract, add-on, config schema, and normalizer output contract.
+- `[결정]` In-process add-ons are trusted code. Isolation is contractual and test-enforced, not enforced by the operating system.
 
 ### Data and workflow principles
 

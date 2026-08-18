@@ -34,9 +34,13 @@ A component library, a fetching cache, and a router answer problems three screen
 
 ## ⚠️ The boundary guard does not read this directory
 
-`tests/environment/test_p0a_boundary_guard.py` parses `.py` with `ast` and `.sql` after stripping comments. **`.ts` and `.tsx` are checked by file and directory name only.** An identifier inside a component is invisible to it.
+`tests/environment/test_p0a_boundary_guard.py` parses `.py` with `ast` and `.sql` after stripping comments. During P0-A it also checked `.ts` and `.tsx` by file and directory name; an identifier inside a component was already invisible to it.
 
-So the P0-A vocabulary boundary is held here by discipline, and the substitutions below are fixed rather than left to taste. `raw` in particular is the standard idiom of a debug view — "show raw payload" is what anyone would reach for — which is exactly why it is listed.
+**Since 2026-08-18 it does not read this directory at all.** [DP-008](../../../docs/decisions/DP-008-addon-architecture.md) rescoped the guard to `platform_core/`, and P0-B's operator screens are allowed the domain vocabulary P0-A forbade — an add-on list and a source form cannot be written without the word `source`.
+
+The table below is therefore **P0-A history, not a live rule.** It is kept because the P0-A screens still use these substitutions and renaming them now would only churn code DP-001 disposes of. `raw` in particular is the standard idiom of a debug view — "show raw payload" is what anyone would reach for — which is why it was listed.
+
+New P0-B screens use the domain's own words. What they must not do is reach past the API into platform internals, which is a different boundary and is not this table's job.
 
 | Wanted | Use instead |
 |---|---|

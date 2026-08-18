@@ -1,10 +1,28 @@
-"""Guard: no domain-shaped identifier may appear inside ``experiments/integrated-p0``.
+"""Guard: no domain-shaped identifier may appear inside ``platform_core``.
 
 ``docs/project-state.md`` ("P0-A boundary") and ``docs/p0-execution-plan.md`` (A2)
 restrict P0-A to source- and normalization-independent platform behavior. A
 boundary that lives only in prose is discovered after the code exists, so this
-scans the experiment tree for the vocabulary that would mean the domain has been
-started early: file and directory names, Python identifiers, and SQL object names.
+scans for the vocabulary that would mean the domain has leaked in: file and
+directory names, Python identifiers, and SQL object names.
+
+**Rescoped for P0-B on 2026-08-18.** Until the P0-A Completion Gate this scanned the
+whole of ``experiments/integrated-p0``, because during P0-A no part of that tree was
+allowed to hold domain vocabulary. P0-B is allowed to, so that claim is now about a
+past revision (``f83fe3c``) rather than about the working tree, and a whole-tree scan
+would fail on P0-B's first legitimate file.
+
+What survives the rescope is the narrower claim, and it is the more useful one:
+``platform_core`` **stays** source-neutral. DP-008 D1 promises exactly that — the
+add-on layer depends on ``platform_core`` and never the reverse — so the guard keeps
+proving a live invariant instead of being retired. The P0-A gate's evidence continues
+to hold for the same reason.
+
+``domain/``, ``addon_api/``, ``addon_host/``, ``addons/``, and the dashboard are
+outside the scan root deliberately: domain vocabulary is what they are for. The
+direction they must not cross is enforced by
+``tests/environment/test_addon_layer_direction.py`` instead, which is a different
+question — not *which words* appear, but *which package imports which*.
 
 Prose is deliberately not scanned. A comment or docstring that says "this is not a
 collector" is exactly the kind of boundary statement the documents ask for, so the
@@ -43,6 +61,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXPERIMENT_ROOT = REPO_ROOT / "experiments" / "integrated-p0"
+#: The rescope described in the module docstring. Narrowing this is a decision;
+#: widening it back would fail on P0-B code that is allowed to be domain-shaped.
+SCAN_ROOT = EXPERIMENT_ROOT / "platform_core"
 
 # Vocabulary that belongs to P0-B. Matched as a whole identifier segment.
 FORBIDDEN_SEGMENTS = frozenset(
@@ -113,11 +134,11 @@ def violated_segment(identifier: str) -> str | None:
     return None
 
 
-def walk_experiment_tree() -> Iterator[Path]:
-    """Yield every file under the experiment root, skipping generated directories."""
-    if not EXPERIMENT_ROOT.is_dir():
+def walk_scanned_tree() -> Iterator[Path]:
+    """Yield every file under the scan root, skipping generated directories."""
+    if not SCAN_ROOT.is_dir():
         return
-    stack = [EXPERIMENT_ROOT]
+    stack = [SCAN_ROOT]
     while stack:
         for entry in sorted(stack.pop().iterdir()):
             if entry.is_dir():
@@ -203,7 +224,7 @@ def scan_sql(path: Path) -> list[Finding]:
 
 
 def scan_path_name(path: Path) -> list[Finding]:
-    relative = path.relative_to(EXPERIMENT_ROOT)
+    relative = path.relative_to(SCAN_ROOT)
     findings: list[Finding] = []
     for part in relative.parts:
         # Compare the stem so `raw.py` is caught but `run.raw`-free suffixes are not
@@ -218,8 +239,9 @@ def scan_path_name(path: Path) -> list[Finding]:
 
 def format_findings(findings: list[Finding]) -> str:
     lines = [
-        "P0-A must not create domain-shaped identifiers; "
-        "see docs/project-state.md 'P0-A boundary'.",
+        "platform_core must stay source-neutral; see docs/project-state.md "
+        "'P0-A boundary' and DP-008 D1. Domain vocabulary belongs in domain/, "
+        "addon_api/, addon_host/, or addons/, which this guard does not scan.",
         "",
     ]
     for path, line, identifier, segment in findings:
@@ -231,7 +253,7 @@ def format_findings(findings: list[Finding]) -> str:
 
 def collect_violations() -> list[Finding]:
     findings: list[Finding] = []
-    for path in walk_experiment_tree():
+    for path in walk_scanned_tree():
         findings.extend(scan_path_name(path))
         if path.suffix == ".py":
             findings.extend(scan_python(path))
@@ -240,9 +262,37 @@ def collect_violations() -> list[Finding]:
     return findings
 
 
-def test_no_domain_identifiers_in_the_integrated_experiment() -> None:
+def test_no_domain_identifiers_in_platform_core() -> None:
     findings = collect_violations()
     assert not findings, format_findings(findings)
+
+
+def test_the_scan_root_is_platform_core_and_actually_contains_files() -> None:
+    """A guard pointed at a missing directory passes silently and proves nothing.
+
+    ``walk_scanned_tree`` returns immediately when the root is absent, so the
+    assertion above would hold vacuously if the rescope had named the directory
+    wrongly. This is the positive control for the rescope itself.
+    """
+    assert SCAN_ROOT.name == "platform_core"
+    assert SCAN_ROOT.is_dir(), SCAN_ROOT
+    scanned = list(walk_scanned_tree())
+    assert any(path.suffix == ".py" for path in scanned), "no Python file was scanned"
+    assert any(path.suffix == ".sql" for path in scanned), "no SQL file was scanned"
+
+
+def test_the_addon_layer_is_deliberately_outside_the_scan_root() -> None:
+    """DP-008's packages are allowed the vocabulary this guard forbids.
+
+    Their boundary is a direction, not a word list, and
+    ``test_addon_layer_direction.py`` is what enforces it. If a future change
+    widens the scan root back to the experiment tree, this fails first and names
+    the reason instead of producing a wall of legitimate findings.
+    """
+    scanned = {path.resolve() for path in walk_scanned_tree()}
+    for domain_package in ("domain", "addon_api", "addon_host", "addons", "dashboard"):
+        root = (EXPERIMENT_ROOT / domain_package).resolve()
+        assert not any(root in path.parents for path in scanned), domain_package
 
 
 def test_matching_is_segment_exact_not_substring() -> None:
