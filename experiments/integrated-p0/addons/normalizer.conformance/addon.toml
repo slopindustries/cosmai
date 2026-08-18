@@ -22,3 +22,10 @@ label = "Strict parsing"
 help = "Raise instead of skipping a snapshot item this add-on cannot parse"
 
 
+
+[[config.field]]
+name = "fail_output"
+type = "boolean"
+required = false
+label = "Emit invalid output"
+help = "Emit a result the output contract rejects, so the conformance suite has something real to catch"

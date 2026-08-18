@@ -4,6 +4,7 @@
 - Priority: P0-A secret-location and redaction guard; P0-B source credential scope
 - Owner: Project team
 - Blocks: credential handling contract, worker boundary contract, `SEC-001` and `SEC-002` evidence scope
+- Related: [OQ-009](OQ-009-credential-shape.md) asks what *shape* a credential has; this question asks which one a worker may *resolve*. `[추론]` If a source may hold several credential parts, the scoping question here becomes "which parts" and changes shape with the answer there.
 - Related experiments: [EXP-001](../../experiments/integrated-p0/EXP-001-platform-core.md) — `COMPLETED` 2026-08-17, covers only the P0-A minimum experiment below: the secret-store location guard (`SEC-001`), loopback boundary (`SEC-002`), configuration failure (`SEC-003`), and redaction (`SEC-004`). No credential is resolved and no `credential_ref` semantics are created, so H1, H2, and H3 remain untested.
 - Resolution Decision Packet: not created
 

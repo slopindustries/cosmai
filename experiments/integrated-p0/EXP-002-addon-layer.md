@@ -288,6 +288,56 @@ Cleared. No test outcome changed; only reported locations were wrong.
   loop an add-on author needs.
 ```
 
+```text
+[측정] 2026-08-18, the first real collector, written by an isolated author.
+
+  `addons/collector.naver.blog` — Naver API Hub blog search, written against the
+  vendor documentation with no capture available. Full suite 730 passed, 2 skipped.
+  ruff clean; mypy --strict clean over 71 files; both add-ons clean under
+  scripts/check-addons.sh.
+
+  The author was given the contract, the harness, and the API docs, and nothing
+  else — no authoring guide existed. Its question list is the measurement.
+```
+
+```text
+[측정] Three defects in MY work, found by that author and not by me.
+
+  (a) The harness did not validate configuration, while
+      `CollectContext.config_field`'s own docstring tells an author a required
+      missing field "was already rejected". Locally green, broken in production —
+      the worst ordering. Fixed: the harness now calls `validate_config` exactly as
+      the host will, with a named `validate=False` escape hatch for testing an
+      add-on's own defensive re-check.
+
+  (b) `mypy experiments/integrated-p0/addons` breaks the moment a second add-on
+      exists: every entry file is conventionally `handler.py` and add-ons are
+      independent roots, so they collide in mypy's single module namespace. Fixed
+      by excluding `addons/` from the tree-wide run and adding
+      `scripts/check-addons.sh`, which names files explicitly so the exclusion
+      cannot silence it. Verified with a positive control: an injected type error
+      makes the script exit 1.
+
+  (c) `addons/normalizer.conformance` read a `fail_output` config field it never
+      declared. The new validation caught it immediately, which is the check
+      working rather than a coincidence.
+```
+
+```text
+[추론] (a) is the finding that justifies the isolation. I wrote the harness and the
+  contract docstring, and I would not have found the contradiction between them,
+  because I already knew which was true. The author had only the documents, which is
+  precisely the position every future add-on author is in.
+```
+
+```text
+[측정] A consequential gap the contract cannot express: Naver authenticates with two
+  headers, and `Declarations.needs_credential` is a single boolean. Nothing states
+  which header a declared `secret = true` field fills, or what a source needing two
+  secrets does. Raised as OQ-009 rather than guessed at, per AGENTS.md. The
+  collector's two secret fields are recorded there as a placeholder, not a design.
+```
+
 ## Interpretation
 
 ```text

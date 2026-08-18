@@ -62,4 +62,11 @@ strict = true
 mypy_path = "experiments/integrated-p0"
 # `var/` is ignored runtime state — a local PostgreSQL cluster, logs, and a
 # relocated tool cache. It holds no project source. Mirrors the ruff exclusion.
-exclude = ["^var/"]
+#
+# `addons/` is excluded for a different reason and not because it is unchecked.
+# Every add-on's entry file is conventionally `handler.py`, and add-ons are
+# deliberately independent roots loaded by path rather than imported by name
+# (DP-008 D2), so two of them collide in mypy's single module namespace:
+# "Duplicate module named handler". Each add-on is checked on its own by
+# `scripts/check-addons.sh`, which is the invocation the layout actually means.
+exclude = ["^var/", "^experiments/integrated-p0/addons/"]

@@ -50,6 +50,7 @@ from addon_api import (
     AddonManifest,
     CollectContext,
     CollectOutcome,
+    ConfigValidationError,
     FetchResponse,
     ImportContext,
     Limits,
@@ -58,6 +59,7 @@ from addon_api import (
     NormalizeOutcome,
     RawItem,
     SnapshotItem,
+    validate_config,
 )
 
 __all__ = [
@@ -263,8 +265,16 @@ def run_addon(
     cursor: Any = None,
     snapshot: Sequence[SnapshotItem] | None = None,
     status: int = 200,
+    validate: bool = True,
 ) -> HarnessResult:
     """Load the add-on at `directory` and run it once against `fixtures`.
+
+    `validate=False` hands the configuration through unchecked. It is for testing an
+    add-on's *own* defensive re-check of a field the schema already requires, which is
+    worth having: the host validates when a source row is written, not when a job runs,
+    so a row stored before a schema change can reach an add-on stale. Leave it on
+    otherwise — a loop that accepts configuration the host will reject is the trap this
+    parameter exists to make visible rather than convenient.
 
     Loading is deliberately **not** `addon_host`'s: `addon_kit` may import `addon_api`
     and nothing else local (DP-008 D1, enforced by the direction guard). The two
@@ -276,9 +286,28 @@ def run_addon(
     """
     manifest = AddonManifest.load(directory / "addon.toml")
     entry = _load_entry(directory, manifest)
+
+    # Validated against the manifest's declared schema, exactly as the real host
+    # will. Skipping this was a trap rather than a shortcut: `CollectContext.
+    # config_field`'s own docstring tells an author that a required missing field
+    # "was already rejected", and a loop that did not reject it made that sentence
+    # false locally and true in production — the worst place to find out. It also
+    # means a secret passed here is refused here, which is the lesson rather than an
+    # inconvenience: a secret never belongs in stored configuration.
+    if validate:
+        try:
+            validated: Mapping[str, Any] = validate_config(manifest.config_schema, config or {})
+        except ConfigValidationError as error:
+            raise HarnessError(
+                f"the configuration does not satisfy {manifest.addon_id}'s declared schema: "
+                f"{error.summary}"
+            ) from error
+    else:
+        validated = config or {}
+
     result = HarnessResult()
     recorder = _Recorder(result, fixtures or {}, status)
-    context = _context_for(manifest, recorder, config or {}, cursor, snapshot or [])
+    context = _context_for(manifest, recorder, validated, cursor, snapshot or [])
 
     try:
         outcome = entry(context)

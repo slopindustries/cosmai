@@ -48,6 +48,20 @@ def write_fixture(directory: Path, name: str, body: object) -> Path:
     return path
 
 
+def _config_for(kind: str) -> dict[str, object]:
+    """The generated template's required fields, by kind.
+
+    The harness validates configuration against the manifest exactly as the host does,
+    so a probe add-on generated from the template needs the template's required fields
+    even when the test is about something else entirely.
+    """
+    if kind == "collector":
+        return {"base_path": "items"}
+    if kind == "importer":
+        return {"input_ref": "fixture:rows.csv"}
+    return {}
+
+
 def write_addon(directory: Path, kind: str, body: str, addon_id: str = "probe.addon") -> Path:
     """A hand-written add-on, so a test can control exactly what `run` does."""
     target = new_addon(addon_id, kind, directory)  # type: ignore[arg-type]
@@ -119,7 +133,7 @@ def run(context: CollectContext) -> CollectOutcome:
     return CollectOutcome(items_emitted=0)
 '''
         addon = write_addon(tmp_path / "a", "collector", body)
-        result = run_addon(addon)
+        result = run_addon(addon, config={"base_path": "items"})
         assert result.logs[0][1]["type"] == CollectContext.__name__
 
     def test_each_kind_receives_its_own_context(self, tmp_path: Path) -> None:
@@ -145,7 +159,7 @@ def run(context: Any) -> {outcome}:
     return {outcome}({field}=0)
 '''
             addon = write_addon(tmp_path / kind, kind, body, addon_id=f"probe.{kind}")
-            result = run_addon(addon)
+            result = run_addon(addon, config=_config_for(kind))
             assert result.logs[0][1]["type"] == context_name, kind
 
     def test_repeated_calls_to_one_endpoint_are_served_in_order(self, tmp_path: Path) -> None:
@@ -168,7 +182,9 @@ def run(context: CollectContext) -> CollectOutcome:
         fixture_dir = tmp_path / "fx"
         write_fixture(fixture_dir, "items.1.json", {"page": 1})
         write_fixture(fixture_dir, "items.2.json", {"page": 2})
-        result = run_addon(addon, fixtures=load_fixtures(fixture_dir))
+        result = run_addon(
+            addon, fixtures=load_fixtures(fixture_dir), config={"base_path": "items"}
+        )
         assert [item.item_key for item in result.raw_items] == [
             '{"page": 1}', '{"page": 2}'
         ]
@@ -189,7 +205,7 @@ def run(context: CollectContext) -> CollectOutcome:
         fixture_dir = tmp_path / "fx"
         write_fixture(fixture_dir, "items.1.json", {"page": 1})
         with pytest.raises(HarnessError, match="call 2 of endpoint 'items'"):
-            run_addon(addon, fixtures=load_fixtures(fixture_dir))
+            run_addon(addon, fixtures=load_fixtures(fixture_dir), config={"base_path": "items"})
 
     def test_an_addon_failure_is_reported_rather_than_raised(self, tmp_path: Path) -> None:
         """An add-on's failure is a result to look at, not an exception to escape.
@@ -208,7 +224,7 @@ def run(context: CollectContext) -> CollectOutcome:
     raise AddonConfigInvalid("base_path is not configured", {"source_id": context.source_id})
 '''
         addon = write_addon(tmp_path / "a", "collector", body)
-        result = run_addon(addon)
+        result = run_addon(addon, config={"base_path": "items"})
         assert result.failed
         assert isinstance(result.failure, AddonConfigInvalid)
         assert result.outcome is None
@@ -227,7 +243,7 @@ def run(context: CollectContext) -> CollectOutcome:
     return CollectOutcome(items_emitted=7)
 '''
         addon = write_addon(tmp_path / "a", "collector", body)
-        result = run_addon(addon)
+        result = run_addon(addon, config={"base_path": "items"})
         assert not result.failed
         assert result.emitted_count_disagrees()
 
@@ -264,8 +280,80 @@ def run(context: CollectContext) -> CollectOutcome:
     return CollectOutcome(items_emitted=0)
 '''
         addon = write_addon(tmp_path / "a", "collector", body)
-        result = run_addon(addon, cursor={"next": "abc", "page": 3})
+        result = run_addon(addon, config={"base_path": "items"}, cursor={"next": "abc", "page": 3})
         assert result.logs[0][1]["value"] == {"next": "abc", "page": 3}
+
+
+class TestConfigurationIsValidatedAsTheHostWill:
+    """The loop must reject what the platform will reject.
+
+    This was a real defect, found by the first author to write an add-on against the
+    harness: `CollectContext.config_field`'s own docstring tells an author that a
+    required missing field "was already rejected", and the harness was not rejecting
+    it. Locally green, and then broken in production — the worst possible ordering.
+    """
+
+    def test_a_missing_required_field_is_refused_before_the_add_on_runs(
+        self, tmp_path: Path
+    ) -> None:
+        addon = new_addon("collector.needsconfig", "collector", tmp_path / "a")
+        with pytest.raises(HarnessError, match="'base_path' is required"):
+            run_addon(addon, config={})
+
+    def test_an_undeclared_field_is_refused(self, tmp_path: Path) -> None:
+        addon = new_addon("collector.strict", "collector", tmp_path / "a")
+        with pytest.raises(HarnessError, match="not declared"):
+            run_addon(addon, config={"base_path": "items", "surprise": 1})
+
+    def test_a_secret_offered_as_configuration_is_refused_here_too(
+        self, tmp_path: Path
+    ) -> None:
+        """A secret never belongs in stored configuration, and the loop should say so.
+
+        Teaching this in the authoring loop is better than teaching it at a code
+        review, and far better than not teaching it.
+        """
+        addon = new_addon("collector.secretive", "collector", tmp_path / "a")
+        # The generated collector template already declares `api_token` as a secret
+        # field, which is itself the template teaching the right shape.
+        manifest = AddonManifest.load(addon / "addon.toml")
+        assert [item.name for item in manifest.secret_fields()] == ["api_token"]
+
+        with pytest.raises(HarnessError, match="must not be stored as configuration"):
+            run_addon(addon, config={"base_path": "items", "api_token": "s3cret"})
+
+    def test_valid_configuration_runs(self, tmp_path: Path) -> None:
+        """The positive control. Without it the three refusals could all be one bug."""
+        addon = new_addon("collector.fine", "collector", tmp_path / "a")
+        fixtures = load_fixtures(
+            write_fixture(tmp_path / "fx", "items.1.json", {"data": [1]}).parent
+        )
+        result = run_addon(addon, fixtures=fixtures, config={"base_path": "items"})
+        assert not result.failed
+
+    def test_validation_can_be_turned_off_to_reach_an_add_on_s_own_check(
+        self, tmp_path: Path
+    ) -> None:
+        """The escape hatch, and why it exists rather than being a loophole.
+
+        The host validates when a source row is written, not when a job runs, so a row
+        stored before a schema change can reach an add-on stale. An add-on's own
+        defensive re-check is therefore worth testing, and needs a way to be reached.
+        """
+        body = '''
+from __future__ import annotations
+from addon_api.context import CollectContext
+from addon_api.errors import AddonConfigInvalid
+from addon_api.results import CollectOutcome
+
+def run(context: CollectContext) -> CollectOutcome:
+    if not context.config_field("base_path"):
+        raise AddonConfigInvalid("base_path is not configured")
+    return CollectOutcome(items_emitted=0)
+'''
+        addon = write_addon(tmp_path / "a", "collector", body)
+        result = run_addon(addon, config={}, validate=False)
+        assert isinstance(result.failure, AddonConfigInvalid)
 
 
 class TestConformanceNormalizer:
