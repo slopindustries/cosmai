@@ -27,7 +27,7 @@ git diff f83fe3c..HEAD -- experiments/integrated-p0/platform_core \
 
 | Change | Commit | Why |
 |---|---|---|
-| `dashboard/src/App.tsx` — `"CosmaSignal P0-A operator surface"` → `"Cosmai …"` | `d714b3b` | [DP-007](../../../docs/decisions/DP-007-project-rename-to-cosmai.md) |
+| `dashboard/src/App.tsx` — `"CosmaSignal P0-A operator surface"` → `"Cosmai …"` | `d714b3b` | [DP-007](../../../../docs/decisions/DP-007-project-rename-to-cosmai.md) |
 | `platform_core/api/app.py` — `title="CosmaSignal P0-A operator API"` → `"Cosmai …"` | `d714b3b` | DP-007 |
 | `platform_core/config.py` — `COSMA_ADDON_DIR` added to `RECOGNIZED_UNUSED` | B0 | See below |
 
