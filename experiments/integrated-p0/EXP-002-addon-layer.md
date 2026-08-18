@@ -4,11 +4,11 @@
 
 - Experiment ID: `EXP-002`
 - Type: `INTEGRATED_P0`
-- Status: `RUNNING`
+- Status: `COMPLETED`
 - Related Open Question or Decision Packet: [DP-008](../../docs/decisions/DP-008-addon-architecture.md); informs [OQ-003](../../docs/open-questions/OQ-003-normalization-protocol.md), [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md) H3, [OQ-007](../../docs/open-questions/OQ-007-credential-scope.md)
 - Owner: Project team
 - Created at: 2026-08-18T09:00:00+09:00
-- Last executed at: 2026-08-18T12:10:00+09:00
+- Last executed at: 2026-08-18T15:27:00+09:00
 
 ## Question
 
@@ -362,13 +362,64 @@ Cleared. No test outcome changed; only reported locations were wrong.
 
 ## Result
 
-- Outcome: `INCONCLUSIVE` — the experiment is `RUNNING` and this section is not final.
-- Falsification condition met: `NOT TESTED`
-- Exit condition met: `NO`
-- Known limitations:
-  - No add-on has been loaded, so the contract has only been exercised by its own tests.
-  - No source exists, so every security scenario B0 can run uses a synthetic registered source.
-  - The runtime patch version differs from the P0-A gate's environment.
+- Outcome: **`SUPPORTED` for H1, H3, and H4. `NOT TESTED` for H2.**
+- Falsification condition met: `NO` for the three tested hypotheses.
+- Exit condition met: **`YES` — by timebox, not by completion.**
+
+`[측정]` The 6-hour box expired at 6.4 hours with B0.1, B0.2, and part of B0.4 complete.
+The experiment's own exit condition says to record an expired box as unfinished with what
+was and was not built, rather than extending it, and the remaining work (B0.3, the
+conformance suite, the dashboard) is a second box rather than an overrun.
+
+### Per hypothesis
+
+| | Outcome | On what |
+|---|---|---|
+| **H1** the contract can be fixed without a selected source | `SUPPORTED` | The contract was written and committed before any source existed, and a collector for a real API was then written against it unchanged. |
+| **H2** every outbound obligation can stay on the platform while a collector still works | **`NOT TESTED`** | The harness's `fetch` reads a file. No collector has met a refusal, a redirect, a DNS check, or a size limit. |
+| **H3** a dependency-direction test keeps the coupling loose | `SUPPORTED` | An isolated author, given only the contract and the API docs, wrote a working collector importing `addon_api` alone. |
+| **H4** a serializable contract keeps subprocess isolation reachable | `SUPPORTED` | Every boundary type round-trips through JSON, and a test asserts the registry covers every boundary dataclass. |
+
+`[추론]` H2 is the largest remaining bet in the add-on architecture, and it is the one
+the timebox did not reach. Everything built on the current contract — the conformance
+suite, the operator surfaces — is worth more after H2 is tested and would need rework if
+it fails. That is why the next package is the capability layer rather than either of
+those.
+
+### Built
+
+`addon_api` (contract, `CONTRACT_VERSION = "1.0"`); `addon_host` (discovery, path
+loading, version gate, registration, error translation); `domain` (`source`,
+`source_cursor`, `raw_envelope`, `raw_item`, `snapshot`, `snapshot_item`, and the
+`DomainStore`, with the collection atomicity the P0-A gate recorded as its first
+limitation); `addon_kit` (generator, template, fixture-driven harness);
+`addons/normalizer.conformance` and `addons/collector.naver.blog`. Plus the development
+area map, the service register, the add-on authoring guide, the branching convention,
+and `scripts/check-addons.sh`.
+
+### Not built
+
+- **The capability layer and the outbound guard.** `addon_host.Invoke` is a seam filled
+  by `capabilities_not_bound`, which refuses loudly. H2 is untested because of this.
+- **The conformance suite.** Deliberately deferred: without the capability layer it could
+  only re-test what the harness tests.
+- **The operator surfaces.** An add-on list, a source form, credential submission.
+- **Credential attachment**, blocked by [OQ-009](../../docs/open-questions/OQ-009-credential-shape.md).
+
+These become the P1 Entry Gate's inherited items rather than an implied backlog.
+
+### Known limitations
+
+- No add-on has run through the platform. Both existing add-ons have only met the
+  harness, which cannot exercise the outbound guard, atomicity, retry and lease, or
+  persistence.
+- No real source has been requested. Every security scenario B0 could have run would use
+  a synthetic registered source, and `SEC-006` has therefore not been triggered.
+- The runtime patch version differs from the P0-A gate's environment (3.13.7 against
+  3.13.15).
+- **F16 is open**: a pre-existing P0-A test is intermittently flaky under `-n 4`. It
+  predates B0, is routed to [OQ-006](../../docs/open-questions/OQ-006-job-concurrency.md),
+  and must be resolved or explicitly carried before the P1 Entry Gate.
 
 ## Impact and next action
 
@@ -407,7 +458,7 @@ Cleared. No test outcome changed; only reported locations were wrong.
   `[추론]` The exposure is bounded while one person works and every change lands on a
   branch. It stops being bounded the moment a second party pushes, so this belongs in
   the P1 Entry Gate's inherited items rather than in a backlog.
-- Proposed next experiment: none. B0 continues.
+- Proposed next experiment: **EXP-003 — the capability layer and the outbound guard.** It is the only work that tests H2, and it is the reason the conformance suite and the operator surfaces wait rather than proceed.
 - Proposed contract change: none yet. `addon_api` is at `CONTRACT_VERSION = "1.0"`.
 - Proposed Decision Packet update: none yet.
 
@@ -430,4 +481,4 @@ Cleared. No test outcome changed; only reported locations were wrong.
 - [x] The procedure is replayable without relying on undocumented session context.
 - [x] Observations and interpretations use the project evidence labels correctly.
 - [x] Secrets, restricted inputs, and raw conversations are absent.
-- [ ] The result includes limitations and a concrete next action. — pending completion
+- [x] The result includes limitations and a concrete next action.

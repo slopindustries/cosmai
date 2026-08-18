@@ -150,7 +150,8 @@ P0-A and P0-B each receive a separately recorded timebox before their experiment
 | Package | Timebox | Recorded | Experiment |
 |---|---|---|---|
 | P0-A | 1 day | 2026-08-17 | [EXP-001](../experiments/integrated-p0/EXP-001-platform-core.md) — `COMPLETED` |
-| B0 — Add-on layer | 6 hours | 2026-08-18 | [EXP-002](../experiments/integrated-p0/EXP-002-addon-layer.md) — `RUNNING` |
+| B0 — Add-on layer | 6 hours | 2026-08-18 | [EXP-002](../experiments/integrated-p0/EXP-002-addon-layer.md) — `COMPLETED`; box expired at 6.4 h with B0.3–B0.5 unbuilt |
+| B0.3 — Capability layer and outbound guard | 2.5 hours | 2026-08-18 | [EXP-003](../experiments/integrated-p0/EXP-003-capability-layer.md) — `RUNNING` |
 | B1 — Source exploration | not yet recorded | — | not created |
 
 B1 must record its own owner and timebox before its status becomes `RUNNING`.
