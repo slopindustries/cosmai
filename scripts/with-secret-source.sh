@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Run a command with the CosmaSignal secret store location validated and exported.
+# Run a command with the Cosmai secret store location validated and exported.
 #
 #   ./scripts/with-secret-source.sh uv run pytest
 #   ./scripts/with-secret-source.sh uv run python -m cosma.worker
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
-secret_file=${COSMA_SECRET_SOURCE:-$HOME/.config/cosmasignal/env}
+secret_file=${COSMA_SECRET_SOURCE:-$HOME/.config/cosmai/env}
 
 if [ "$#" -eq 0 ]; then
   echo "usage: ${0##*/} <command> [args...]" >&2
@@ -28,9 +28,9 @@ error: secret store not found: $secret_file
 
 Create it outside the repository, then restrict its permissions:
 
-  mkdir -p ~/.config/cosmasignal
-  touch ~/.config/cosmasignal/env
-  chmod 600 ~/.config/cosmasignal/env
+  mkdir -p ~/.config/cosmai
+  touch ~/.config/cosmai/env
+  chmod 600 ~/.config/cosmai/env
 
 Key names are documented in config/env.example.
 Procedure: docs/conventions/secret-setup.md

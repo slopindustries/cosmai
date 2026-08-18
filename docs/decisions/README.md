@@ -10,6 +10,8 @@ Active decisions:
 - [DP-002 — Project identity and initial technology constraints](DP-002-project-identity-and-stack.md)
 - [DP-003 — Development environment and Python packaging](DP-003-development-environment.md)
 - [DP-005 — Two-part pre-P1 execution](DP-005-two-part-pre-p1-execution.md)
+- [DP-006 — P0-A platform foundation choices](DP-006-p0a-platform-foundation.md) — accepted at the P0-A Completion Gate, 2026-08-17
+- [DP-007 — Project rename to Cosmai](DP-007-project-rename-to-cosmai.md) — accepted 2026-08-17; supersedes DP-002's two naming decisions only
 
 Superseded decisions:
 

@@ -1,0 +1,363 @@
+SEC-004 — the job-detail screens as an operator reads them
+==============================================================================
+
+Rendered by dashboard/src/detail-text.tsx: the same component tree the browser
+mounts, from API responses this module's probe obtained from a real API process.
+This is the reading half of SEC-004 step 3. It is NOT step 4's screenshot — a
+value hidden by CSS or parked in a DOM attribute would pass a text search and
+fail a person's eyes, and dashboard/README.md records the capture procedure.
+
+Every value under a redacted key arrives already masked: the API masks on the
+way out, so no screen ever holds one. The marker under the ordinary key survives,
+which is the detection control — a screen that rendered nothing would satisfy the
+eight absences for the wrong reason.
+
+Captured by `-k sec_004 --capture-evidence=DIR`. The assertions in
+test_dashboard.py are the authority; this file is what they were asserted over.
+
+Data class: public. Synthetic throughout.
+
+==============================================================================
+default job-detail screen
+==============================================================================
+
+job
+5e97fd67-bdc6-48b3-98c2-2b697b73e1b7
+FAILED
+what ran, when, and how it ended
+handler
+fail_permanent
+state
+FAILED
+terminal reason
+PLATFORM_PERMANENT
+correlation id
+1315b097-2bc8-4e1a-8c36-0e4d72fa384f
+created at
+2026-08-17T22:46:01.584660+09:00
+last changed at
+2026-08-17T22:46:01.725784+09:00
+available at
+2026-08-17T22:46:01.584660+09:00
+lease owner
+—
+lease expires at
+—
+attempts spent
+1 of 3
+attempts remaining
+2
+attempt budget spent
+no
+payload
+The opaque input as submitted, exactly as the API returned it. A value under a reserved key arrives already masked and the key name survives, because knowing a value was there is diagnostic and the value itself is not.
+{
+  "note": "screen-must-survive-42",
+  "token": "[REDACTED]",
+  "apikey": "[REDACTED]",
+  "cookie": "[REDACTED]",
+  "secret": "[REDACTED]",
+  "api_key": "[REDACTED]",
+  "password": "[REDACTED]",
+  "credential": "[REDACTED]",
+  "authorization": "[REDACTED]"
+}
+retry
+A safe retry starts from FAILED only. This job is FAILED.
+Request retry
+attempts
+representation
+default
+At least one attempt has protected debug detail that this representation withholds.
+Show protected detail (?debug=protected)
+no
+worker
+outcome
+error class
+class retryable
+started
+finished
+summary
+protected detail
+1
+shk-macbook-68218
+PERMANENT_FAILURE
+PLATFORM_PERMANENT
+no
+2026-08-17T22:46:01.722571+09:00
+2026-08-17T22:46:01.725784+09:00
+the permanent failure injector refused this attempt
+present, withheld
+
+==============================================================================
+protected job-detail screen
+==============================================================================
+
+job
+5e97fd67-bdc6-48b3-98c2-2b697b73e1b7
+FAILED
+what ran, when, and how it ended
+handler
+fail_permanent
+state
+FAILED
+terminal reason
+PLATFORM_PERMANENT
+correlation id
+1315b097-2bc8-4e1a-8c36-0e4d72fa384f
+created at
+2026-08-17T22:46:01.584660+09:00
+last changed at
+2026-08-17T22:46:01.725784+09:00
+available at
+2026-08-17T22:46:01.584660+09:00
+lease owner
+—
+lease expires at
+—
+attempts spent
+1 of 3
+attempts remaining
+2
+attempt budget spent
+no
+payload
+The opaque input as submitted, exactly as the API returned it. A value under a reserved key arrives already masked and the key name survives, because knowing a value was there is diagnostic and the value itself is not.
+{
+  "note": "screen-must-survive-42",
+  "token": "[REDACTED]",
+  "apikey": "[REDACTED]",
+  "cookie": "[REDACTED]",
+  "secret": "[REDACTED]",
+  "api_key": "[REDACTED]",
+  "password": "[REDACTED]",
+  "credential": "[REDACTED]",
+  "authorization": "[REDACTED]"
+}
+retry
+A safe retry starts from FAILED only. This job is FAILED.
+Request retry
+attempts
+representation
+protected
+Protected means who may ask, not what is masked: values under reserved keys are still masked here.
+no
+worker
+outcome
+error class
+class retryable
+started
+finished
+summary
+protected detail
+1
+shk-macbook-68218
+PERMANENT_FAILURE
+PLATFORM_PERMANENT
+no
+2026-08-17T22:46:01.722571+09:00
+2026-08-17T22:46:01.725784+09:00
+the permanent failure injector refused this attempt
+{
+  "attempt_no": 1
+}
+
+==============================================================================
+default screen of the marked-detail job
+==============================================================================
+
+job
+d1e82235-c6df-4285-846b-dd217993fc7c
+FAILED
+what ran, when, and how it ended
+handler
+succeed
+state
+FAILED
+terminal reason
+PLATFORM_PERMANENT
+correlation id
+cad4487e-b1a3-40c7-aa2a-f53ff54fab61
+created at
+2026-08-17T22:46:01.936477+09:00
+last changed at
+2026-08-17T22:46:01.940048+09:00
+available at
+2026-08-17T22:46:01.936477+09:00
+lease owner
+—
+lease expires at
+—
+attempts spent
+1 of 3
+attempts remaining
+2
+attempt budget spent
+no
+payload
+The opaque input as submitted, exactly as the API returned it. A value under a reserved key arrives already masked and the key name survives, because knowing a value was there is diagnostic and the value itself is not.
+{}
+retry
+A safe retry starts from FAILED only. This job is FAILED.
+Request retry
+attempts
+representation
+default
+At least one attempt has protected debug detail that this representation withholds.
+Show protected detail (?debug=protected)
+no
+worker
+outcome
+error class
+class retryable
+started
+finished
+summary
+protected detail
+1
+worker-under-test
+PERMANENT_FAILURE
+PLATFORM_PERMANENT
+no
+2026-08-17T22:46:01.937678+09:00
+2026-08-17T22:46:01.940048+09:00
+the screen probe refused this attempt
+present, withheld
+
+==============================================================================
+protected screen of the marked-detail job
+==============================================================================
+
+job
+d1e82235-c6df-4285-846b-dd217993fc7c
+FAILED
+what ran, when, and how it ended
+handler
+succeed
+state
+FAILED
+terminal reason
+PLATFORM_PERMANENT
+correlation id
+cad4487e-b1a3-40c7-aa2a-f53ff54fab61
+created at
+2026-08-17T22:46:01.936477+09:00
+last changed at
+2026-08-17T22:46:01.940048+09:00
+available at
+2026-08-17T22:46:01.936477+09:00
+lease owner
+—
+lease expires at
+—
+attempts spent
+1 of 3
+attempts remaining
+2
+attempt budget spent
+no
+payload
+The opaque input as submitted, exactly as the API returned it. A value under a reserved key arrives already masked and the key name survives, because knowing a value was there is diagnostic and the value itself is not.
+{}
+retry
+A safe retry starts from FAILED only. This job is FAILED.
+Request retry
+attempts
+representation
+protected
+Protected means who may ask, not what is masked: values under reserved keys are still masked here.
+no
+worker
+outcome
+error class
+class retryable
+started
+finished
+summary
+protected detail
+1
+worker-under-test
+PERMANENT_FAILURE
+PLATFORM_PERMANENT
+no
+2026-08-17T22:46:01.937678+09:00
+2026-08-17T22:46:01.940048+09:00
+the screen probe refused this attempt
+{
+  "token": "[REDACTED]",
+  "apikey": "[REDACTED]",
+  "cookie": "[REDACTED]",
+  "secret": "[REDACTED]",
+  "api_key": "[REDACTED]",
+  "password": "[REDACTED]",
+  "diagnosis": "detail-must-not-render-42",
+  "attempt_no": 1,
+  "credential": "[REDACTED]",
+  "authorization": "[REDACTED]"
+}
+
+==============================================================================
+refused-retry screen
+==============================================================================
+
+job
+2739d90b-17c6-4b7c-84a6-2ae0b07ee062
+SUCCEEDED
+what ran, when, and how it ended
+handler
+succeed
+state
+SUCCEEDED
+terminal reason
+—
+correlation id
+370de4b0-9012-4ebf-b3c8-38c3ba7870c9
+created at
+2026-08-17T22:46:01.755333+09:00
+last changed at
+2026-08-17T22:46:01.916707+09:00
+available at
+2026-08-17T22:46:01.755333+09:00
+lease owner
+—
+lease expires at
+—
+attempts spent
+1 of 3
+attempts remaining
+2
+attempt budget spent
+no
+payload
+The opaque input as submitted, exactly as the API returned it. A value under a reserved key arrives already masked and the key name survives, because knowing a value was there is diagnostic and the value itself is not.
+{}
+retry
+A safe retry starts from FAILED only. This job is SUCCEEDED.
+Request retry
+Retry refused.
+current state
+SUCCEEDED
+required state
+FAILED
+this job is SUCCEEDED; a safe retry starts from FAILED
+attempts
+representation
+default
+no
+worker
+outcome
+error class
+class retryable
+started
+finished
+summary
+protected detail
+1
+shk-macbook-68221
+SUCCEEDED
+—
+unknown
+2026-08-17T22:46:01.912610+09:00
+2026-08-17T22:46:01.916707+09:00
+—
+none

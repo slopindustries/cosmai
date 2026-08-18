@@ -22,12 +22,12 @@
 ## 최초 설정
 
 ```sh
-mkdir -p ~/.config/cosmasignal
-touch ~/.config/cosmasignal/env
-chmod 600 ~/.config/cosmasignal/env
+mkdir -p ~/.config/cosmai
+touch ~/.config/cosmai/env
+chmod 600 ~/.config/cosmai/env
 ```
 
-`~/.config/cosmasignal/env`에 `KEY=VALUE` 형식으로 실제 값을 적는다. Key 이름은 [`config/env.example`](../../config/env.example)에 기록된 규칙을 따른다.
+`~/.config/cosmai/env`에 `KEY=VALUE` 형식으로 실제 값을 적는다. Key 이름은 [`config/env.example`](../../config/env.example)에 기록된 규칙을 따른다.
 
 다른 위치를 쓰려면 `COSMA_SECRET_SOURCE`로 경로를 지정하고, 그 사실을 experiment record나 Decision Packet에 남긴다.
 

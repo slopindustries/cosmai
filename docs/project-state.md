@@ -1,10 +1,10 @@
 # Project State
 
-- Project: CosmaSignal
-- Version: 0.3
-- Updated: 2026-08-17
-- Phase: P0-A — Platform Core Construction and Verification
-- Next gate: P0-A Completion Gate
+- Project: Cosmai
+- Version: 0.5
+- Updated: 2026-08-18
+- Phase: P0-B — Domain Integration, Evidence Synthesis, and Disposition
+- Next gate: P1 Entry Gate (inside P0-B)
 
 ## Delivery lifecycle
 
@@ -13,10 +13,12 @@ Delivery has two active stages before P1. Work packages inside a stage do not cr
 | Stage | Purpose | Entry condition | Required output | Exit condition |
 |---|---|---|---|---|
 | P0-A — Platform Core Construction and Verification | Build and test the source- and normalization-independent platform foundation. | Project identity, disposable-P0 lifecycle, technology constraints, evidence protocol, and safety baseline are accepted. | Executable platform core, handler-neutral job and failure evidence, platform operator instrumentation, and a reviewed P0-A gate record. | The P0-A Completion Gate records `GO` or an explicitly accepted `CONDITIONAL GO` without claiming acquisition or normalization evidence. |
-| P0-B — Domain Integration, Evidence Synthesis, and Disposition | Select sources; define and implement acquisition and normalization; verify the real-data flow; decide what P1 promotes, rebuilds, archives, deletes, or carries unresolved. | P0-A gate is accepted and the bounded P0-B experiment, safety review, and timebox are recorded. | Source decisions, domain contracts, concrete collector/importer/normalizer, real-data and failure evidence, Architecture Synthesis, disposition register, `PoC Contract 0.1`, and P1 reconstruction plan. | Every P0 Charter exit criterion is answered and the P1 Entry Gate accepts the contract, disposition, and reconstruction plan, or records an explicit blocker. |
+| P0-B — Domain Integration, Evidence Synthesis, and Disposition | Select sources; define and implement acquisition and normalization; verify the real-data flow; decide what P1 promotes, rebuilds, archives, deletes, or carries unresolved. | P0-A gate is accepted and the bounded P0-B experiment, safety review, and timebox are recorded. | Source decisions, domain contracts, the add-on contract and host, concrete collector/importer/normalizer add-ons, real-data and failure evidence, Architecture Synthesis, disposition register, `PoC Contract 0.1`, and P1 reconstruction plan. | Every P0 Charter exit criterion is answered and the P1 Entry Gate accepts the contract, disposition, and reconstruction plan, or records an explicit blocker. |
 | P1 — Clean Reconstruction | Rebuild from accepted contracts and promoted evidence rather than harden P0 code. | P0-B P1 Entry Gate is accepted. | A clean, continuously operable prototype baseline. | Defined by the future P1 charter. |
 
 No stage advances automatically because code appears to work. Update this file and the affected artifact statuses when a gate is accepted.
+
+`[결정]` **The P0-A Completion Gate was accepted `GO` on 2026-08-17** with no conditions, at revision `f83fe3c`. Its record, the evidence it links, and an adversarial review of every `PASS` claim are in [`experiments/integrated-p0/`](../experiments/integrated-p0/PLATFORM-CORE-GATE-2026-08-17.md). P0-A produced no acquisition or normalization evidence and the gate says so in its own words; the nine things it explicitly does not claim are the boundary P0-B inherits.
 
 ## 1. Current program goal through P0-B
 
@@ -62,11 +64,12 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 
 ### Project and lifecycle
 
-- `[결정]` Project and GitHub organization name: **CosmaSignal**.
+- `[결정]` Project and GitHub organization name: **Cosmai**.
 - `[결정]` P0 is a disposable Architecture Discovery Prototype.
 - `[결정]` P1 will be reconstructed after P0-B accepts Architecture Synthesis, `PoC Contract 0.1`, artifact disposition, and a P1 reconstruction plan.
 - `[결정]` The repository is a monorepo for backend, dashboard, contracts, experiments, and tests.
 - `[결정]` [DP-005](decisions/DP-005-two-part-pre-p1-execution.md) divides all pre-P1 delivery into P0-A and P0-B.
+- `[결정]` [DP-008](decisions/DP-008-addon-architecture.md) makes collectors, importers, and normalizers in-repository add-ons behind a contract, superseding DP-005's P0-B order steps 4–6 and DP-006's module layout.
 
 ### Technology constraints
 
@@ -75,7 +78,12 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 - `[결정]` Dashboard: React and TypeScript.
 - `[결정]` P0-B must support both REST API collection and existing dataset import.
 
-Framework and library selections such as FastAPI, SQLAlchemy, Alembic, HTTPX, React Router, TanStack Query, and MUI are strong P0 defaults but remain replaceable if an experiment produces contrary evidence.
+Framework and library selections such as FastAPI, SQLAlchemy, Alembic, HTTPX, React Router, TanStack Query, and MUI are strong P0 defaults. Two different questions follow from that and the answer differs:
+
+- **Adopting one is optional.** A default is a starting point, not an obligation, and AGENTS.md still applies: an abstraction that reduces no named uncertainty should not be introduced. Declining a default requires a recorded reason, not contrary evidence — there is nothing to have evidence about until something is in use.
+- **Replacing one already in use requires contrary evidence**, because work has been built on it and the cost of changing is real.
+
+`[결정]` This distinction was added on 2026-08-17 by [DP-006](decisions/DP-006-p0a-platform-foundation.md). The original sentence said only that these defaults "remain replaceable if an experiment produces contrary evidence", which read strictly would have required P0-A to adopt every one of them before it could decline any. DP-006 declined five, and the ambiguity was flagged there rather than resolved silently. The reviewer accepted the adoption-versus-replacement reading and asked for this clarification so that P0-B does not meet the same question again with FastAPI and HTTPX.
 
 ### P0-A boundary
 
@@ -91,22 +99,43 @@ P0-A does not explore or select sources and does not implement acquisition, Raw,
 
 ### P0-B boundary
 
-P0-B owns all source and normalization work:
+P0-B owns all source and normalization work. [DP-008](decisions/DP-008-addon-architecture.md) splits it into two tracks that run in parallel and then converge:
 
 ```text
-bounded candidate exploration and rights review
-→ REST source and dataset selection
-→ provisional decision use
-→ acquisition, Raw, snapshot, normalization, operations, source-policy, and credential contracts
-→ collector/importer/normalizer interfaces and test doubles
-→ concrete collector/importer/rule-baseline implementation
-→ component, real-data, failure, replay, concurrency, and operator verification
-→ Architecture Synthesis and artifact disposition
-→ PoC Contract 0.1 and P1 reconstruction plan
-→ P1 Entry Gate
+add-on track                          source track
+(no source or decision semantics)     (blocked by OQ-001 and OQ-002)
+
+add-on contract, host, and            bounded candidate exploration
+  version gate                          and rights review
+→ source registry, cursor, Raw,       → REST source and dataset selection
+    and snapshot tables               → provisional decision use
+→ platform outbound guard
+→ conformance suite, template,
+    and generator
+→ add-on operator surfaces
+                        ↓                         ↓
+        acquisition, Raw, snapshot, normalization, operations,
+          source-policy, and credential contracts
+        → collector, importer, and normalizer add-on implementations
+        → component, real-data, failure, replay, concurrency, and operator verification
+        → Architecture Synthesis and artifact disposition
+        → PoC Contract 0.1 and P1 reconstruction plan
+        → P1 Entry Gate
 ```
 
+`[추론]` The add-on track carries no source or decision semantics, so neither OQ-001 nor OQ-002 blocks it. What OQ-002 blocks is the content of the normalizer's rules, not the protocol they are written against.
+
 Source probes are measurements inside P0-B. They are not integrated collector or importer implementations and cannot satisfy those obligations retroactively.
+
+### Add-on architecture
+
+`[결정]` Collectors, importers, and normalizers are in-repository add-ons behind a contract, accepted in [DP-008](decisions/DP-008-addon-architecture.md). A new source adds a directory, not platform code.
+
+- `[결정]` One package format and manifest; capabilities granted by `kind`. A collector receives a platform-composed `fetch`, an importer receives a platform-opened input, a normalizer receives a hash-verified snapshot.
+- `[결정]` An add-on never receives a credential, never composes a URL, and never holds a database handle. Every outbound obligation in the [P0 Security Baseline](conventions/p0-security.md) stays on the platform.
+- `[결정]` Add-ons depend on the contract package alone. `platform_core` gains no dependency on the add-on layer, and a dependency-direction test enforces both directions.
+- `[결정]` Four version axes carry defined failures: contract, add-on, config schema, and normalizer output contract.
+- `[결정]` In-process add-ons are trusted code. Isolation is contractual and test-enforced, not enforced by the operating system.
 
 ### Data and workflow principles
 
@@ -145,6 +174,8 @@ The first two hypotheses can begin in P0-A. Acquisition and normalization hypoth
 | [OQ-005](open-questions/OQ-005-operations-contract.md) | `OPEN` | P0-A/P0-B | Which platform and domain actions and evidence must the dashboard expose? | Dashboard acceptance contract |
 | [OQ-006](open-questions/OQ-006-job-concurrency.md) | `OPEN` | P0-A/P0-B | Is the PostgreSQL job model sufficient under platform and domain failures? | Worker, retry, and transaction contract |
 | [OQ-007](open-questions/OQ-007-credential-scope.md) | `OPEN` | P0-A/P0-B | What does the platform protect before a source exists, and which real credentials may a domain worker resolve? | Secret guard and source credential contract |
+| [OQ-008](open-questions/OQ-008-operator-reexecution-authority.md) | `OPEN` | P0-B | May an operator re-execute work that already succeeded, and what distinguishes that from retrying a failure? | Operator action set in `PoC Contract 0.1` |
+| [OQ-009](open-questions/OQ-009-credential-shape.md) | `OPEN` | P0-B | How is a source's credential declared, and where does each part of it go? | Multi-part `credential_ref`, outbound header attachment, dashboard credential form |
 
 Stage expresses evidence routing, not long-term business importance.
 
@@ -165,7 +196,15 @@ P0-A may specify only platform invariants such as generic ownership, lease recov
 
 P0-A must not freeze source identity, provider fields, Raw semantics, snapshot selection, normalized semantics, source-specific retry policy, or concrete credential authorization. P0-B may propose those as experimental contracts after source evidence exists. Production topology, scale infrastructure, final product analytics, and `Normalized Schema 1.0` remain outside P0.
 
-## 9. Historical context
+## 9. Candidate services
+
+Services beyond the current P0-B scope are recorded in the [service register](service-register.md)
+as `[가설]` candidates rather than as a roadmap. `[추론]` Naming a future service and a
+milestone for it would answer [OQ-002](open-questions/OQ-002-project-decision-contract.md)
+by implication, because choosing what to build is choosing which decision to improve.
+The register records what each candidate would consume, produce, and require instead.
+
+## 10. Historical context
 
 The reasoning path from the initial ingestion idea to the disposable P0 lifecycle is recorded in [HIST-001](history/HIST-001-initial-concept-to-p0.md). DP-004 is retained as a superseded decision record.
 

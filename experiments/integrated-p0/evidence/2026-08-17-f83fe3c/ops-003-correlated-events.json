@@ -1,0 +1,170 @@
+{
+  "captured_from": "experiments/integrated-p0/tests/test_ops.py::ops_003_run",
+  "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+  "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+  "response": {
+    "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+    "limit": 500,
+    "returned": 9,
+    "events": [
+      {
+        "ts": "2026-08-17T13:46:03.116045+00:00",
+        "level": "INFO",
+        "event": "job.transition",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "handler": "halt_after_effect",
+        "attempt_no": 1,
+        "from_state": "PENDING",
+        "to_state": "RUNNING",
+        "worker_id": "shk-macbook-68317",
+        "lease_expires_at": "2026-08-17 22:46:04.112580+09:00"
+      },
+      {
+        "ts": "2026-08-17T13:46:03.116858+00:00",
+        "level": "INFO",
+        "event": "job.effect_applied",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "effect_key": "job/5331e0a3-ca7f-4f6a-920c-48e8a8909795"
+      },
+      {
+        "ts": "2026-08-17T13:46:04.295474+00:00",
+        "level": "WARNING",
+        "event": "job.attempt_abandoned",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "handler": "halt_after_effect",
+        "attempt_no": 1,
+        "error_class": "LEASE_ABANDONED",
+        "reclaimed_by": "shk-macbook-68383"
+      },
+      {
+        "ts": "2026-08-17T13:46:04.295547+00:00",
+        "level": "INFO",
+        "event": "job.transition",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "handler": "halt_after_effect",
+        "attempt_no": 2,
+        "from_state": "RUNNING",
+        "to_state": "RUNNING",
+        "worker_id": "shk-macbook-68383",
+        "lease_expires_at": "2026-08-17 22:46:05.292818+09:00"
+      },
+      {
+        "ts": "2026-08-17T13:46:04.295836+00:00",
+        "level": "INFO",
+        "event": "job.effect_suppressed",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "effect_key": "job/5331e0a3-ca7f-4f6a-920c-48e8a8909795"
+      },
+      {
+        "ts": "2026-08-17T13:46:04.296365+00:00",
+        "level": "INFO",
+        "event": "job.transition",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "handler": "halt_after_effect",
+        "attempt_no": 2,
+        "from_state": "RUNNING",
+        "to_state": "SUCCEEDED",
+        "outcome": "SUCCEEDED",
+        "error_class": null,
+        "error_summary": null,
+        "terminal_reason": null,
+        "attempt_count": 2,
+        "max_attempts": 3
+      },
+      {
+        "ts": "2026-08-17T13:46:04.708352+00:00",
+        "level": "INFO",
+        "event": "api.job_read",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "representation": "default"
+      },
+      {
+        "ts": "2026-08-17T13:46:04.713758+00:00",
+        "level": "INFO",
+        "event": "api.attempts_read",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "representation": "default",
+        "attempt_count": 2
+      },
+      {
+        "ts": "2026-08-17T13:46:04.716816+00:00",
+        "level": "WARNING",
+        "event": "probe.foreign_line",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "api_key": "[REDACTED]",
+        "note": "marker-must-survive-ops-42",
+        "error_detail_present": true
+      }
+    ]
+  },
+  "job": {
+    "id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+    "handler": "halt_after_effect",
+    "payload": {
+      "halt_on_attempt": 1
+    },
+    "state": "SUCCEEDED",
+    "attempt_count": 2,
+    "max_attempts": 3,
+    "available_at": "2026-08-17T22:46:02.987146+09:00",
+    "lease_owner": null,
+    "lease_expires_at": null,
+    "terminal_reason": null,
+    "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+    "created_at": "2026-08-17T22:46:02.987146+09:00",
+    "updated_at": "2026-08-17T22:46:04.295945+09:00",
+    "attempts_remaining": 1,
+    "attempt_budget_spent": false
+  },
+  "attempts": {
+    "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+    "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+    "representation": "default",
+    "attempts": [
+      {
+        "id": "2b4a7525-3fcd-49ba-96ff-36fe38bae35e",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "attempt_no": 1,
+        "worker_id": "shk-macbook-68317",
+        "started_at": "2026-08-17T22:46:03.112580+09:00",
+        "finished_at": "2026-08-17T22:46:04.292818+09:00",
+        "outcome": "ABANDONED",
+        "error_class": "LEASE_ABANDONED",
+        "error_summary": "the lease expired before this attempt recorded an outcome",
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "error_detail_present": false,
+        "error_class_retryable": true
+      },
+      {
+        "id": "a9218a60-b294-40d8-8699-a752c591690f",
+        "job_id": "5331e0a3-ca7f-4f6a-920c-48e8a8909795",
+        "attempt_no": 2,
+        "worker_id": "shk-macbook-68383",
+        "started_at": "2026-08-17T22:46:04.292818+09:00",
+        "finished_at": "2026-08-17T22:46:04.295945+09:00",
+        "outcome": "SUCCEEDED",
+        "error_class": null,
+        "error_summary": null,
+        "correlation_id": "594cae4a-d5dc-4cbf-b628-748df088389c",
+        "error_detail_present": false,
+        "error_class_retryable": null
+      }
+    ]
+  },
+  "control": {
+    "job_id": "51d349b1-d6c7-4698-867b-7c9113013193",
+    "correlation_id": "385bcb13-5122-4cb6-aee5-8ce4c5c02cfe",
+    "events_returned_by_its_own_identifier": 4,
+    "present_in_this_response": false
+  },
+  "unknown_identifier_returned": 0
+}

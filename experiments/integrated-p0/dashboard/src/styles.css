@@ -1,0 +1,289 @@
+/* Plain CSS, and not much of it. DP-006 D6 declines a component library, so the
+   whole visual budget is: a failed job must be findable at a glance, a withheld
+   value must be visibly withheld, and long identifiers must stay readable. */
+
+:root {
+  --ink: #1b1f24;
+  --muted: #6a737d;
+  --line: #d8dee4;
+  --paper: #ffffff;
+  --shade: #f6f8fa;
+  --alarm: #b4232a;
+  --alarm-tint: #fdf1f1;
+  --calm: #1a7f37;
+  --hold: #9a6700;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--shade);
+}
+
+.app {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+h1 {
+  font-size: 19px;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.app-header {
+  margin-bottom: 20px;
+}
+
+.screen {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.screen-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.panel {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.note,
+.empty {
+  color: var(--muted);
+  margin: 0;
+}
+
+.failure {
+  color: var(--alarm);
+  background: var(--alarm-tint);
+  border: 1px solid var(--alarm);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.mono,
+.block {
+  font-family: var(--mono);
+}
+
+.block {
+  background: var(--shade);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+
+.table td {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 8px;
+  vertical-align: top;
+}
+
+.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.timestamp {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.summary {
+  max-width: 340px;
+}
+
+.row-failed {
+  background: var(--alarm-tint);
+}
+
+.row-selected {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.field-value {
+  word-break: break-all;
+}
+
+.badge {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.badge-failed,
+.badge-permanent_failure,
+.badge-retryable_failure,
+.badge-abandoned {
+  color: var(--alarm);
+  border-color: var(--alarm);
+  background: var(--alarm-tint);
+}
+
+.badge-succeeded {
+  color: var(--calm);
+  border-color: var(--calm);
+}
+
+.badge-running,
+.badge-protected {
+  color: var(--hold);
+  border-color: var(--hold);
+}
+
+.withheld {
+  color: var(--hold);
+  font-weight: 600;
+}
+
+.action,
+.chip,
+.link {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 4px 10px;
+}
+
+.action:disabled {
+  cursor: progress;
+  color: var(--muted);
+}
+
+.link {
+  border: none;
+  background: none;
+  padding: 0;
+  text-decoration: underline;
+  color: inherit;
+}
+
+.chip-on {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.representation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+.outcome-refused {
+  border-color: var(--alarm);
+  background: var(--alarm-tint);
+}
+
+.outcome-accepted {
+  border-color: var(--calm);
+}
+
+.reason {
+  margin: 0;
+  flex-basis: 100%;
+}

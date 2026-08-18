@@ -1,6 +1,6 @@
-# CosmaSignal
+# Cosmai
 
-CosmaSignal is an evidence-bearing data ingestion and normalization experiment for beauty R&D signal intelligence.
+Cosmai is an evidence-bearing data ingestion and normalization experiment for beauty R&D signal intelligence.
 
 ## Current phase
 
