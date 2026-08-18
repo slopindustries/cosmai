@@ -195,7 +195,15 @@ P0-A may specify only platform invariants such as generic ownership, lease recov
 
 P0-A must not freeze source identity, provider fields, Raw semantics, snapshot selection, normalized semantics, source-specific retry policy, or concrete credential authorization. P0-B may propose those as experimental contracts after source evidence exists. Production topology, scale infrastructure, final product analytics, and `Normalized Schema 1.0` remain outside P0.
 
-## 9. Historical context
+## 9. Candidate services
+
+Services beyond the current P0-B scope are recorded in the [service register](service-register.md)
+as `[가설]` candidates rather than as a roadmap. `[추론]` Naming a future service and a
+milestone for it would answer [OQ-002](open-questions/OQ-002-project-decision-contract.md)
+by implication, because choosing what to build is choosing which decision to improve.
+The register records what each candidate would consume, produce, and require instead.
+
+## 10. Historical context
 
 The reasoning path from the initial ingestion idea to the disposable P0 lifecycle is recorded in [HIST-001](history/HIST-001-initial-concept-to-p0.md). DP-004 is retained as a superseded decision record.
 

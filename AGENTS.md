@@ -4,6 +4,17 @@
 
 Build evidence that allows the team to choose the architecture. Do not treat P0 as the production foundation.
 
+## Where you are working
+
+- Read `docs/areas/README.md` first. It names the five development areas, the one
+  dependency rule that spans them, and which document governs each.
+- Work inside one area at a time. A change that spans areas is usually two changes, and
+  occasionally a sign that the boundary is wrong — which is evidence worth recording
+  rather than routing around.
+- Before writing an add-on, read `docs/conventions/addon-authoring.md`. An add-on
+  imports `addon_api` and nothing else in this project; `tests/environment/test_addon_layer_direction.py`
+  enforces that and will name the violation.
+
 ## Decision boundary
 
 - Read `docs/project-state.md` before making changes.
