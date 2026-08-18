@@ -75,7 +75,7 @@ Governed by [DP-008](decisions/DP-008-addon-architecture.md). Experiment record:
 1. `addon_api` contract at `CONTRACT_VERSION = "1.0"`, and `addon_host` discovery, loading, and version gate.
 2. `domain` source registry, cursor, Raw, and snapshot tables in migration `0002_domain.sql`.
 3. Capability implementations, including the platform outbound guard that composes every request from a registered source profile.
-4. Conformance suite, the `addon_kit` generator and its template, and `addons/normalizer.conformance/` as the smallest conforming add-on. The template lives at `addon_kit/template/`, deliberately outside the `addons/` tree the host scans, so a template cannot be discovered and registered as an add-on nobody installed.
+4. The `addon_kit` generator, its template, the fixture-driven authoring harness (`addon_kit run`), the conformance suite, and `addons/normalizer.conformance/` as the smallest conforming add-on. The template lives at `addon_kit/template/`, deliberately outside the `addons/` tree the host scans, so a template cannot be discovered and registered as an add-on nobody installed. The harness is the authoring loop and is not integration evidence: it exercises an add-on's logic against the contract's shapes and cannot exercise the outbound guard, atomicity, retry and lease, or persistence.
 5. Operator surfaces: installed add-on list, source create and edit rendered from the add-on's config schema, credential submission, and version and migration state.
 
 B0 adds no dependency to `platform_core`. A dependency-direction test enforces that, and enforces that an add-on imports `addon_api` alone.

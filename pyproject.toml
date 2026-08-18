@@ -50,6 +50,16 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+# The same entry `pythonpath` gives pytest, for the same reason: the experiment
+# directory's name contains a hyphen and is not importable as a package, so
+# `platform_core`, `addon_api`, `domain`, and an add-on under `addons/` are reached
+# through this path and never through an installed distribution.
+#
+# Without it, checking one add-on on its own — which is what an add-on author does,
+# and what `docs/conventions/addon-authoring.md` tells them to do — fails to resolve
+# `addon_api` even though checking the whole tree succeeds. A tool that only works
+# when you point it at everything is not the loop the add-on layer is for.
+mypy_path = "experiments/integrated-p0"
 # `var/` is ignored runtime state — a local PostgreSQL cluster, logs, and a
 # relocated tool cache. It holds no project source. Mirrors the ruff exclusion.
 exclude = ["^var/"]

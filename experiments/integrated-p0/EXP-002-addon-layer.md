@@ -252,6 +252,42 @@ Cleared. No test outcome changed; only reported locations were wrong.
   and was made in place only because no add-on existed to break.
 ```
 
+```text
+[측정] 2026-08-18, the authoring loop closed end to end.
+  Full suite: 691 passed, 2 skipped in 55 s. ruff and mypy --strict clean over 71
+  source files.
+
+  `addon_kit new collector.probe --kind collector` then
+  `addon_kit run <dir> --fixtures <dir> --config '{"base_path":"items"}'`
+  runs an untouched generated add-on and prints its transcript: fetch, emit_raw,
+  advance_cursor, log, then the emitted counts and cursors. Exit 0.
+  With --status 401 the same add-on reports AddonConfigInvalid and exits 1.
+  With no fixture the harness refuses by name and says what file to add, rather
+  than serving an empty page.
+
+  `addon_host.install_addons` over the real `addons/` directory discovers
+  normalizer.conformance@0.1.0 and registers `addon:normalizer.conformance`.
+```
+
+```text
+[측정] The conformance normalizer is deterministic. Two runs over one snapshot
+  produce byte-identical output after canonical serialization (OQ-003's
+  requirement). Two orderings of the same record fold to one result, because
+  `_fold` sorts rather than preserving insertion order. Lenient mode skips an
+  unparseable item; strict mode fails it as AddonPermanent; bytes that are not
+  UTF-8 fail even when lenient, because a sealed snapshot holding non-text is a
+  defect in what was sealed rather than one bad record.
+```
+
+```text
+[측정] mypy could not check an add-on on its own. Checking the whole tree
+  succeeded while `mypy experiments/integrated-p0/addons` failed to resolve
+  `addon_api`. Fixed with `mypy_path` in pyproject.toml, mirroring the `pythonpath`
+  pytest already had. Recorded because it is exactly the friction the add-on layer
+  exists to remove: a tool that only works when pointed at everything is not the
+  loop an add-on author needs.
+```
+
 ## Interpretation
 
 ```text
