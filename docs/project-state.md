@@ -70,6 +70,7 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 - `[결정]` The repository is a monorepo for backend, dashboard, contracts, experiments, and tests.
 - `[결정]` [DP-005](decisions/DP-005-two-part-pre-p1-execution.md) divides all pre-P1 delivery into P0-A and P0-B.
 - `[결정]` [DP-008](decisions/DP-008-addon-architecture.md) makes collectors, importers, and normalizers in-repository add-ons behind a contract, superseding DP-005's P0-B order steps 4–6 and DP-006's module layout.
+- `[결정]` [DP-010](decisions/DP-010-durable-work-in-the-completion-transaction.md) lets a handler enlist work into the transaction that completes its attempt, closing the gap the P0-A gate recorded first. It restates DP-008 D1's principle: `platform_core` stays **source-neutral**, not frozen.
 
 ### Technology constraints
 

@@ -47,7 +47,8 @@ what the contract calls it — the attempt budget consumed, not a row label.
 from __future__ import annotations
 
 import random
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final
@@ -756,6 +757,33 @@ class JobStore:
             return cursor.fetchall()
 
     # -------------------------------------------------------------- internals
+
+    def durable_scope(self) -> AbstractContextManager[None]:
+        """A transaction that a handler's writes and its completion share.
+
+        The P0-A Completion Gate recorded this as **the largest gap P0-A leaves**:
+        every duplicate-suppression result there rests on one row and one primary-key
+        conflict, while "a P0-B acquisition or normalization effect spans several
+        statements and probably several tables, where the question becomes
+        transactional". This is that transaction.
+
+        Why the completion has to be inside it, rather than following it: a worker that
+        stalled past its lease has had its work handed to someone else. If it commits its
+        writes and *then* meets the fence, the refusal comes too late — the rows are
+        already there and the other worker's are too. Inside one transaction the refusal
+        discards them, which is the only ordering that makes at-least-once delivery safe
+        for an effect the platform cannot deduplicate by key.
+
+        Nothing here is source-aware, and that is what keeps this module inside its own
+        boundary. A transaction is not a domain concept; it is the generic mechanism the
+        gate said P0-B would need.
+        """
+        return self._transaction()
+
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        with self._connection.transaction():
+            yield
 
     def _cursor(self) -> psycopg.Cursor[dict[str, Any]]:
         return self._connection.cursor(row_factory=dict_row)

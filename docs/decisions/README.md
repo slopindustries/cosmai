@@ -12,6 +12,8 @@ Active decisions:
 - [DP-005 — Two-part pre-P1 execution](DP-005-two-part-pre-p1-execution.md)
 - [DP-006 — P0-A platform foundation choices](DP-006-p0a-platform-foundation.md) — accepted at the P0-A Completion Gate, 2026-08-17
 - [DP-007 — Project rename to Cosmai](DP-007-project-rename-to-cosmai.md) — accepted 2026-08-17; supersedes DP-002's two naming decisions only
+- [DP-008 — Add-on architecture for collectors and normalizers](DP-008-addon-architecture.md) — accepted 2026-08-18; supersedes DP-005's P0-B order steps 4–6 and DP-006's module layout
+- [DP-010 — Durable work inside the completion transaction](DP-010-durable-work-in-the-completion-transaction.md) — accepted 2026-08-18; supersedes one clause of DP-008 D1
 
 Superseded decisions:
 

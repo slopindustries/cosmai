@@ -24,6 +24,14 @@ from uuid import UUID
 
 from platform_core.errors import HandlerUnknownError
 
+DurableWork = Callable[[], None]
+"""Work a handler enlists into the transaction that completes its attempt.
+
+It takes nothing and returns nothing on purpose. Anything it needs it closed over
+while the handler ran, and anything it produces it has already put somewhere — so
+there is no value for the platform to interpret, which is what keeps this generic.
+"""
+
 
 @dataclass(frozen=True)
 class JobContext:
@@ -37,6 +45,22 @@ class JobContext:
     correlation_id: str
     worker_id: str
     apply_effect: Callable[[str, Any], bool]
+    #: Register work to run inside the transaction that completes this attempt.
+    #:
+    #: ``apply_effect`` is the one-row durable effect P0-A verified, and the P0-A
+    #: Completion Gate recorded its limit as the largest gap P0-A leaves: a real
+    #: acquisition effect "spans several statements and probably several tables, where
+    #: the question becomes transactional". This generalises the same idea from one row
+    #: to any callable, without changing what a durable effect *means*.
+    #:
+    #: The callable runs after the handler returns and before the fenced completion, in
+    #: one transaction with it. A handler that lost its lease is refused by the fence and
+    #: its enlisted work rolls back with it — which is the point, and the reason this is
+    #: not simply "do your writes yourself".
+    #:
+    #: It also keeps a long handler from holding a transaction open: fetch first, enlist
+    #: the writes, and the transaction is only as long as the writes.
+    enlist_durable_work: Callable[[DurableWork], None] = lambda _: None
 
     def payload_field(self, name: str, fallback: Any = None) -> Any:
         """Read one key from the payload, tolerating a payload that is not a mapping.
