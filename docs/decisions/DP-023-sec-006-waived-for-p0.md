@@ -75,6 +75,26 @@ yet, and this decision gives it up.
 3. **The Architecture Synthesis records it as an accepted risk**, not as a completed control.
    `SEC-006` cannot appear in a list of satisfied acceptance evidence.
 
+## 면제 이후 관측된 것, 2026-08-20
+
+`[측정]` **이 문서가 예고한 종류의 결함이 하나 더 나왔다.** `_read_endpoints`가 mapping 형태
+endpoint의 누락된 `path`를 `""`로 채웠고, `comparable_segments("")`가 `None`이 아니라 `()`를
+돌려주어 `_is_within_approved_range`의 `continue` 가드를 지나쳤다. 빈 문자열은 모든 경로의
+접두사이므로, `{"method": "POST"}` 하나만 선언된 endpoint가 **나머지 모든 endpoint의 redirect
+승인 범위를 호스트 전체로 넓혔다.** credential 헤더는 붙은 채였다. 대조군과 함께 재현했고,
+test-first로 RED를 확인한 뒤 수리했다 (`test_outbound_policy.py`
+`TestAnEndpointWithoutAPathCannotWidenTheRange`).
+
+`[추론]` **이 관측은 이 packet의 논거를 확인하는 동시에 약화시킨다.** 이 문서는 "A second line
+of defence is worth having precisely for the defects nobody has found yet"라고 적었고, 하루 뒤에
+그 문장이 가리키던 결함이 하나 더 나왔다. 이번 것은 발견됐다. 아직 발견되지 않은 것에 대해
+이 관측이 말해주는 바는 없으며, 그것이 정확히 `SEC-006`이 존재하는 이유다.
+
+`[결정]` **면제는 유지하되, 근거는 갱신된 상태로 P1 Entry Gate에 올라간다.** 아래 반증표의 두
+번째 행 — "The application guard is the only thing that needed to hold" — 은 이제 가설이 아니라
+다섯 번 관측된 패턴이다. Gate는 이 packet을 "guard가 버텼다"가 아니라 "guard에서 다섯 번째
+결함이 나왔고 그중 넷은 하루 만에 나왔다"로 읽어야 한다.
+
 ## Falsification
 
 This decision is wrong if any of the following becomes true during P0:

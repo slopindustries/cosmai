@@ -260,7 +260,15 @@ def _read_endpoints(endpoints: Mapping[str, Any]) -> dict[str, Any]:
                     f"outbound_profile.endpoints[{name!r}] asks for method {method!r}; this "
                     f"platform grants only {', '.join(sorted(ALLOWED_METHODS))} (DP-020 D1)"
                 )
-            read[str(name)] = {"path": str(entry.get("path", "")), "method": method}
+            path = entry.get("path")
+            if not isinstance(path, str) or not path:
+                raise ValueError(
+                    f"outbound_profile.endpoints[{name!r}] declares no path. An absent path "
+                    "used to default to the empty string, which every path is inside — one "
+                    "such endpoint granted the whole host as the redirect range for all the "
+                    "others. State the path, or remove the endpoint."
+                )
+            read[str(name)] = {"path": path, "method": method}
         else:
             read[str(name)] = str(entry)
     return read
@@ -608,7 +616,11 @@ def comparable_segments(path: str) -> tuple[str, ...] | None:
     a redirect refused for it costs one collection, and the alternative costs the range.
     """
     if not path:
-        return ()
+        # `()` here would be a prefix of every path, so an endpoint that reached
+        # `approved_paths()` without one granted the entire host to every other endpoint's
+        # redirects. `None` routes it to the same `continue` an uncomparable path takes:
+        # one bad endpoint narrows nothing and widens nothing.
+        return None
     lowered = path
     for encoded in _ENCODED_SLASH:
         if encoded in lowered:

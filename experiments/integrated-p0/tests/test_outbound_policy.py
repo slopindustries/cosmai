@@ -669,3 +669,45 @@ class TestTheBodyBoundCountsBytes:
         assert isinstance(outcome, PreparedRequest)
         assert outcome.body == b"AB"
         assert isinstance(outcome.body, bytes)
+
+
+class TestAnEndpointWithoutAPathCannotWidenTheRange:
+    """The F4 class again, through the door DP-020 opened.
+
+    `_read_endpoints` defaults a mapping-form endpoint's missing `path` to `""`.
+    `comparable_segments("")` returned `()` rather than `None`, so it was not skipped the
+    way an uncomparable path is — and `candidate[:0] == ()` is true for every path. One
+    endpoint declared as `{"method": "POST"}` therefore granted the **whole host** as the
+    redirect range for every other endpoint, with the source's credential headers still
+    attached.
+
+    `[측정]` Reproduced before the repair, with a control: against a profile carrying
+    `{"post": {"method": "POST"}, "items": "/v1/items"}`, `check_redirect` accepted
+    `https://api.example.com/admin/keys`; against the same profile without the pathless
+    endpoint it refused it.
+
+    Two tests, because the two halves fail differently. The first stops the row being
+    written. The second is what holds if one is written anyway — the guard's own rule that
+    "a defect in one endpoint cannot widen the range the others grant".
+    """
+
+    def test_a_mapping_endpoint_without_a_path_is_refused_when_the_row_is_read(self) -> None:
+        with pytest.raises(ValueError, match="path"):
+            OutboundProfile.from_row(
+                {
+                    "hosts": ["api.example.com"],
+                    "endpoints": {"post": {"method": "POST"}, "items": "/v1/items"},
+                }
+            )
+
+    def test_an_empty_approved_path_grants_nothing_rather_than_everything(self) -> None:
+        widened = a_profile(endpoints={"post": {"path": "", "method": "POST"}, "items": "/v1/items"})
+        result = check_redirect("https://api.example.com/admin/keys", widened, hops=1)
+        assert isinstance(result, Refusal), result
+        assert result.reason is RefusalReason.PATH_NOT_ALLOWED
+
+    def test_the_control_the_range_still_grants_what_it_approved(self) -> None:
+        """Without this, a guard that refused every redirect would pass the case above."""
+        widened = a_profile(endpoints={"post": {"path": "", "method": "POST"}, "items": "/v1/items"})
+        result = check_redirect("https://api.example.com/v1/items/42", widened, hops=1)
+        assert isinstance(result, PreparedRequest), result
