@@ -43,6 +43,7 @@ import type { JSX } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AttemptPage, Job, RetryOutcome } from "./api";
 import { JobDetailView } from "./view";
+import { MARKUP_SECTION, VISIBLE_SECTION, visibleText } from "./screen-text";
 
 interface Input {
   job: Job;
@@ -50,41 +51,10 @@ interface Input {
   retry?: RetryOutcome | null;
 }
 
-// The two section delimiters, exported so that a caller which splits the output
-// reads them from here instead of restating them. A restated copy would go on
-// looking for a delimiter this file had stopped printing.
-export const VISIBLE_SECTION = "--- VISIBLE ---";
-export const MARKUP_SECTION = "--- MARKUP ---";
-
-/** Entities `renderToStaticMarkup` introduces, undone so a search sees the text. */
-const ENTITIES: ReadonlyArray<readonly [RegExp, string]> = [
-  [/&lt;/g, "<"],
-  [/&gt;/g, ">"],
-  [/&quot;/g, '"'],
-  [/&#x27;/g, "'"],
-  [/&#39;/g, "'"],
-  [/&nbsp;/g, " "],
-  [/&amp;/g, "&"],
-];
-
-/**
- * The markup reduced to what a reader sees.
- *
- * Each tag becomes a newline rather than nothing, so two neighbouring cells cannot
- * join into a third string that was never on screen. `&amp;` is undone last, so a
- * literal `&amp;lt;` in the data does not turn into `<`.
- */
-export function visibleText(markup: string): string {
-  let text = markup.replace(/<[^>]*>/g, "\n");
-  for (const [pattern, character] of ENTITIES) {
-    text = text.replace(pattern, character);
-  }
-  return text
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line) => line.trim() !== "")
-    .join("\n");
-}
+// `visibleText` and the two section names live in `screen-text.ts`. They are
+// re-exported here because callers already import them from this module, and moving
+// a name is a change to make once rather than at every call site.
+export { MARKUP_SECTION, VISIBLE_SECTION, visibleText } from "./screen-text";
 
 function noop(): void {
   // The screen's two actions. This entry renders one state of the screen; it never

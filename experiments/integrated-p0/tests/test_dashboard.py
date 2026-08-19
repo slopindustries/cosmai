@@ -66,7 +66,7 @@ from platform_core.jobs.state import AttemptOutcome, JobState
 from platform_core.jobs.store import JobStore
 from platform_core.obs.logging import StructuredLogger
 from platform_core.obs.metrics import MetricsRegistry
-from platform_core.obs.redaction import REDACTED_KEYS, REDACTION_MARKER
+from platform_core.obs.redaction import REDACTION_MARKER
 
 from tests.conftest import (
     CAPTURE_OPTION,
@@ -79,18 +79,24 @@ from tests.conftest import (
     run_worker,
     running_api,
 )
+from tests.test_redaction import CONTRACT_REDACTED_KEYS
 
 DASHBOARD = EXPERIMENT_ROOT / "dashboard"
 
 #: What `npm run text:build` produces. Running it is this module's own setup.
 TEXT_BUNDLE = DASHBOARD / "dist-text" / "assets" / "detail-text.js"
 
-#: The renderer entry, read for the two section delimiters it exports.
-RENDERER_ENTRY = DASHBOARD / "src" / "detail-text.tsx"
+#: Where the two section delimiters are declared. `[측정]` This pointed at
+#: `src/detail-text.tsx` until 2026-08-19, when a second render entry —
+#: `src/domain-text.tsx` — needed the same helpers and importing that module to reuse
+#: them ran its `main`. The declarations moved to `src/screen-text.ts`, which imports
+#: nothing and starts nothing, and this guard caught the move rather than the two
+#: silently drifting. That is what it is for.
+RENDERER_ENTRY = DASHBOARD / "src" / "screen-text.ts"
 
 
 def _exported_delimiter(name: str) -> str:
-    """The section delimiter `detail-text.tsx` exports under ``name``.
+    """The section delimiter the renderer exports under ``name``.
 
     Read out of the renderer rather than restated here. A copy in this file would go
     on splitting on a delimiter the renderer had stopped printing, and the mismatch
@@ -126,7 +132,7 @@ MAX_ATTEMPTS = 3
 #: Deliberately different strings from `test_api.py`'s: a marker found on the screen
 #: has then come through this module's own job and not through a shared constant.
 SCREEN_MARKERS: dict[str, str] = {
-    key: f"screen-must-not-leak-{key}-42" for key in sorted(REDACTED_KEYS)
+    key: f"screen-must-not-leak-{key}-42" for key in sorted(CONTRACT_REDACTED_KEYS)
 }
 
 PAYLOAD_ORDINARY_KEY = "note"
@@ -143,7 +149,7 @@ MARKED_PAYLOAD: dict[str, Any] = {
 
 #: The same idea one level in: markers placed inside `error_detail`.
 DETAIL_MARKERS: dict[str, str] = {
-    key: f"detail-must-not-leak-{key}-42" for key in sorted(REDACTED_KEYS)
+    key: f"detail-must-not-leak-{key}-42" for key in sorted(CONTRACT_REDACTED_KEYS)
 }
 
 DETAIL_ORDINARY_KEY = "diagnosis"

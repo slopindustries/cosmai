@@ -199,3 +199,197 @@ export async function requestRetry(jobId: string): Promise<RetryOutcome> {
   }
   throw new ApiFailure(answer.status, await answer.text());
 }
+
+// --------------------------------------------------------------------------- //
+// The domain surface (`addon_host/api.py`)
+//
+// Four more kinds of thing, and the same naming rule as everything above: every
+// field is copied from `source_view`, `snapshot_view`, and `result_view`, whose
+// fields come from the columns in `domain/migrations/0002_domain.sql` and
+// `0003_normalized_result.sql`. Nothing here is coined.
+//
+// `addon_host/api.py`'s own docstring records why these are not jobs: a source
+// exists before any job and outlives every one, a snapshot is verifiable long after
+// the job that sealed it finished, and two normalizer versions over one snapshot are
+// two sets of results. An operator restricted to jobs can see that a collection ran
+// and not what it collected.
+// --------------------------------------------------------------------------- //
+
+/** `source.kind`, fixed by its CHECK constraint. */
+export type SourceKind = "collector" | "importer" | "normalizer";
+
+/** One approved endpoint: where it goes, and by which method (DP-020 D1). */
+export interface Endpoint {
+  path: string;
+  method: string;
+}
+
+/**
+ * One credential part: which header it fills, and the secret-store **key name** that
+ * fills it (DP-018 D1). Never a value — the column's CHECK and the profile reader
+ * both refuse anything that is not a key name, and an operator needs to see the name
+ * to know which key to put in the store.
+ */
+export interface CredentialPart {
+  header: string;
+  ref: string;
+}
+
+/** `profile_view`: the operator's own grant, read back to them. */
+export interface OutboundProfile {
+  hosts: string[];
+  endpoints: Record<string, Endpoint>;
+  port: number;
+  limits: Record<string, number>;
+  allow_loopback: boolean;
+  credentials: CredentialPart[];
+}
+
+/** `source_view`. */
+export interface Source {
+  source_id: string;
+  addon_id: string;
+  addon_version: string;
+  kind: SourceKind;
+  config: Record<string, unknown>;
+  config_schema_version: string;
+  credential_ref: string | null;
+  outbound_profile: OutboundProfile | null;
+  data_class: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** What one source has collected. Counts, never payloads. */
+export interface RawSummary {
+  source_id: string;
+  envelope_count: number;
+  item_count: number;
+  last_retrieved_at: string | null;
+}
+
+/**
+ * `snapshot_view`. `verifies` is computed on every read rather than stored: a screen
+ * that showed only "sealed" would make a tampered input look ready to run, and
+ * `problems` says which member failed because that is what an operator acts on.
+ */
+export interface Snapshot {
+  snapshot_id: string;
+  source_id: string;
+  item_count: number;
+  manifest_sha256: string;
+  selection: Record<string, unknown>;
+  sealed_at: string | null;
+  created_at: string;
+  verifies: boolean;
+  problems: string[];
+}
+
+/** `result_view`: one normalized record, both version axes, and the lineage key. */
+export interface NormalizedResult {
+  id: string;
+  snapshot_id: string;
+  source_id: string;
+  addon_id: string;
+  addon_version: string;
+  output_contract_version: string;
+  source_item_key: string;
+  body: Record<string, unknown>;
+  body_sha256: string;
+  notes: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SourceList {
+  sources: Source[];
+}
+
+export interface SnapshotList {
+  snapshots: Snapshot[];
+}
+
+export interface ResultList {
+  results: NormalizedResult[];
+}
+
+/** A `201` from either of the two job-creating writes. */
+export interface JobCreated {
+  job_id: string;
+  source_id?: string;
+  snapshot_id?: string;
+}
+
+/** A `409` or `404`: FastAPI's own envelope, whose `detail` is written to be read. */
+export interface DomainRefused {
+  detail: string;
+}
+
+export type DomainOutcome = JobCreated | DomainRefused;
+
+export function wasRefused(outcome: DomainOutcome): outcome is DomainRefused {
+  return "detail" in outcome;
+}
+
+export function listSources(): Promise<SourceList> {
+  return getJson<SourceList>("/sources");
+}
+
+export function readRaw(sourceId: string): Promise<RawSummary> {
+  return getJson<RawSummary>(`/sources/${encodeURIComponent(sourceId)}/raw`);
+}
+
+export function listSnapshots(sourceId?: string): Promise<SnapshotList> {
+  const query = sourceId === undefined ? "" : `?source_id=${encodeURIComponent(sourceId)}`;
+  return getJson<SnapshotList>(`/snapshots${query}`);
+}
+
+export function readResults(snapshotId: string): Promise<ResultList> {
+  return getJson<ResultList>(`/snapshots/${encodeURIComponent(snapshotId)}/results`);
+}
+
+/**
+ * The three writes, and what they have in common: each sends an **identifier** and
+ * nothing else. There is no parameter on any of them that could become a host, a
+ * path, or a URL, which is `p0-security.md`'s outbound rule expressed as a signature
+ * rather than as a validation step.
+ *
+ * A `409` and a `404` are returned rather than thrown, for the reason `requestRetry`
+ * gives: both are answers the screen has to display in full.
+ */
+async function post(path: string, body?: unknown): Promise<DomainOutcome> {
+  // Built in two branches rather than with an `undefined` body, because
+  // `exactOptionalPropertyTypes` is on and "absent" and "present and undefined" are
+  // different things to it — which is the same distinction this codebase keeps
+  // everywhere else between a field that was not given and one given as null.
+  const request: RequestInit =
+    body === undefined
+      ? { method: "POST", headers: { accept: "application/json" } }
+      : {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify(body),
+        };
+  const answer = await fetch(`${apiBase()}${path}`, request);
+  if (answer.ok || answer.status === 409 || answer.status === 404 || answer.status === 422) {
+    return (await answer.json()) as DomainOutcome;
+  }
+  throw new ApiFailure(answer.status, await answer.text());
+}
+
+export function startCollection(sourceId: string): Promise<DomainOutcome> {
+  return post(`/sources/${encodeURIComponent(sourceId)}/collect`);
+}
+
+export function sealSnapshot(sourceId: string): Promise<DomainOutcome> {
+  return post(`/sources/${encodeURIComponent(sourceId)}/snapshots`);
+}
+
+export function startNormalization(
+  snapshotId: string,
+  normalizerSourceId: string,
+): Promise<DomainOutcome> {
+  return post(`/snapshots/${encodeURIComponent(snapshotId)}/normalize`, {
+    source_id: normalizerSourceId,
+  });
+}
