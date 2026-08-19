@@ -30,11 +30,24 @@ Build evidence that allows the team to choose the architecture. Do not treat P0 
 - Read `docs/project-state.md` before making changes.
 - Read `docs/p0-charter.md` before starting, scoping, or changing P0 implementation, instrumentation, or exit criteria.
 - Read `docs/p0-execution-plan.md` before starting or changing P0-A or P0-B work.
+- Read `docs/conventions/project-memory.md` before recording status, decisions, evidence, or handoff information.
+- When working as an orchestrator, planner, worker, or attacker, read `docs/agent-workflow/README.md`, the assigned role document, and the assigned task packet before acting.
 - Before handling external input or configuring a source, read `docs/conventions/data-handling.md` and `docs/conventions/p0-security.md`.
 - Treat items marked `ACCEPTED_FOR_POC` or `CONTRACTED` as constraints.
-- Do not silently resolve a consequential ambiguity. Create or update an Open Question or Decision Packet.
+- Do not silently resolve a consequential ambiguity. Create or update an Open Question, present the material options and tradeoffs to the project owner, and wait for an explicit answer before implementation.
+- Product goals, phase or scope, source and rights policy, model strategy, canonical schema, architecture boundaries, security or privacy policy, evaluation criteria, material budget, and release criteria are consequential directions.
+- Record the owner's answer in a Decision Packet and update `docs/project-state.md` before treating it as a constraint. A conversation or model memory is not an accepted decision record.
 - Local names, helper structure, and equivalent internal algorithms remain implementation choices.
 - A failed test may indicate an implementation, specification, assumption, evaluation, or goal failure. Classify it before patching repeatedly.
+
+## Agent operating model
+
+- The orchestrator owns user questions, role assignment, decision-boundary enforcement, and final acceptance.
+- The planner produces one bounded task packet and one-line execution prompts. The planner does not implement product code.
+- The worker changes only files allowed by one task packet and records the requested verification. The worker does not broaden scope.
+- The attacker independently tries to falsify the result and records reproducible `PASS`, `FAIL`, or `BLOCKED` evidence. The attacker does not repair the implementation being reviewed.
+- Work flows `owner decision → planner packet → worker result → attacker review → orchestrator acceptance or rework`.
+- Role contracts, templates, and handoff rules are defined in `docs/agent-workflow/`.
 
 ## P0 boundary
 

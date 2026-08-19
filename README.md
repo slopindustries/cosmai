@@ -37,6 +37,8 @@ Credentials are never stored in this repository. See [Secret Setup](docs/convent
 Start with [Project State](docs/project-state.md) and [P0 Charter](docs/p0-charter.md).
 Before P0 work, read the [P0 Execution Plan](docs/p0-execution-plan.md).
 Before using external data, read [Data Handling](docs/conventions/data-handling.md) and the [P0 Security Baseline](docs/conventions/p0-security.md).
+Project memory and handoff information follow the [Project Memory Convention](docs/conventions/project-memory.md).
+Planner, worker, attacker, and orchestrator sessions follow the [Agent Operating Model](docs/agent-workflow/README.md).
 The curated, non-authoritative project history is available in [Project History](docs/history/README.md).
 
 ## Development environment
