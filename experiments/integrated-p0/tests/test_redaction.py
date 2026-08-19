@@ -22,6 +22,39 @@ from platform_core.obs.redaction import (
     redact_text,
 )
 
+#: The key set `CONTRACT-JOB@0.1` fixes, **written out as literals**.
+#:
+#: `[측정]` This existed as `sorted(REDACTED_KEYS)` until 2026-08-19, and
+#: `ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md` B2 measured what that meant: removing a member
+#: from the production constant removed **its own test cases**, and the suite reported eight
+#: fewer tests with no failure and no warning. Four sites across three modules were
+#: parametrized that way — every one of SEC-004's evidence chain.
+#:
+#: `[추론]` The pattern this replaces is the one the repository already uses everywhere else:
+#: `test_db.py` hard-codes `STATES` and `OUTCOMES`, `test_errors.py` hard-codes
+#: `CONTRACT_ROWS`. A test derived from the thing it is meant to pin cannot notice the thing
+#: changing. This set is the contract's, not the code's, and it belongs in the test as text.
+CONTRACT_REDACTED_KEYS: tuple[str, ...] = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "cookie",
+    "credential",
+    "password",
+    "secret",
+    "token",
+)
+
+
+def test_the_redacted_key_set_is_exactly_what_the_contract_fixes() -> None:
+    """The pin itself. Adding or removing a key must be a decision someone records here.
+
+    A key *added* to the production set without appearing here is as much a change to
+    `CONTRACT-JOB@0.1`'s masking surface as one removed, so this is an equality and not a
+    subset.
+    """
+    assert sorted(REDACTED_KEYS) == sorted(CONTRACT_REDACTED_KEYS)
+
 SENSITIVE_MARKER = "marker-must-not-leak-42"
 ORDINARY_MARKER = "marker-must-survive-42"
 ORDINARY_KEY = "note"
@@ -42,7 +75,7 @@ def flatten(value: Any) -> list[str]:
     return [str(value)]
 
 
-@pytest.mark.parametrize("key", sorted(REDACTED_KEYS))
+@pytest.mark.parametrize("key", sorted(CONTRACT_REDACTED_KEYS))
 def test_every_contract_key_is_masked(key: str) -> None:
     result = redact({key: SENSITIVE_MARKER, ORDINARY_KEY: ORDINARY_MARKER})
     assert result[key] == REDACTION_MARKER
@@ -210,3 +243,48 @@ def test_text_masking_stops_at_the_end_of_the_value() -> None:
     masked = redact_text(f"token={SENSITIVE_MARKER}, {ORDINARY_KEY}={ORDINARY_MARKER}")
     assert ORDINARY_MARKER in masked, "detection control failed"
     assert SENSITIVE_MARKER not in masked
+
+
+class TestASensitivePairInsideAValueIsMasked:
+    """`[측정]` Two independent reviews found the same gap one layer apart.
+
+    `ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md` B4 measured `attempt_view`'s `redact(fields)`
+    and the protected view's `redact(detail)` as **GREEN** — deleting either changed nothing,
+    because no `job_attempt` column name is in `REDACTED_KEYS` and `redact` matched by key
+    name only. `ADVERSARIAL-REVIEW-2026-08-19.md` F3 called the same thing value-level
+    redaction.
+
+    `[결정]` Closed by making `redact` apply `redact_text` to string values, which is the
+    module's own stated principle — *"both of which mask more than the contract requires and
+    never less"* — extended to the one place it was not applied. The key-name limit SEC-004
+    records still stands for a bare value with no key introducing it; what changes is that a
+    `key=value` pair **inside** a string is now caught wherever the mapping walk reaches.
+    """
+
+    def test_a_pair_inside_a_summary_string_is_masked(self) -> None:
+        masked = redact({"error_summary": "the handler failed: token=super-secret-42"})
+
+        assert masked["error_summary"] == "the handler failed: token=[REDACTED]"
+
+    def test_the_same_holds_through_redact_mapping(self) -> None:
+        masked = redact_mapping({"error_summary": "refused: api_key=abc123"})
+
+        assert masked["error_summary"] == "refused: api_key=[REDACTED]"
+
+    def test_a_pair_nested_in_a_list_is_masked(self) -> None:
+        masked = redact({"notes": ["fine", "authorization: Bearer abc123"]})
+
+        assert masked["notes"] == ["fine", "authorization: Bearer [REDACTED]"]
+
+    def test_an_innocent_string_is_left_alone(self) -> None:
+        """The control. A rule that rewrote every string would pass all three cases above."""
+        original = "the handler failed after 3 attempts: state=RUNNING"
+
+        assert redact({"error_summary": original})["error_summary"] == original
+
+    def test_bytes_are_still_left_alone(self) -> None:
+        """Raw payloads pass through this walk and must not be rewritten — a mutated
+        payload is a lost original, which is worse than an unmasked one it never held."""
+        payload = b"token=not-text-and-not-ours"
+
+        assert redact({"body": payload})["body"] == payload

@@ -57,7 +57,7 @@ from platform_core.jobs.state import AttemptOutcome, JobState
 from platform_core.jobs.store import JobStore
 from platform_core.obs.logging import StructuredLogger
 from platform_core.obs.metrics import MetricsRegistry
-from platform_core.obs.redaction import REDACTED_KEYS, REDACTION_MARKER
+from platform_core.obs.redaction import REDACTION_MARKER
 from platform_core.worker import (
     EXIT_CONFIGURATION_INVALID as WORKER_EXIT_CONFIGURATION_INVALID,
 )
@@ -78,6 +78,7 @@ from tests.conftest import (
     wait_for_worker,
     worker_environment,
 )
+from tests.test_redaction import CONTRACT_REDACTED_KEYS
 
 IPV6_LOOPBACK = "::1"
 
@@ -91,7 +92,7 @@ REFUSAL_TIMEOUT_SECONDS = 30.0
 
 #: One distinctive value per redacted key, so a leak says which key leaked.
 SENSITIVE_MARKERS: dict[str, str] = {
-    key: f"marker-must-not-leak-{key}-42" for key in sorted(REDACTED_KEYS)
+    key: f"marker-must-not-leak-{key}-42" for key in sorted(CONTRACT_REDACTED_KEYS)
 }
 
 ORDINARY_KEY = "note"

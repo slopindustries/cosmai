@@ -58,7 +58,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Annotated, Any, Final, Literal
 from uuid import UUID
@@ -236,6 +236,7 @@ def create_app(
     config: PlatformConfig,
     logger: StructuredLogger,
     metrics: MetricsRegistry | None = None,
+    extend: Callable[[FastAPI], None] | None = None,
 ) -> FastAPI:
     """Build the operator API over ``config``.
 
@@ -582,4 +583,14 @@ def create_app(
             )
         )
 
+    if extend is not None:
+        # The seam, and the whole of what this module knows about anything beyond the
+        # platform. DP-008 D1 forbids `platform_core` from importing the add-on layer at
+        # all, so a domain surface cannot be defined here — and OQ-005 H1's rule that a
+        # fourth kind of navigable object must be *named* rather than added quietly is
+        # honoured by that surface living in `addon_host.api`, where it is named.
+        #
+        # It runs last, so a domain route cannot shadow a platform one: FastAPI matches in
+        # registration order, and every path above is already bound.
+        extend(app)
     return app

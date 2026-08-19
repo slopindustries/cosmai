@@ -113,15 +113,20 @@ class JobRunner:
             apply_effect=self._effect_applier(claimed),
             enlist_durable_work=enlisted.append,
         )
+        # The settle is inside this `try` and not after it. Enlisted work is handler
+        # code — it was written by the handler and it fails the way handler code fails —
+        # so its exception is classified here rather than escaping into `worker._one_pass`,
+        # which reads an escaping exception as a *driver* failure. See `_settle`.
         try:
             with self._store.metrics.measure_attempt():
                 handler(context)
+            completion = self._settle(claimed, enlisted)
         except PlatformError as failure:
             return RunOutcome(claimed, self._record(claimed, failure), failure)
         except Exception as unexpected:  # noqa: BLE001 - classified, then recorded
             classified = self._unclassified(unexpected)
             return RunOutcome(claimed, self._record(claimed, classified), classified)
-        return RunOutcome(claimed, self._settle(claimed, enlisted), None)
+        return RunOutcome(claimed, completion, None)
 
     def _settle(self, claimed: ClaimedJob, enlisted: list[DurableWork]) -> Completion:
         """Commit the handler's enlisted work and its completion together, or neither.
@@ -138,21 +143,23 @@ class JobRunner:
         refusal it is, because ``run_once`` reports what the store told it rather than
         failing.
 
-        **Enlisted work that raises unwinds the transaction and then escapes.** This
-        docstring said the error is "classified like any other handler failure", and that
-        was false: `_execute` wraps only `handler(context)`, and the call to this method
-        sits outside that `try`. `ADVERSARIAL-REVIEW-2026-08-18.md` F2 measured what follows —
-        the job stays `RUNNING` with its attempt open and its lease held, and in the real
-        worker `classify` turns the raw database error into `ConfigurationInvalidError`, so
-        the process exits reporting "cannot reach the platform database" for what was an
-        add-on's output defect.
+        **Enlisted work that raises unwinds the transaction, and the error is then
+        classified like any other handler failure.** `[측정]` It was not, until 2026-08-18:
+        `_execute` wrapped only `handler(context)` and the call to this method sat outside
+        that `try`, so the job stayed `RUNNING` with its attempt open and its lease held,
+        and in the real worker `classify` turned the raw database error into
+        `ConfigurationInvalidError` — the process exiting with "cannot reach the platform
+        database" for what was an add-on's output defect.
+        `ADVERSARIAL-REVIEW-2026-08-18.md` F2 measured that; `_execute` now encloses the
+        settle and `test_durable_scope.py::TestEnlistedWorkThatFails` asserts each half.
 
-        `[확인 사실]` `test_durable_scope.py`'s
-        `test_a_failure_inside_enlisted_work_leaves_nothing_behind` wraps `run_once()` in
-        `pytest.raises` and asserts only that no row survived, so the
-        escape was visible in this module's own evidence and went unremarked. Corrected
-        here rather than repaired, because bringing the settle inside the classification
-        without double-recording a completion is a change that needs its own tests.
+        **The failure is recorded once, and that rests on the rollback rather than on a
+        flag.** The completion this method writes is the *last* statement inside the
+        transaction, so any exception — from the work, from that statement, or from the
+        commit — discards it along with the writes. The attempt is therefore still open
+        when `_execute` records the failure against it, and the fence accepts that
+        completion because nothing about the lease changed. There is no path on which two
+        completions survive: at most one of them is ever committed.
         """
         if not enlisted:
             return self._record(claimed, None)

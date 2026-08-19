@@ -17,15 +17,16 @@ writes rather than following them.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
 import psycopg
 import pytest
-from platform_core.errors import PlatformPermanentError, PlatformTransientError
+from platform_core.errors import ErrorClass, PlatformPermanentError, PlatformTransientError
 from platform_core.jobs.registry import HandlerRegistry, JobContext
 from platform_core.jobs.runner import JobRunner
-from platform_core.jobs.state import JobState
+from platform_core.jobs.state import AttemptOutcome, JobState
 from platform_core.jobs.store import JobStore
 
 pytestmark = pytest.mark.usefixtures("database")
@@ -59,6 +60,15 @@ def write_two(connection: psycopg.Connection[Any], job_id: UUID) -> None:
         connection.execute(
             "insert into probe_effect (job_id, part) values (%s, %s)", (job_id, part)
         )
+
+
+def _raise(error: Exception) -> Callable[[], None]:
+    """Durable work whose only act is to fail, for the F2 cases."""
+
+    def work() -> None:
+        raise error
+
+    return work
 
 
 def run_one(
@@ -160,6 +170,18 @@ class TestTheFenceDiscardsTheWritesOfAWorkerThatLostItsLease:
 
 
 class TestEnlistedWorkThatFails:
+    """`ADVERSARIAL-REVIEW-2026-08-18.md` F2.
+
+    The escape used to be visible in this module's own evidence: the first test below
+    wrapped `run_once()` in `pytest.raises` and asserted only that no row survived, while
+    `runner._settle`'s docstring claimed the error was "classified like any other handler
+    failure". It was not — `_execute` wrapped only `handler(context)` — so the job stayed
+    `RUNNING` with its attempt open and its lease held, and the real worker exited
+    reporting "cannot reach the platform database" for an add-on's output defect.
+
+    These tests are the property the docstring claimed, asserted rather than described.
+    """
+
     def test_a_failure_inside_enlisted_work_leaves_nothing_behind(
         self, store: JobStore, connection: psycopg.Connection[Any], probe: None
     ) -> None:
@@ -176,13 +198,108 @@ class TestEnlistedWorkThatFails:
             context.enlist_durable_work(work)
 
         registry.register("collect", handler)
-        runner = JobRunner(store, registry, WORKER, lease_seconds=60)
-        store.create_job("collect", {"n": 1}, max_attempts=3)
-
-        with pytest.raises(PlatformTransientError):
-            runner.run_once()
+        outcome = run_one(store, registry, "collect")
 
         assert rows(connection) == 0, "a partial multi-statement effect must not survive"
+        assert outcome.error is not None
+
+    def test_a_failure_inside_enlisted_work_does_not_escape_run_once(
+        self, store: JobStore, connection: psycopg.Connection[Any], probe: None
+    ) -> None:
+        """The finding itself. An escaping exception reaches `worker._one_pass`, which
+        classifies it as a *driver* failure and can end the process."""
+        registry = HandlerRegistry()
+
+        def handler(context: JobContext) -> None:
+            context.enlist_durable_work(_raise(PlatformPermanentError("the write is invalid")))
+
+        registry.register("collect", handler)
+        outcome = run_one(store, registry, "collect")  # must not raise
+
+        assert outcome.error is not None
+        assert outcome.error.error_class is ErrorClass.PLATFORM_PERMANENT
+
+    def test_a_failure_inside_enlisted_work_closes_the_attempt_and_releases_the_lease(
+        self, store: JobStore, connection: psycopg.Connection[Any], probe: None
+    ) -> None:
+        registry = HandlerRegistry()
+
+        def handler(context: JobContext) -> None:
+            context.enlist_durable_work(_raise(PlatformPermanentError("the write is invalid")))
+
+        registry.register("collect", handler)
+        outcome = run_one(store, registry, "collect")
+
+        assert outcome.accepted, "the completion itself was not refused; only the work failed"
+        assert outcome.state is JobState.FAILED
+        job = store.read_job(outcome.claimed.job_id)
+        assert job is not None
+        assert job["lease_owner"] is None, "a failed attempt must not leave the lease held"
+        attempts = store.read_attempts(outcome.claimed.job_id)
+        assert [a["outcome"] for a in attempts] == [AttemptOutcome.PERMANENT_FAILURE.value]
+        assert attempts[0]["finished_at"] is not None
+
+    def test_a_retryable_failure_inside_enlisted_work_returns_the_job_to_the_queue(
+        self, store: JobStore, connection: psycopg.Connection[Any], probe: None
+    ) -> None:
+        registry = HandlerRegistry()
+
+        def handler(context: JobContext) -> None:
+            context.enlist_durable_work(_raise(PlatformTransientError("the write timed out")))
+
+        registry.register("collect", handler)
+        outcome = run_one(store, registry, "collect")
+
+        assert outcome.state is JobState.PENDING
+        attempts = store.read_attempts(outcome.claimed.job_id)
+        assert [a["outcome"] for a in attempts] == [AttemptOutcome.RETRYABLE_FAILURE.value]
+
+    def test_a_database_error_inside_enlisted_work_is_classified_not_reported_as_the_platform(
+        self, store: JobStore, connection: psycopg.Connection[Any], probe: None
+    ) -> None:
+        """F2's measured shape: a not-null violation from one add-on's output.
+
+        `classify` maps SQLSTATE `23502` to `CONFIGURATION_INVALID`, so an escaping
+        `NotNullViolation` used to end the worker process reporting that it could not
+        reach the database. Classified here, it is one job's permanent failure.
+        """
+        registry = HandlerRegistry()
+
+        def handler(context: JobContext) -> None:
+            def work() -> None:
+                connection.execute(
+                    "insert into probe_effect (job_id, part) values (%s, null)",
+                    (context.job_id,),
+                )
+
+            context.enlist_durable_work(work)
+
+        registry.register("collect", handler)
+        outcome = run_one(store, registry, "collect")
+
+        assert outcome.error is not None
+        assert outcome.error.error_class is ErrorClass.PLATFORM_PERMANENT
+        assert outcome.state is JobState.FAILED
+        assert rows(connection) == 0
+
+    def test_the_completion_is_recorded_once_when_enlisted_work_fails(
+        self, store: JobStore, connection: psycopg.Connection[Any], probe: None
+    ) -> None:
+        """The other half of the fix: the failure path must not close an attempt the
+        rolled-back transaction had already closed."""
+        registry = HandlerRegistry()
+
+        def handler(context: JobContext) -> None:
+            context.enlist_durable_work(lambda: write_two(connection, context.job_id))
+            context.enlist_durable_work(_raise(PlatformPermanentError("the last write failed")))
+
+        registry.register("collect", handler)
+        outcome = run_one(store, registry, "collect")
+
+        attempts = store.read_attempts(outcome.claimed.job_id)
+        assert len(attempts) == 1
+        assert attempts[0]["outcome"] == AttemptOutcome.PERMANENT_FAILURE.value
+        assert rows(connection) == 0, "the successful writes must unwind with the failure"
 
     def test_a_handler_that_fails_before_enlisting_is_unaffected(
         self, store: JobStore, connection: psycopg.Connection[Any], probe: None

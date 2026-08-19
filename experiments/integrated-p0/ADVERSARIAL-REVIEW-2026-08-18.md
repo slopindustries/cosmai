@@ -5,9 +5,10 @@
 - Reviewer: an independent agent with no write access to the repository, working from a
   copy. It did not author any of the code it reviewed.
 - Experiment: [EXP-003](EXP-003-capability-layer.md), procedure step 6
-- Outcome: **3 blocking findings, 3 major, 3 moderate, 1 minor.** None of the reviewed code
-  has been repaired yet; this document is the record, and the fixes are listed at the end
-  as work items.
+- Outcome: **3 blocking findings, 3 major, 3 moderate, 1 minor.** The three blocking
+  findings and the two major ones are repaired as of 2026-08-18; the remaining five are
+  open. This document is the record as written, and the work-items table at the end carries
+  the status of each.
 
 ## Why this exists
 
@@ -323,20 +324,49 @@ a security refusal.
 
 ## Work items
 
-Ranked. Nothing here is done; this list is the handoff.
+Ranked. Items 1-5 are repaired; 6-10 are not. Status added 2026-08-18 as each landed.
 
-| # | Finding | Shape of the fix |
-|---|---|---|
-| 1 | F2 | Bring `_settle` inside `_execute`'s classification, without double-recording a completion |
-| 2 | F3 | Wire `bind_capabilities` in `worker.py`, and make the shared-connection requirement a checked precondition rather than a fixture docstring |
-| 3 | F1 | Count pages in `_fetch` and items in `_emit_raw`; refuse past the limit |
-| 4 | F5 | A monotonic deadline across the whole of `_fetch`, replacing the per-`recv` socket timeout as the bound |
-| 5 | F4 | Normalize or reject dot-segments before the prefix test, and compare path *segments* rather than string prefixes |
-| 6 | F7 | Move `_check_no_refusal_was_swallowed` into a `finally`; decide whether `AddonOutputInvalid` should be unswallowable too |
-| 7 | F8 | `if not address.is_global`, keeping `allow_loopback` as the one exception |
-| 8 | F6 | A test per green mutation, starting with `importer` in `_UNBOUND_KINDS` and the full `PROTECTED_HEADERS` set |
-| 9 | F9 | Scan every tracked file, not `*.py` under one subtree |
-| 10 | F10 | Assert the envelope's `attempt_id` is the claimed attempt's |
+| # | Finding | Shape of the fix | Status |
+|---|---|---|---|
+| 1 | F2 | Bring `_settle` inside `_execute`'s classification, without double-recording a completion | **DONE** |
+| 2 | F3 | Wire `bind_capabilities` in `worker.py`, and make the shared-connection requirement a checked precondition rather than a fixture docstring | **DONE**, differently — see below |
+| 3 | F1 | Count pages in `_fetch` and items in `_emit_raw`; refuse past the limit | **DONE** |
+| 4 | F5 | A monotonic deadline across the whole of `_fetch`, replacing the per-`recv` socket timeout as the bound | **DONE** |
+| 5 | F4 | Normalize or reject dot-segments before the prefix test, and compare path *segments* rather than string prefixes | **DONE**, by rejecting |
+| 6 | F7 | Move `_check_no_refusal_was_swallowed` into a `finally`; decide whether `AddonOutputInvalid` should be unswallowable too | open |
+| 7 | F8 | `if not address.is_global`, keeping `allow_loopback` as the one exception | open |
+| 8 | F6 | A test per green mutation, starting with `importer` in `_UNBOUND_KINDS` and the full `PROTECTED_HEADERS` set | open |
+| 9 | F9 | Scan every tracked file, not `*.py` under one subtree | open |
+| 10 | F10 | Assert the envelope's `attempt_id` is the claimed attempt's | open |
+
+`[측정]` The suite went from 767 passed / 50 skipped to 809 / 50, with `ruff` and `mypy
+--strict` clean. Every repair was written test-first and each new test was watched fail for
+the stated reason before the code changed; F3's guard was additionally re-checked by
+removing it and observing the test go red.
+
+### Where item 2 departs from the shape the review proposed
+
+`[결정]` The review says *"wire `bind_capabilities` in `worker.py`"*. It cannot go there.
+DP-008 D1 says `platform_core` gains no dependency on the add-on layer and
+`tests/environment/test_addon_layer_direction.py` enforces it as `platform_core -> nothing
+local`; a `platform_core/worker.py` importing `addon_host.capabilities` and `domain.store`
+fails that guard. So the wiring is in a new `addon_host/worker.py`
+(`python -m addon_host.worker`), and `platform_core.worker` gained one source-neutral seam
+— `RegistryFor`, a callable handed the connection that returns the handler table for it.
+
+`[추론]` The seam is per *connection* rather than per process, which is stricter than the
+review asked for and is the point: `Worker._reopen` replaces the connection after a
+transient database failure, and a capability layer still holding the previous connection's
+`DomainStore` is exactly the mis-wiring F3 measured. Rebuilding the table with the
+connection makes that state unreachable rather than merely tested.
+
+The shared-connection requirement is additionally checked at the moment it is used, in
+`_CollectRun._require_completion_transaction`: when the durable work runs, the domain
+connection must report an open transaction. `[추론]` That is a weaker test than connection
+identity — a second connection that happened to be inside a transaction of its own would
+pass it — and it is the one that can be made at the moment the answer is a fact rather than
+a guess about wiring. Recorded as debt in
+[JUDGMENT-DEBT-2026-08-18.md](JUDGMENT-DEBT-2026-08-18.md).
 
 ## What was changed immediately
 
@@ -349,3 +379,34 @@ Ranked. Nothing here is done; this list is the handoff.
   any other handler failure. It says what happens instead, and names F2.
 - `EXP-003`'s Interpretation — "every outbound obligation except credential attachment" was
   wrong; it is except credential attachment, page limit, and record limit.
+
+---
+
+## Repair record — F6, 2026-08-19
+
+`[측정]` F6's five remaining green mutations were re-measured on 2026-08-19. All five were
+**still GREEN**; four are now RED and the fifth is recorded as untestable with the reason.
+
+| Clause | Re-measured | Repair | Verification |
+|---|---|---|---|
+| `_check_outcome`'s `isinstance`, both copies | GREEN | both sides now assert the **summary**, not merely that the run failed — a crash produces an error too | removing both guards: **2 failed** |
+| `_advance_cursor`'s null-cursor check, both copies | GREEN | `NULL_CURSOR` add-on in `test_capabilities.py`; a synthetic importer in `test_importer_local_jsonl.py`, with a real-cursor control | removing both: **2 failed** |
+| `resolve`'s absolute-path check | GREEN | `test_a_stored_path_that_is_not_absolute_is_refused`, with a leading-slash control | removing it: **1 failed** |
+| `check_resolved_addresses`'s `is_reserved` | GREEN | **not testable** — see below | — |
+| `_hop`'s `Host` header | GREEN and benign | unchanged; `http.client` supplies the same value | — |
+
+### Why `is_reserved` has no test
+
+`[확인 사실]` In Python's `ipaddress`, **every** address for which `is_reserved` holds also
+has `is_private`: `240.0.0.0/4`, `255.255.255.254`, and `100::/64` all report both. The
+clause therefore refuses nothing the `is_private` clause does not already refuse, and no
+input can distinguish a tree with it from one without.
+
+`[결정]` The clause stays and
+`test_the_reserved_clause_is_subsumed_by_the_private_one` states why it cannot be exercised,
+asserting the subsumption itself. `[추론]` If `ipaddress` ever narrows `is_private`, that
+test fails — which is the moment the clause becomes load-bearing and a real case for it
+exists. Writing a case that appeared to exercise it would have been the prose-claims-what-the
+-code-does-not-do shape this review family exists to catch.
+
+`[측정]` Suite after the sweep: **1220 passed**, 14 skipped; `ruff` and `mypy --strict` clean.

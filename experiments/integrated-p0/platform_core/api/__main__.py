@@ -36,7 +36,7 @@ import socket
 import sys
 from collections.abc import Sequence
 from types import FrameType
-from typing import Final
+from typing import Any, Final
 
 import uvicorn
 
@@ -102,7 +102,12 @@ def listening_socket(host: str, port: int) -> socket.socket:
     return handle
 
 
-def serve(config: PlatformConfig, logger: StructuredLogger, listener: socket.socket) -> int:
+def serve(
+    config: PlatformConfig,
+    logger: StructuredLogger,
+    listener: socket.socket,
+    app: Any | None = None,
+) -> int:
     """Serve on an already-bound socket until a stop signal, then report the exit.
 
     A stop handler is installed **around** uvicorn's. uvicorn captures the stop
@@ -138,7 +143,11 @@ def serve(config: PlatformConfig, logger: StructuredLogger, listener: socket.soc
         signal.signal(number, note_stop)
     server = uvicorn.Server(
         uvicorn.Config(
-            create_app(config, logger),
+            # `app` is the seam a host with extra routes uses. `None` means the
+            # source-neutral platform surface, which is what `python -m platform_core.api`
+            # serves and what every P0-A scenario reads. DP-008 D1 keeps the extended one
+            # out of this package; see `addon_host.__main__`.
+            create_app(config, logger) if app is None else app,
             # Host and port are left at their defaults and are unused: the
             # already-bound socket is what gets served.
             log_config=None,

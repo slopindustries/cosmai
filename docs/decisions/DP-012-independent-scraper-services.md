@@ -151,6 +151,38 @@ Original source credentials, cookies, and protected headers never cross the serv
 - Reversibility: adapters can be replaced source by source; COSMAI Raw and downstream
   contracts do not depend on scraper implementation language or database.
 
+## Falsification input carried from OQ-014, 2026-08-20
+
+`[확인 사실]` [OQ-014](../open-questions/OQ-014-externalized-acquisition.md) asked this same
+question on the same day, on the domain branch, and could not see this packet. It closed
+against this decision rather than competing with it. What it measured, and what this packet
+had assumed, is recorded here so the decision carries its own counter-evidence.
+
+`[측정]` **Relocation does not shrink the source-specific work.** Measured on the three
+collectors this repository already runs: 235–292 lines each, of which 13–15% is
+source-independent plumbing and the remainder is source-specific. Roughly 250 lines per
+source *move* rather than disappear. Two DataLab collectors share 165 identical lines.
+
+`[추론]` **This adds a falsification condition H1 does not cover.** H1 asks whether an
+adapter can stay thin without importing scraper code. It can. The risk the measurement names
+is on the far side: the same duplication re-grows in the external services, now outside
+`tests/environment/test_addon_layer_direction.py`, which is the guard that made it visible
+here at all. A boundary that exports duplication and its detector together has not reduced
+the duplication; it has stopped counting it.
+
+**H5 (added):** The relocated source-specific work is cheaper to maintain outside than
+inside. *Falsified by* two scraper services re-growing shared source-independent helpers
+independently, with no equivalent of the layer-direction guard reporting it.
+
+`[확인 사실]` **H1's premise is unmeasured.** Nothing in P0 measured collector scheduling
+contention or proximity to a source rate limit — quota consumption was 2 of 25,000/day and 2
+of 50,000/month. Whether separating acquisition from consumption removes real pressure, or
+decoupling nobody needed, is not evidence this project holds. It belongs in this packet's
+experiment section before the P1 Entry Gate reads the decision as settled.
+
+`[결정]` **The decision stands; its confidence does not rise.** This section exists so a
+reader meets the counter-evidence at the decision rather than in a closed question.
+
 ## Remaining uncertainty
 
 - Exact export endpoints and response schemas of `trend-radar` and `yt-scrapper`.

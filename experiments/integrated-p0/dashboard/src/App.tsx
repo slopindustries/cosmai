@@ -12,8 +12,34 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import type { AttemptPage, Job, JobPage, JobState, RetryOutcome } from "./api";
-import { listJobs, readAttempts, readJob, requestRetry } from "./api";
+import type {
+  AttemptPage,
+  DomainOutcome,
+  Job,
+  JobPage,
+  JobState,
+  NormalizedResult,
+  RawSummary,
+  RetryOutcome,
+  Snapshot,
+  Source,
+} from "./api";
+import {
+  listJobs,
+  listSnapshots,
+  listSources,
+  readAttempts,
+  readJob,
+  readRaw,
+  readResults,
+  requestRetry,
+  sealSnapshot,
+  startCollection,
+  startImport,
+  startNormalization,
+  wasRefused,
+} from "./api";
+import { ResultTable, SnapshotTable, SourceDetail, SourceTable } from "./domain-view";
 import { JobDetailView, JobTable, StateFilter } from "./view";
 
 const PAGE_LIMIT = 50;
@@ -29,10 +55,12 @@ export function App(): JSX.Element {
       <header className="app-header">
         <h1>Cosmai P0-A operator surface</h1>
         <p className="note">
-          Disposable P0-A instrumentation over the operator API. Two screens: the
-          job list, and one job in detail with its attempts and a retry.
+          Disposable P0 instrumentation over the operator API. The domain screen drives
+          the operator loop — collect, seal, normalize, read — and the job screens below
+          are where any of it is diagnosed when it fails.
         </p>
       </header>
+      <DomainScreen />
       <JobListScreen selectedId={selectedId} onSelect={setSelectedId} />
       {selectedId === null ? (
         <p className="empty">Choose a job above to see why it ended the way it did.</p>
@@ -40,6 +68,156 @@ export function App(): JSX.Element {
         <JobDetailScreen jobId={selectedId} />
       )}
     </div>
+  );
+}
+
+/**
+ * The P0-B operator loop, on one screen: sources and what they have collected, sealed
+ * snapshots and whether they still verify, and the normalized results of whichever
+ * snapshot is open.
+ *
+ * **Nothing here polls, and every write is followed by an explicit reload.** The same
+ * rule the job screens follow: what is on screen is always the answer to a request an
+ * operator can point at. A write returns a `job_id` and *not* a result, because
+ * collecting and normalizing are jobs a worker runs — the screen says which job was
+ * created and leaves the operator to watch it in the job list below.
+ *
+ * **Two buttons, not one.** `project-state.md` §4 and DP-019 D6 require sealing and
+ * normalizing to be separate deliberate acts, and collection never to start either.
+ * One convenient button that did all three would be that rule quietly broken.
+ */
+function DomainScreen(): JSX.Element {
+  const [sources, setSources] = useState<Source[]>([]);
+  const [raw, setRaw] = useState<Record<string, RawSummary>>({});
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [results, setResults] = useState<NormalizedResult[]>([]);
+  const [openSource, setOpenSource] = useState<string | null>(null);
+  const [openSnapshot, setOpenSnapshot] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [reloads, setReloads] = useState(0);
+
+  const reload = useCallback(() => setReloads((n) => n + 1), []);
+
+  useEffect(() => {
+    let current = true;
+    setFailure(null);
+    Promise.all([listSources(), listSnapshots()])
+      .then(async ([sourceList, snapshotList]) => {
+        const summaries = await Promise.all(
+          sourceList.sources
+            .filter((source) => source.kind === "collector")
+            .map((source) => readRaw(source.source_id)),
+        );
+        if (!current) {
+          return;
+        }
+        setSources(sourceList.sources);
+        setSnapshots(snapshotList.snapshots);
+        setRaw(Object.fromEntries(summaries.map((summary) => [summary.source_id, summary])));
+      })
+      .catch((problem: unknown) => {
+        if (current) {
+          setFailure(messageOf(problem));
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [reloads]);
+
+  useEffect(() => {
+    let current = true;
+    if (openSnapshot === null) {
+      setResults([]);
+      return;
+    }
+    readResults(openSnapshot)
+      .then((page) => {
+        if (current) {
+          setResults(page.results);
+        }
+      })
+      .catch((problem: unknown) => {
+        if (current) {
+          setFailure(messageOf(problem));
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [openSnapshot, reloads]);
+
+  const act = useCallback(
+    (started: Promise<DomainOutcome>, what: string) => {
+      setNotice(null);
+      started
+        .then((outcome) => {
+          // A refusal is displayed in full rather than summarised. The API writes its
+          // `detail` to be read — "source X is a normalizer and this action needs a
+          // collector" is actionable and "failed" is not.
+          setNotice(
+            wasRefused(outcome)
+              ? `${what} refused: ${outcome.detail}`
+              : `${what} started as job ${outcome.job_id}`,
+          );
+          reload();
+        })
+        .catch((problem: unknown) => setFailure(messageOf(problem)));
+    },
+    [reload],
+  );
+
+  const open = sources.find((source) => source.source_id === openSource) ?? null;
+  const normalizers = sources.filter((source) => source.kind === "normalizer");
+
+  return (
+    <section className="screen">
+      <div className="screen-header">
+        <h2>sources</h2>
+        <button type="button" onClick={reload}>
+          reload
+        </button>
+      </div>
+      {failure === null ? null : <p className="failure">{failure}</p>}
+      {notice === null ? null : <p className="notice">{notice}</p>}
+      <SourceTable
+        sources={sources}
+        raw={raw}
+        selectedId={openSource}
+        onSelect={(sourceId) => setOpenSource(sourceId === openSource ? null : sourceId)}
+        onCollect={(sourceId) => act(startCollection(sourceId), `collection of ${sourceId}`)}
+        onImport={(sourceId) => act(startImport(sourceId), `import of ${sourceId}`)}
+        onSeal={(sourceId) => act(sealSnapshot(sourceId), `snapshot of ${sourceId}`)}
+      />
+      {open === null ? null : <SourceDetail source={open} />}
+
+      <div className="screen-header">
+        <h2>snapshots</h2>
+      </div>
+      <SnapshotTable
+        snapshots={snapshots}
+        normalizers={normalizers}
+        selectedId={openSnapshot}
+        onSelect={(snapshotId) =>
+          setOpenSnapshot(snapshotId === openSnapshot ? null : snapshotId)
+        }
+        onNormalize={(snapshotId, normalizerId) =>
+          act(startNormalization(snapshotId, normalizerId), `normalization of ${snapshotId}`)
+        }
+      />
+
+      {openSnapshot === null ? (
+        <p className="empty">Choose a snapshot above to read what it normalized to.</p>
+      ) : (
+        <>
+          <div className="screen-header">
+            <h2>normalized results</h2>
+          </div>
+          <ResultTable results={results} />
+        </>
+      )}
+    </section>
   );
 }
 

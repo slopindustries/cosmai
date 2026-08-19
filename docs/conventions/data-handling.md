@@ -2,7 +2,7 @@
 
 - 문서 지위: 활성 프로젝트 convention
 - 적용 범위: source probe, fixture, import, Raw runtime data, experiment artifact
-- 최종 수정일: 2026-08-16
+- 최종 수정일: 2026-08-19
 
 ## 목적
 
@@ -27,6 +27,26 @@ Cosmai은 외부 source와 dataset을 실제로 처리한다. 기술적으로 �
 - source/generator, capture time, rights, hash, transformation과 대표성을 기록한다.
 - 원본의 일부를 잘랐거나 redaction했다는 사실만으로 재배포 권리가 생기지 않는다.
 - 파일 확장자는 분류 근거가 아니다. CSV, JSON, Parquet 등 어떤 형식도 동일한 정책을 따른다.
+
+#### Structural fixture
+
+`[결정]` [DP-022](../decisions/DP-022-structural-fixtures.md), 2026-08-19에 추가. 위 세 번째
+규칙 — redaction만으로는 재배포 권리가 생기지 않는다 — 을 **우회하지 않고 비켜가는** 형태다.
+
+**Structural fixture는 redaction이 아니라 새로 생성한 문서다.** 캡처에서 관측한 구조적 성질
+전부(키·중첩·배열 길이·JSON 타입·문자열의 markup 골격·날짜 형식·URL 깊이)를 재현하고 내용은
+하나도 담지 않는다. 원본의 일부가 아니므로 원본의 권리 문제를 상속하지 않는다. *"이 endpoint는
+`items`를 배열로 주고 각 원소는 `link`를 비어 있지 않은 절대 URL로 준다"* 라는 문장과 같은
+종류의 산출물이며, 그 문장은 언제나 우리가 발행할 수 있었다.
+
+- 위치: `tests/fixtures/public/` — 생성물이므로 `public`이다.
+- 생성: `tools/structural_fixture.py`. Deterministic하며 ruleset이 버전을 갖는다.
+- Manifest 필수: 원본의 `sha256`, capture 시각, endpoint, ruleset version, fixture의 `sha256`,
+  그리고 **대표하지 못하는 범위**. 원본 digest가 없으면 지어낸 것과 구별되지 않는다.
+- 무엇을 보존할지는 "테스트가 단언할 수 있는 것 전부"가 기준이다. 내용을 지우면서 시험 대상
+  성질까지 지우면 그 fixture는 통과하면서 아무것도 증명하지 않는다.
+- 원본 캡처 자체는 여전히 재배포하지 않는다. Structural fixture는 원본을 대체하지 않고,
+  원본의 hash와 retrieval procedure는 그대로 남긴다.
 
 ### `local`
 

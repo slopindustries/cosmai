@@ -152,6 +152,84 @@ class TestSourceRegistry:
             domain.register_source(a_source(data_class="secret"))
 
 
+class TestOnlyAnImporterReadsALocalInput:
+    """DP-024 D6 as SQL. Each kind has exactly one input surface, held where the
+    capability layer cannot be the only thing holding it."""
+
+    def test_an_importer_may_hold_an_input_profile(self, domain: DomainStore) -> None:
+        domain.register_source(
+            SourceRow(
+                source_id="dataset-import",
+                addon_id="importer.probe",
+                addon_version="0.1.0",
+                kind="importer",
+                config_schema_version="1",
+                input_profile={"root": "/tmp/approved", "inputs": {"rows": "a.jsonl"}},
+            )
+        )
+
+        stored = domain.read_source("dataset-import")
+        assert stored is not None
+        assert stored["input_profile"] == {"root": "/tmp/approved", "inputs": {"rows": "a.jsonl"}}
+
+    def test_a_collector_may_not_hold_one(self, domain: DomainStore) -> None:
+        with pytest.raises(psycopg.errors.CheckViolation, match="only_an_importer_reads"):
+            domain.register_source(
+                SourceRow(
+                    source_id="collector-with-a-file",
+                    addon_id="collector.probe",
+                    addon_version="0.1.0",
+                    kind="collector",
+                    config_schema_version="1",
+                    input_profile={"root": "/tmp/approved", "inputs": {}},
+                )
+            )
+
+    def test_a_normalizer_may_not_hold_one(self, domain: DomainStore) -> None:
+        with pytest.raises(psycopg.errors.CheckViolation, match="only_an_importer_reads"):
+            domain.register_source(
+                SourceRow(
+                    source_id="normalizer-with-a-file",
+                    addon_id="normalizer.probe",
+                    addon_version="0.1.0",
+                    kind="normalizer",
+                    config_schema_version="1",
+                    input_profile={"root": "/tmp/approved", "inputs": {}},
+                )
+            )
+
+    def test_an_importer_may_not_be_granted_an_outbound_profile(self, domain: DomainStore) -> None:
+        with pytest.raises(psycopg.errors.CheckViolation, match="granted_no_outbound_profile"):
+            domain.register_source(
+                SourceRow(
+                    source_id="importer-that-fetches",
+                    addon_id="importer.probe",
+                    addon_version="0.1.0",
+                    kind="importer",
+                    config_schema_version="1",
+                    outbound_profile={"hosts": ["api.example.com"], "endpoints": {}},
+                )
+            )
+
+    def test_an_importer_may_still_need_a_credential(self, domain: DomainStore) -> None:
+        """`addon_api.manifest` says `needs_credential` stays legal for an importer,
+        because the platform may need one to open a protected input. A constraint
+        forbidding it would contradict the contract rather than enforce it."""
+        domain.register_source(
+            SourceRow(
+                source_id="protected-dataset",
+                addon_id="importer.probe",
+                addon_version="0.1.0",
+                kind="importer",
+                config_schema_version="1",
+                credential_ref="COSMA_SRC_PROTECTED_DATASET_KEY",
+                input_profile={"root": "/tmp/approved", "inputs": {"rows": "a.jsonl"}},
+            )
+        )
+
+        assert domain.read_source("protected-dataset") is not None
+
+
 class TestCursor:
     def test_a_source_with_no_cursor_reads_as_none(self, domain: DomainStore) -> None:
         domain.register_source(a_source())
@@ -543,3 +621,128 @@ class TestCollectionIsAtomic:
 
         assert domain.count_items("demo") == 2
         assert domain.read_cursor("demo") == {"page": 2}
+
+
+class TestTheShapeChecksTheDatabaseHolds:
+    """`[측정]` `ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md` M3 measured seven database CHECKs
+    as **GREEN**: every one could be deleted and nothing noticed.
+
+    They are cheap to write and load-bearing in a specific way — they are the last place a
+    malformed digest or a negative count can be stopped, after every application path has
+    already agreed to write it. Each case below writes a **valid** row through the ordinary
+    path and then updates one column past the constraint, so what is under test is the
+    constraint rather than the writer that happens to precede it.
+    """
+
+    def _envelope(self, domain: DomainStore, store: JobStore) -> UUID:
+        domain.register_source(a_source())
+        job_id, attempt_id = claim_one(store)
+        return domain.record_envelope(
+            "demo", job_id, attempt_id, ADDON_ID, ADDON_VERSION,
+            body=b"{}", endpoint_ref="items",
+        )
+
+    def test_a_raw_envelope_digest_must_look_like_a_sha256(
+        self, domain: DomainStore, store: JobStore, connection: psycopg.Connection[Any]
+    ) -> None:
+        envelope_id = self._envelope(domain, store)
+
+        with pytest.raises(psycopg.errors.CheckViolation, match="raw_envelope_digest_is_a_sha256"):
+            connection.execute(
+                "update raw_envelope set body_sha256 = %s where id = %s",
+                ("not-a-digest", envelope_id),
+            )
+
+    def test_an_uppercase_digest_is_refused_too(
+        self, domain: DomainStore, store: JobStore, connection: psycopg.Connection[Any]
+    ) -> None:
+        """The pattern is lowercase hex on purpose: two spellings of one digest would make
+        equality comparisons depend on who wrote the row."""
+        envelope_id = self._envelope(domain, store)
+
+        with pytest.raises(psycopg.errors.CheckViolation, match="raw_envelope_digest_is_a_sha256"):
+            connection.execute(
+                "update raw_envelope set body_sha256 = %s where id = %s",
+                ("A" * 64, envelope_id),
+            )
+
+    def test_a_valid_digest_still_updates(
+        self, domain: DomainStore, store: JobStore, connection: psycopg.Connection[Any]
+    ) -> None:
+        """The control. A constraint that refused every update would pass both cases above."""
+        envelope_id = self._envelope(domain, store)
+
+        connection.execute(
+            "update raw_envelope set body_sha256 = %s where id = %s", ("a" * 64, envelope_id)
+        )
+
+    def _snapshot(self, domain: DomainStore) -> UUID:
+        domain.register_source(a_source())
+        return domain.seal_snapshot(
+            "demo", [SnapshotMember(0, "a", b"first", "application/json")]
+        )
+
+    def test_a_snapshot_manifest_digest_must_look_like_a_sha256(
+        self, domain: DomainStore, connection: psycopg.Connection[Any]
+    ) -> None:
+        snapshot_id = self._snapshot(domain)
+
+        with pytest.raises(
+            psycopg.errors.CheckViolation, match="snapshot_manifest_digest_is_a_sha256"
+        ):
+            connection.execute(
+                "update snapshot set manifest_sha256 = %s where id = %s", ("nope", snapshot_id)
+            )
+
+    def test_a_snapshot_item_count_cannot_be_negative(
+        self, domain: DomainStore, connection: psycopg.Connection[Any]
+    ) -> None:
+        snapshot_id = self._snapshot(domain)
+
+        with pytest.raises(
+            psycopg.errors.CheckViolation, match="snapshot_item_count_is_not_negative"
+        ):
+            connection.execute(
+                "update snapshot set item_count = -1 where id = %s", (snapshot_id,)
+            )
+
+    def test_a_snapshot_item_digest_must_look_like_a_sha256(
+        self, domain: DomainStore, connection: psycopg.Connection[Any]
+    ) -> None:
+        snapshot_id = self._snapshot(domain)
+
+        with pytest.raises(
+            psycopg.errors.CheckViolation, match="snapshot_item_digest_is_a_sha256"
+        ):
+            connection.execute(
+                "update snapshot_item set payload_sha256 = %s where snapshot_id = %s",
+                ("nope", snapshot_id),
+            )
+
+    def test_a_snapshot_item_ordinal_is_zero_based(
+        self, domain: DomainStore, connection: psycopg.Connection[Any]
+    ) -> None:
+        """The ordinal is the replay order. A negative one would sort before the first
+        member and change what a snapshot replays."""
+        snapshot_id = self._snapshot(domain)
+
+        with pytest.raises(
+            psycopg.errors.CheckViolation, match="snapshot_item_ordinal_is_zero_based"
+        ):
+            connection.execute(
+                "update snapshot_item set ordinal = -1 where snapshot_id = %s", (snapshot_id,)
+            )
+
+    def test_an_attempt_number_is_one_based(
+        self, store: JobStore, connection: psycopg.Connection[Any]
+    ) -> None:
+        """`job_attempt.attempt_no` is how a retry is distinguished from a first try, and
+        `0` would make the first attempt indistinguishable from "none yet"."""
+        _, attempt_id = claim_one(store)
+
+        with pytest.raises(
+            psycopg.errors.CheckViolation, match="job_attempt_number_is_one_based"
+        ):
+            connection.execute(
+                "update job_attempt set attempt_no = 0 where id = %s", (attempt_id,)
+            )

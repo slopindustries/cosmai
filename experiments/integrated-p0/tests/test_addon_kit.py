@@ -17,11 +17,12 @@ does not exist until B1 selects a real source.
 from __future__ import annotations
 
 import importlib.util
+from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
 
 import pytest
-from addon_api import KINDS, AddonManifest, Kind, ManifestError
+from addon_api import KINDS, AddonManifest, FetchResponse, Kind, ManifestError, OpenedInput
 from addon_kit import DEFAULT_ADDONS_ROOT, AddonKitError, new_addon
 
 
@@ -92,6 +93,17 @@ class TestEachKindGeneratesAConformingManifest:
             )
 
 
+def _never_fetch(
+    endpoint_ref: str,
+    params: Mapping[str, str] | None = None,
+    body: bytes | None = None,
+) -> FetchResponse:
+    """A `Fetch` that fails if it is ever called. Written as a function rather than a
+    lambda because DP-020 gave the contract an optional third argument, and a lambda that
+    took two would type-check as something the contract no longer describes."""
+    pytest.fail("fetch must not run: config was invalid")
+
+
 class TestEntryPointSignaturesMatchTheContext:
     """The generated `run` accepts the context object its own kind is handed.
 
@@ -115,7 +127,8 @@ class TestEntryPointSignaturesMatchTheContext:
             config={},
             cursor=None,
             limits=Limits(10.0, 10.0, 1_000_000, 5, 10, 1000),
-            fetch=lambda endpoint, params: pytest.fail("fetch must not run: config was invalid"),
+            fetch=_never_fetch,
+            accept_status=lambda response, reason: pytest.fail("accept_status must not run"),
             emit_raw=lambda items: pytest.fail("emit_raw must not run"),
             advance_cursor=lambda stream, cursor: pytest.fail("advance_cursor must not run"),
             log=lambda event, fields: None,
@@ -134,7 +147,7 @@ class TestEntryPointSignaturesMatchTheContext:
             config={},
             cursor=None,
             limits=Limits(10.0, 10.0, 1_000_000, 5, 10, 1000),
-            open_input=lambda ref: iter([]),
+            open_input=lambda ref: OpenedInput(ref, "e-1", b""),
             emit_raw=lambda items: pytest.fail("emit_raw must not run"),
             advance_cursor=lambda stream, cursor: pytest.fail("advance_cursor must not run"),
             log=lambda event, fields: None,

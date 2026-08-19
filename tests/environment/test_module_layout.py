@@ -42,6 +42,35 @@ def test_pytest_path_names_the_experiment_root() -> None:
     assert "experiments/integrated-p0" in options["pythonpath"]
 
 
+def test_pytest_collects_both_test_roots() -> None:
+    """`testpaths` decides whether any guard in this directory runs at all.
+
+    `[측정]` `ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md` M2: narrowing `testpaths` to
+    `["tests"]` drops **1039 of 1072** tests and the suite reports `33 passed` — green, no
+    error, no warning. The sibling above pins `pythonpath` and nothing pinned this, which
+    made the more consequential of the two settings the unguarded one.
+    """
+    options = read_pyproject()["tool"]["pytest"]["ini_options"]
+    testpaths = options["testpaths"]
+
+    assert "tests" in testpaths, testpaths
+    assert "experiments/integrated-p0/tests" in testpaths, testpaths
+
+
+def test_both_test_roots_actually_hold_tests() -> None:
+    """The control on the case above.
+
+    `testpaths` naming a directory that no longer holds tests would pass the assertion and
+    still collect nothing — the same silent green by a different route.
+    """
+    options = read_pyproject()["tool"]["pytest"]["ini_options"]
+    root = Path(__file__).resolve().parents[2]
+
+    for named in options["testpaths"]:
+        found = sorted((root / named).rglob("test_*.py"))
+        assert len(found) >= 5, f"{named} holds {len(found)} test files"
+
+
 def test_repository_declares_no_importable_package() -> None:
     """DP-003 regression guard: nothing here may be installed as a product package."""
     assert read_pyproject()["tool"]["uv"]["package"] is False

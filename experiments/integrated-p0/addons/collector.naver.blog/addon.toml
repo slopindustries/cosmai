@@ -36,26 +36,13 @@ required = false
 label = "Sort order"
 help = "Sent as `sort`. The API accepts only \"sim\" (relevance, default) or \"date\"; there is no enum field type, so this is enforced in code, not by the schema"
 
-# `client_id` and `client_secret` cover the two values the API's auth requires
-# (X-NCP-APIGW-API-KEY-ID and X-NCP-APIGW-API-KEY). `needs_credential` below is a
-# single boolean with no way to say "two named secrets map to two named headers" —
-# see handler.py's module docstring for why this pairing is a guess rather than a
-# read fact.
-[[config.field]]
-name = "client_id"
-type = "string"
-required = true
-secret = true
-label = "NCP Client ID"
-help = "Routed to the secret store; sent by the platform as X-NCP-APIGW-API-KEY-ID. This add-on never receives the value (DP-008 D6)"
-
-[[config.field]]
-name = "client_secret"
-type = "string"
-required = true
-secret = true
-label = "NCP Client Secret"
-help = "Routed to the secret store; sent by the platform as X-NCP-APIGW-API-KEY. This add-on never receives the value (DP-008 D6)"
+# `[측정]` `client_id` and `client_secret` were declared here as `required`, `secret`
+# config fields until 2026-08-18, with a note saying the pairing of two secrets to two
+# headers was a guess because the contract had no vocabulary for it. DP-018 gave it one:
+# the parts live in the **source's outbound profile**, which the operator approves, and
+# `needs_credential` below stays as the add-on's *request* for one. The fields are removed
+# rather than left in place, because a `required` field that can never be configured and
+# that this add-on never receives is a declaration nothing can satisfy or check.
 
 [declares]
 hosts = ["naverapihub.apigw.ntruss.com"]
