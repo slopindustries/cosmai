@@ -55,20 +55,25 @@ opportunity card for sunscreen and toner, on a 2026-08-26 delivery boundary — 
 acquisition topology in which scraper runtimes and first-stage storage stay outside COSMAI.
 The table above does not claim any of it, and neither does the work below.
 
-| DP-011 / DP-012 scope | State |
-|---|---|
-| Opportunity card as the decision unit | not started |
-| Sunscreen and toner canonicalization | not started |
-| Deterministic trend baseline and classes | not started |
-| Scraper-service REST adapter add-on | not started — the three collectors call the source directly |
+| DP-011 / DP-012 scope | State | Where it goes |
+|---|---|---|
+| Opportunity card as the decision unit | not started | P1 first milestone ([DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) D1) |
+| Sunscreen and toner canonicalization | not started | P1 first milestone |
+| Deterministic trend baseline and classes | not started | P1 first milestone |
+| Scraper-service REST adapter add-on | not started — the three collectors call the source directly | P1, and only for collectors added from here ([DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) D2) |
+
+`[결정]` **P0 therefore closes against [`p0-charter.md`](p0-charter.md), not against DP-011.**
+The charter's P0-B exit criteria contain no card, no trend class, and no product category;
+DP-011 added those on top of it. The P1 Entry Gate measures the charter.
 
 `[확인 사실]` **Two acts remain and neither is a document.** The P0 archive tag does not
 exist, and the P1 Entry Gate has not been held. Both are the project owner's:
 `AGENTS.md` makes commits, pushes, and tags things that happen when asked, and a gate that
 accepted itself would not be a gate.
 
-`[결정]` Until that gate is held, P0-B is **complete as work against the pre-DP-011
-plan, not started against DP-011's, and unaccepted as a stage**. The distinction matters: `apps/` stays empty, and `SEC-006`'s waiver
+`[결정]` Until that gate is held, P0-B is **complete as work against the charter, not
+started against DP-011's added product scope, and unaccepted as a stage**. The distinction
+matters: `apps/` stays empty, and `SEC-006`'s waiver
 ([DP-023](decisions/DP-023-sec-006-waived-for-p0.md)) has not yet expired.
 
 ## 2. P0 product decision and long-term goal
@@ -134,6 +139,7 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 - `[결정]` [DP-020](decisions/DP-020-request-method-and-body.md) puts the request method on the approved profile and the request body with the add-on, and bumps `addon_api` to contract 1.1. Two of the three selected NAVER endpoints are `POST` with a JSON body and were unreachable without it.
 - `[결정]` [DP-021](decisions/DP-021-schema-0-2-trend-points.md) makes Schema 0.2 a discriminated union on `record_type` so a document and a trend point can share one table.
 - `[결정]` [DP-025](decisions/DP-025-two-branch-record-reconciliation.md) reconciles the two decision records that grew from `c0a266d` without seeing each other: the published numbers stand, the P0-B packets moved to DP-018–DP-024 and OQ-013–OQ-014, OQ-014 closes into DP-012 carrying its measurement as falsification input, and the P0-B completion claim states the plan it is measured against.
+- `[결정]` [DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) closes P0 against `p0-charter.md` rather than DP-011, moving DP-011's product scope to P1's first milestone; keeps the three NAVER collectors calling their source directly as `ARCHIVE_REFERENCE_ONLY`, which is the P0 disposition DP-012 was waiting for; and binds DP-012's independent-service-plus-adapter topology to collectors added from here. The result is a hybrid, and P1 carries both seams.
 
 ### Technology constraints
 

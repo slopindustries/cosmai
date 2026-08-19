@@ -164,6 +164,18 @@ This window implements [DP-011](decisions/DP-011-p0b-product-and-delivery-scope.
 It does not change the P0 lifecycle, promote P0 code into P1, or convert missing evidence
 into a pass.
 
+> `[결정]` **Superseded in part on 2026-08-20 by
+> [DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md).** P0 now closes
+> against [`p0-charter.md`](p0-charter.md)'s P0-B exit criteria; DP-011's product scope —
+> the opportunity card, sunscreen and toner canonicalization, and deterministic trend
+> classes — and DP-012's scraper-service adapter move to **P1's first milestone**. The
+> dated critical path below is kept as written rather than edited, because it is the plan
+> the 08-19 measurement was taken against and rewriting it would make that measurement
+> unreadable; the rows it still binds are marked. What replaces it for P0 closure is the
+> charter's exit criteria, its three open gaps — a real dataset, `rule-baseline@0.1`, and
+> snapshot survival across Raw-store evolution — the P1 Entry Gate, the archive tag, and
+> the merge to `main`.
+
 ### Starting measurement
 
 `[확인 사실]` The starting revision is `c0a266d` on `dev`.

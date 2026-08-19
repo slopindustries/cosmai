@@ -26,6 +26,7 @@ Active decisions:
 - [DP-023 — SEC-006 waived for P0](DP-023-sec-006-waived-for-p0.md) — accepted 2026-08-19; an accepted risk, not a satisfied control, expiring at the P1 Entry Gate
 - [DP-024 — the local input registry](DP-024-local-input-registry.md) — accepted 2026-08-19; an importer names an input and the operator's approved profile says which file that is, which is what bound `open_input` and the `importer` kind
 - [DP-025 — Reconciling two decision records that grew from the same commit](DP-025-two-branch-record-reconciliation.md) — accepted 2026-08-20; keeps the published numbers, closes OQ-014 into DP-012, and states what the P0-B completion claim is measured against
+- [DP-026 — What ends P0, and where a collector lives](DP-026-p0-closure-scope-and-collector-topology.md) — accepted 2026-08-20; closes P0 against the charter, moves DP-011's product scope to P1, and binds DP-012's adapter topology to new collectors rather than the existing three
 
 `[측정]` This list omitted DP-018 through DP-022 until 2026-08-19, while `AGENTS.md` instructs
 every reader to treat an `ACCEPTED_FOR_POC` decision as a constraint. Found by
