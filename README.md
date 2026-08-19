@@ -4,22 +4,22 @@ Cosmai is an evidence-bearing data ingestion and normalization experiment for be
 
 ## Current phase
 
-The repository is currently in **P0-A — Platform Core Construction and Verification**. The next gate is the **P0-A Completion Gate**.
+The repository is currently in **P0-B — Domain Integration, Evidence Synthesis, and Disposition**. The next gate is the **P1 Entry Gate** inside P0-B.
 
-P0 is not the long-lived product foundation. P0-A builds only source- and normalization-independent platform behavior. P0-B then owns source exploration and selection, acquisition and normalization contracts and implementations, real-data verification, Architecture Synthesis, and artifact disposition. Only accepted evidence, contracts, fixtures, tests, and decisions may be promoted into the cleanly reconstructed P1 prototype.
+P0 is not the long-lived product foundation. P0-A built and verified source- and normalization-independent platform behavior. P0-B now owns source exploration and selection, acquisition and normalization contracts and implementations, real-data verification, Architecture Synthesis, and artifact disposition. Only accepted evidence, contracts, fixtures, tests, and decisions may be promoted into the cleanly reconstructed P1 prototype.
 
 ## Current-stage goal
 
-P0-A must prove only that the source-neutral platform can:
+P0-A proved that the source-neutral platform can:
 
 1. run handler-neutral jobs with claims, leases, retries, terminal states, interruption, and recovery;
 2. expose platform health, generic job state, logs, metrics, failure inspection, and safe retry through a minimal dashboard;
 3. preserve correlation, redaction, loopback binding, and repository-external secret-store guards;
 4. produce replayable `JOB`, platform `OPS`, and platform `SEC` evidence without selecting or imitating a source or normalizer.
 
-P0-B later owns real REST and dataset inputs, Raw and snapshot behavior, deterministic normalization, real-data verification, Architecture Synthesis, and `PoC Contract 0.1`.
+P0-B now owns independent scraper REST-service adapters and dataset inputs, Raw and snapshot behavior, deterministic normalization, real-data verification, Architecture Synthesis, and `PoC Contract 0.1`. Scraper runtimes and first-stage storage remain separate projects under [DP-012](docs/decisions/DP-012-independent-scraper-services.md); COSMAI stores only their thin adapter add-ons.
 
-The final product meaning of “trend” and the final `Normalized Schema 1.0` remain open questions.
+For this P0 delivery, [DP-011](docs/decisions/DP-011-p0b-product-and-delivery-scope.md) fixes the product decision: an evidence-backed R&D review card for canonical sunscreen and toner topics in the Korean market. The final `Normalized Schema 1.0`, learned prediction target, and long-term product workflow remain open.
 
 ## Repository map
 
@@ -79,4 +79,4 @@ P0-A source-neutral platform implementation and verification
 
 ## Status
 
-No application exists yet. P0-A now builds the platform core without selecting or imitating a source, collector, dataset importer, Raw model, snapshot, or normalizer. All of that domain work begins in P0-B after the P0-A gate. `uv run pytest` exercises the repository's own environment tests.
+P0-A is complete and P0-B is active. The repository contains the add-on contract and host, domain tables, authoring kit, a structural normalizer, and a direct Naver Blog collector prototype that has run through the platform against a local stub. The selected delivery boundary is now an independent Naver service plus a COSMAI adapter, which does not yet exist. The repository also does not yet contain a selected real source and dataset, a dataset importer, semantic normalizer, accepted trend result, evidence card, or complete domain operator flow. EXP-003 has unrepaired adversarial-review findings. The dated path to the 2026-08-26 functional freeze and 2026-08-27 verification handoff is in the [P0 Execution Plan](docs/p0-execution-plan.md#delivery-window-2026-08-19-to-2026-08-27).

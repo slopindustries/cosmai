@@ -1,8 +1,8 @@
 # Project State
 
 - Project: Cosmai
-- Version: 0.5
-- Updated: 2026-08-18
+- Version: 0.6
+- Updated: 2026-08-19
 - Phase: P0-B — Domain Integration, Evidence Synthesis, and Disposition
 - Next gate: P1 Entry Gate (inside P0-B)
 
@@ -22,15 +22,27 @@ No stage advances automatically because code appears to work. Update this file a
 
 ## 1. Current program goal through P0-B
 
-First build and test a source- and normalization-independent platform core. Then, in P0-B, select one REST source and one dataset, define and implement the acquisition and normalization domain, execute realistic integrated failures, and synthesize enough evidence to write `PoC Contract 0.1` and a P1 reconstruction plan.
+First build and test a source- and normalization-independent platform core. Then, in P0-B, select one REST source exposed by an independent scraper service and one dataset, define and implement the acquisition and normalization domain, execute realistic integrated failures, and produce evidence-backed R&D opportunity cards for Korean sunscreen and toner topics. Synthesize enough evidence to write `PoC Contract 0.1` and a P1 reconstruction plan.
 
 P0 remains disposable. P1 is reconstructed from accepted contracts and evidence rather than evolved directly from P0 implementation modules.
 
-## 2. Final product goal
+## 2. P0 product decision and long-term goal
 
-`OPEN`
+`ACCEPTED_FOR_POC` in [DP-011](decisions/DP-011-p0b-product-and-delivery-scope.md).
 
-The final meaning of beauty trend intelligence, its decision consumer, and the decision or R&D action it should improve have not been fixed. P0-A must not invent an answer. P0-B must record a provisional decision use before defining the concrete normalizer, while final product semantics may remain unresolved.
+Cosmai helps a cosmetics-company R&D or product-planning reviewer decide whether a canonical sunscreen- or toner-related topic deserves review, monitoring, evidence expansion, or rejection. The first decision unit is an evidence-backed R&D opportunity card, not a consumer recommendation, formula recommendation, sales forecast, or autonomous approval.
+
+The delivery is backend- and ingestion-first. Source quality takes priority over source count; product, ingredient, topic, and evidence identity must be canonical and traceable. Deterministic trend classes precede any optional LLM explanation. Long-term product semantics and learned prediction targets remain open beyond P0.
+
+## 2.1 Delivery control
+
+- `[결정]` Functional freeze: **2026-08-26**.
+- `[결정]` Independent verification, corrections, and handoff: **2026-08-27**.
+- `[결정]` Required flow: one selected independent scraper REST service through a COSMAI adapter and one selected dataset through Raw, deduplication, sealed snapshot, canonical normalization, deterministic trend classification, evidence card, and operator inspection.
+- `[결정]` Stretch only after the required flow passes: a second live channel and an evidence-citing LLM explanation renderer.
+- `[결정]` Not in this delivery: AutoML, deep learning, sales prediction, broad cosmetics coverage, or access to an unapproved storefront.
+
+The dated owners, stop rules, and acceptance evidence are in the [P0 Execution Plan](p0-execution-plan.md#delivery-window-2026-08-19-to-2026-08-27).
 
 ## 3. Artifact states
 
@@ -71,6 +83,7 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 - `[결정]` [DP-005](decisions/DP-005-two-part-pre-p1-execution.md) divides all pre-P1 delivery into P0-A and P0-B.
 - `[결정]` [DP-008](decisions/DP-008-addon-architecture.md) makes collectors, importers, and normalizers in-repository add-ons behind a contract, superseding DP-005's P0-B order steps 4–6 and DP-006's module layout.
 - `[결정]` [DP-010](decisions/DP-010-durable-work-in-the-completion-transaction.md) lets a handler enlist work into the transaction that completes its attempt, closing the gap the P0-A gate recorded first. It restates DP-008 D1's principle: `platform_core` stays **source-neutral**, not frozen.
+- `[결정]` [DP-012](decisions/DP-012-independent-scraper-services.md) keeps scraper runtimes and first-stage storage outside COSMAI. COSMAI integrates their versioned export endpoints through in-repository collector adapter add-ons.
 
 ### Technology constraints
 
@@ -117,7 +130,7 @@ add-on contract, host, and            bounded candidate exploration
                         ↓                         ↓
         acquisition, Raw, snapshot, normalization, operations,
           source-policy, and credential contracts
-        → collector, importer, and normalizer add-on implementations
+        → independent scraper service and collector adapter, importer, and normalizer add-on implementations
         → component, real-data, failure, replay, concurrency, and operator verification
         → Architecture Synthesis and artifact disposition
         → PoC Contract 0.1 and P1 reconstruction plan
@@ -126,7 +139,7 @@ add-on contract, host, and            bounded candidate exploration
 
 `[추론]` The add-on track carries no source or decision semantics, so neither OQ-001 nor OQ-002 blocks it. What OQ-002 blocks is the content of the normalizer's rules, not the protocol they are written against.
 
-Source probes are measurements inside P0-B. They are not integrated collector or importer implementations and cannot satisfy those obligations retroactively.
+Source probes are measurements inside P0-B. They are not integrated service adapters or importer implementations and cannot satisfy those obligations retroactively.
 
 ### Add-on architecture
 
@@ -137,6 +150,8 @@ Source probes are measurements inside P0-B. They are not integrated collector or
 - `[결정]` Add-ons depend on the contract package alone. `platform_core` gains no dependency on the add-on layer, and a dependency-direction test enforces both directions.
 - `[결정]` Four version axes carry defined failures: contract, add-on, config schema, and normalizer output contract.
 - `[결정]` In-process add-ons are trusted code. Isolation is contractual and test-enforced, not enforced by the operating system.
+- `[결정]` Source-specific scraper code, scheduling, and first-stage storage may run as independent REST services under [DP-012](decisions/DP-012-independent-scraper-services.md). COSMAI keeps only a thin collector adapter, never imports the scraper project, and never reads its database directly.
+- `[결정]` The service database and COSMAI transaction are independent. Replayable `batch_id`, stable `record_id`, and cursor semantics replace a distributed transaction; COSMAI still commits Raw, its cursor, and accepted job completion atomically.
 
 ### Data and workflow principles
 
@@ -169,7 +184,7 @@ The first two hypotheses can begin in P0-A. Acquisition and normalization hypoth
 | ID | Status | Stage | Question | Blocks |
 |---|---|---|---|---|
 | [OQ-001](open-questions/OQ-001-source-capability.md) | `OPEN` | P0-B | Which REST and dataset sources are usable and representative? | Source contract, fixtures, P0-B ingestion |
-| [OQ-002](open-questions/OQ-002-project-decision-contract.md) | `OPEN` | P0-B | Which decision should the final product improve? | Concrete normalizer, Schema 1.0, final quality metrics |
+| [OQ-002](open-questions/OQ-002-project-decision-contract.md) | `RESOLVED` | P0-B | Which decision should the final product improve? | Resolved for P0 by DP-011; long-term learned targets remain outside P0 |
 | [OQ-003](open-questions/OQ-003-normalization-protocol.md) | `OPEN` | P0-B | What are Schema 0.x and the normalizer provider protocol? | P0-B normalization |
 | [OQ-004](open-questions/OQ-004-snapshot-boundary.md) | `OPEN` | P0-B | What exactly must a sealed snapshot materialize? | Reproducibility contract |
 | [OQ-005](open-questions/OQ-005-operations-contract.md) | `OPEN` | P0-A/P0-B | Which platform and domain actions and evidence must the dashboard expose? | Dashboard acceptance contract |
