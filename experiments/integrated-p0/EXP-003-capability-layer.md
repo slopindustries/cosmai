@@ -243,50 +243,76 @@ passes equally well against a guard that checks nothing.
 
 ## Result
 
-- Outcome: `PARTIAL` — steps 1-6 complete; the review's findings are unrepaired.
-  `[측정]` Step 6 returned **3 blocking, 3 major, 3 moderate, 1 minor**, recorded in
-  [ADVERSARIAL-REVIEW-2026-08-18.md](ADVERSARIAL-REVIEW-2026-08-18.md) with a ranked work list.
-  Six of the ten were independently reproduced by the author. Three false claims in the
-  code were corrected immediately; nothing else was repaired, so this experiment cannot
-  close until the work items are done and this record is re-measured.
+`[측정]` **Re-measured 2026-08-19.** The record below replaces a `PARTIAL` outcome that had
+become false: it said the review's findings were unrepaired and that only `collector` was
+bound, and both stopped being true on 2026-08-18/19. The original text is not preserved
+verbatim; what it claimed and when it stopped holding is stated here, which is the part a
+later reader needs.
+
+- Outcome: `SUPPORTED` for H2 and H2a within their tested scope.
+  `[측정]` All five work items the previous outcome named as blocking are repaired
+  test-first and mutation-verified: F1 (`max_pages`/`max_records` enforced nowhere), F2 (an
+  exception from enlisted work escaping unclassified), F3 (H2a's atomicity resting on a
+  fixture), F5 (`read_timeout_s` bounding each socket read rather than the whole response),
+  and F4 (redirect path range bypassable by dot segments).
 - Falsification condition met: `NO` for H2 within its tested scope, `NO` for H2a.
 - Exit condition met: `RELEASED`. `[측정]` The 2.5-hour box opened at
   2026-08-18T17:03+09:00 (`040ad0c`) and steps 1-5 ran to 20:09, about 3h05m — over it.
   The sacrifice order fixed in advance was "reduce the `SEC` scenarios first, keep the
   capability layer and the outbound guard"; nothing was sacrificed under it, because the
   `SEC` scenarios landed as well. `[결정]` The project owner released the box on
-  2026-08-18 after that measurement, so step 6 runs rather than being recorded as cut.
+  2026-08-18 after that measurement, so step 6 ran rather than being recorded as cut.
   The overrun is left on the record rather than erased: a box that is deleted once it is
   exceeded stops being a box, and the next experiment's estimate is worth more if this
   one's error is visible.
-- Known limitations:
-  - **No credential is attached anywhere.** Blocked by OQ-009 and stated in the
-    integration test's own docstring rather than implied.
-  - **The stub is not the provider.** Its response shape is the vendor documentation's;
-    no capture of the real source exists. collector.naver.blog's three `[가설]`
-    assumptions are not confirmed by these tests passing.
-  - **Only `collector` is bound.** `normalizer` has no result table (OQ-004) and
-    `importer` has no registry of approved inputs. Both are refused by name.
-  - **Multi-stream add-ons are refused**, which is OQ-010's interim position and not an
-    answer to it.
-  - **The adversarial review has run and its findings are unrepaired.** Three of them
-    are blocking: `max_pages`/`max_records` enforced nowhere (F1), an exception from
-    enlisted work escaping unclassified and stopping the worker (F2), and H2a's atomicity
-    resting on a fixture rather than on the code (F3). Until those are fixed this record
-    describes what was attempted, not what holds.
+- `[측정]` Two further adversarial reviews have since run against this layer —
+  [ADVERSARIAL-REVIEW-2026-08-19.md](ADVERSARIAL-REVIEW-2026-08-19.md) (security) and
+  [ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md](ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md)
+  (mutation, 208 mutants). The security review could not route a request outside the
+  approved grant. The mutation review's B-series findings are repaired; its `M` series and
+  the 2026-08-18 review's F6–F10 remain open and are tracked in those files.
+
+### Known limitations, as they stand on 2026-08-19
+
+- `[확인 사실]` **`importer` is still unbound.** `open_input` needs a registry of approved
+  local inputs and no document defines one. This is the one kind of the three that has
+  never run, and closing it is the next action below.
+- `[확인 사실]` **Multi-stream add-ons are refused**, which is
+  [OQ-010](../../docs/open-questions/OQ-010-cursor-stream-read-back.md)'s interim position
+  and not an answer to it.
+- `[측정]` **Judgments only an add-on can make are not checkable by anything.** Recorded as
+  [OQ-013](../../docs/open-questions/OQ-013-addon-responsibility-boundary.md); the mutation
+  review measured `_MONTH_LENGTH` as GREEN in both copies before repair.
+- `[결정]` **`SEC-006` is waived, not satisfied** —
+  [DP-023](../../docs/decisions/DP-023-sec-006-waived-for-p0.md). The sandbox was never
+  narrowed, so outbound safety rests on the application guard alone.
+
+### What is no longer a limitation
+
+- `[확인 사실]` **A credential is attached.** [DP-018](../../docs/decisions/DP-018-credential-parts-and-attachment.md)
+  resolved OQ-009 for P0-B; `capabilities.py` fills protected headers from the secret store
+  at the worker boundary. The previous record's "no credential is attached anywhere" is
+  false as of 2026-08-19.
+- `[확인 사실]` **`normalizer` is bound**, and two normalizers run end to end over sealed
+  snapshots into `normalized_result` (migration `0003`).
+- `[측정]` **The stub is no longer the only evidence.** All three collectors have run
+  against the real NAVER API Hub with credentials, and the dashboard rendered the resulting
+  normalized rows. `collector.naver.blog`'s three `[가설]` assumptions are confirmed by
+  those runs rather than by the stub agreeing with itself.
 
 ## Impact and next action
 
-- Uncertainty reduced: H2's non-credential half; H2a through a real add-on; the shape of
-  the transaction boundary for a multi-statement acquisition effect (OQ-006 H1).
-- New uncertainty discovered: OQ-010 (which cursor an add-on reads back). Two smaller
-  facts now recorded rather than open: a stored cursor may not be `null`, and an item must
-  name an envelope this run fetched.
-- Proposed next action: the ten work items in
-  [ADVERSARIAL-REVIEW-2026-08-18.md](ADVERSARIAL-REVIEW-2026-08-18.md), in the order given there —
-  F2, F3, F1, F5, F4 first, since those five are what H2 and H2a actually rest on. Then
-  re-measure this record. Only then the conformance suite, B1's source selection record,
-  and the operator surfaces.
+- Uncertainty reduced: H2's credential half as well as its non-credential half; H2a through
+  three real add-ons; the shape of the transaction boundary for a multi-statement
+  acquisition effect (OQ-006 H1); Schema 0.1 and 0.2 through two normalizers.
+- New uncertainty discovered: [OQ-010](../../docs/open-questions/OQ-010-cursor-stream-read-back.md),
+  [OQ-013](../../docs/open-questions/OQ-013-addon-responsibility-boundary.md), and
+  [OQ-014](../../docs/open-questions/OQ-014-externalized-acquisition.md).
+- `[결정]` Proposed next action, 2026-08-19: **bind `importer`** — define the registry of
+  approved local inputs, implement `open_input`, and write one minimal importer over a
+  local dataset. That is the remaining third of DP-008 D4's capability set, and it is what
+  `P0-B` work package B4's "malformed and partially invalid dataset rows" scenarios need in
+  order to run at all.
 
 ## Artifacts
 

@@ -31,6 +31,7 @@ from addon_api import (
     Limits,
     NormalizedResult,
     NormalizeOutcome,
+    OpenedInput,
     RawItem,
     SnapshotItem,
 )
@@ -67,6 +68,11 @@ SAMPLES: dict[type, Any] = {
         max_redirects=3,
         max_pages=10,
         max_records=1000,
+    ),
+    OpenedInput: OpenedInput(
+        input_ref="rows",
+        envelope_ref="envelope-9",
+        body=b"\x00\x01binary",
     ),
     FetchResponse: FetchResponse(
         endpoint_ref="items",

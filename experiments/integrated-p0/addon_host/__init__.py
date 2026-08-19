@@ -32,10 +32,13 @@ An add-on that is **not installed** needed nothing built for it.
 as ``HANDLER_UNKNOWN`` on first claim without retry and P0-A tested it, so the
 absent case is discharged by leaving it alone.
 
-**What B0.1 stops short of.** No capability is implemented. Building a
-``CollectContext``, ``ImportContext``, or ``NormalizeContext`` requires the source
-row, the stored configuration, and the cursor that DP-008 D5 assigns to ``domain``,
-and ``domain`` is B0.2's. The seam is :class:`addon_host.registration.Invoke`; the
+**What B0.1 stopped short of, and what has since landed.** B0.1 implemented no
+capability: building a ``CollectContext``, ``ImportContext``, or ``NormalizeContext``
+requires the source row, the stored configuration, and the cursor that DP-008 D5 assigns
+to ``domain``, and ``domain`` was B0.2's. `[확인 사실]` B0.2 has since landed —
+:mod:`addon_host.capabilities` binds the collector and normalizer capabilities, and both
+run end to end against real data. The paragraph is kept because the *seam* it describes is
+still the seam: :class:`addon_host.registration.Invoke`; the
 default fills it with a permanent failure that names the missing layer, so an
 unfinished host cannot be mistaken for a working one.
 """

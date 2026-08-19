@@ -18,10 +18,10 @@ from addon_api.context import (
     FetchResponse,
     ImportContext,
     ImportEntry,
-    InputStream,
     Limits,
     NormalizeContext,
     NormalizeEntry,
+    OpenedInput,
 )
 from addon_api.errors import (
     AddonConfigInvalid,
@@ -70,6 +70,7 @@ SERIALIZABLE: tuple[type[BoundaryData], ...] = (
     NormalizeOutcome,
     Limits,
     FetchResponse,
+    OpenedInput,
 )
 
 __all__ = [
@@ -94,7 +95,7 @@ __all__ = [
     "FetchResponse",
     "ImportContext",
     "ImportEntry",
-    "InputStream",
+    "OpenedInput",
     "Kind",
     "Limits",
     "ManifestError",

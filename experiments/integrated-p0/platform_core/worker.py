@@ -56,7 +56,7 @@ import signal
 import socket
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from threading import current_thread, main_thread
 from types import FrameType
@@ -95,6 +95,21 @@ SIGNAL_CHECK_SECONDS: Final = 0.05
 
 #: The single object written to standard output at shutdown.
 REPORT_EVENT: Final = "worker.report"
+
+RegistryFor = Callable[["psycopg.Connection[Any]"], HandlerRegistry]
+"""Build the handler table for one connection.
+
+The seam a host with connection-bound handlers needs, and the whole of what this module
+knows about the existence of such a host. It is a callable rather than an import because
+DP-008 D1 forbids ``platform_core`` from depending on the add-on layer at all: the add-on
+host passes one of these in, and nothing here learns what an add-on is.
+
+**Per connection rather than per process**, because ``_reopen`` replaces the connection
+after a transient database failure. A handler holding a store built on the previous
+connection would write outside the transaction that completes its attempt — which is the
+defect ``ADVERSARIAL-REVIEW-2026-08-18.md`` F3 records, in the one place it would be least
+visible. Rebuilding the table with the connection makes the stale case unreachable.
+"""
 
 
 @dataclass(frozen=True)
@@ -195,10 +210,17 @@ class Worker:
         registry: HandlerRegistry | None = None,
         metrics: MetricsRegistry | None = None,
         report_stream: TextIO | None = None,
+        registry_for: RegistryFor | None = None,
     ) -> None:
+        if registry is not None and registry_for is not None:
+            raise ValueError(
+                "give a worker a handler table or a way to build one, not both: "
+                "registry_for would replace registry on the first connection"
+            )
         self._config = config
         self._options = options
         self._logger = logger
+        self._registry_for = registry_for
         self._registry = synthetic_registry() if registry is None else registry
         self._metrics = MetricsRegistry() if metrics is None else metrics
         self._report_stream: TextIO = sys.stdout if report_stream is None else report_stream
@@ -329,6 +351,9 @@ class Worker:
         the boundaries this experiment exists to observe invisible.
         """
         self._connection = connect(self._config, autocommit=True)
+        if self._registry_for is not None:
+            # Rebuilt on every open, including a reopen. See `RegistryFor`.
+            self._registry = self._registry_for(self._connection)
         store = JobStore(
             self._connection, self._config, logger=self._logger, metrics=self._metrics
         )

@@ -33,19 +33,26 @@ against a rule that checks nothing.
 from __future__ import annotations
 
 import ipaddress
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Final
 from urllib.parse import quote, urlencode, urlsplit
 
+from domain.secrets import resolve_credential
+
 __all__ = [
     "DEFAULT_LIMITS",
+    "PROTECTED_HEADERS",
+    "CredentialPart",
+    "credential_headers",
     "OutboundProfile",
     "PreparedRequest",
     "Refusal",
     "RefusalReason",
     "check_resolved_addresses",
+    "comparable_segments",
     "resolve",
     "strip_protected_headers",
 ]
@@ -68,6 +75,18 @@ class RefusalReason(StrEnum):
     TOO_MANY_REDIRECTS = "TOO_MANY_REDIRECTS"
     RESPONSE_TOO_LARGE = "RESPONSE_TOO_LARGE"
     PARAMETER_NOT_ALLOWED = "PARAMETER_NOT_ALLOWED"
+    #: The two limits `ADVERSARIAL-REVIEW-2026-08-18.md` F1 found enforced nowhere. They
+    #: are refusals rather than a quiet stop for the reason every other member here is one:
+    #: an add-on that ran past its grant has not collected less, it has been refused, and a
+    #: run that reported success at the limit would be indistinguishable from one that
+    #: reached the end of the data.
+    PAGE_LIMIT_EXCEEDED = "PAGE_LIMIT_EXCEEDED"
+    RECORD_LIMIT_EXCEEDED = "RECORD_LIMIT_EXCEEDED"
+    #: DP-020. The method is the operator's grant and the body is bounded by the platform,
+    #: so both can be refused for the same reason every other member here exists: an add-on
+    #: reached past what the source row approved.
+    METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
+    REQUEST_TOO_LARGE = "REQUEST_TOO_LARGE"
 
 
 @dataclass(frozen=True)
@@ -96,6 +115,10 @@ class PreparedRequest:
     host: str
     port: int
     endpoint_ref: str
+    #: DP-020 D1. From the profile, never from the add-on.
+    method: str = "GET"
+    #: DP-020 D2. From the add-on, exactly as `params` always has been. `None` for a `GET`.
+    body: bytes | None = None
 
 
 #: `p0-security.md` requires per-source limits; these are the values used when a profile
@@ -108,7 +131,36 @@ DEFAULT_LIMITS: Final[Mapping[str, Any]] = {
     "max_redirects": 3,
     "max_pages": 20,
     "max_records": 5000,
+    # DP-024. Bounds one local input an importer opens, and has nothing to do with the
+    # network — it lives here because `Limits` is one object an add-on reads, not because
+    # a dataset is a request.
+    "max_input_bytes": 64 * 1024 * 1024,
+    # The whole of one `fetch`, redirect hops and connection attempts included.
+    # `ADVERSARIAL-REVIEW-2026-08-18.md` F5 is why it exists: the socket timeouts above
+    # bound one `recv` each, so a server sending one byte per (timeout − ε) trips none of
+    # them, and occupancy came out linear in `max_response_bytes` — the reviewer's
+    # arithmetic put `DEFAULT_LIMITS` at about 38 days. This is the bound that does not
+    # move with what it bounds.
+    #
+    # 60 seconds is chosen rather than derived. One honest hop against a slow but working
+    # source costs `connect_timeout_s + read_timeout_s` = 35s, so this leaves room for a
+    # redirect and no more; summing the per-hop limits over `max_redirects + 1` would give
+    # 140s, which is the arithmetic of the worst case rather than a bound anyone wants. A
+    # source that genuinely needs longer states it, and states it where an operator can
+    # see what it is buying.
+    "max_request_seconds": 60.0,
+    # DP-020 D3. A body is the add-on's (D2), so it is the add-on's to get wrong, and a
+    # limit written into a contract with no counter behind it is what
+    # `ADVERSARIAL-REVIEW-2026-08-18.md` F1 was about. 64 KiB is far above the largest
+    # documented DataLab body — five keyword groups of twenty keywords — and far below
+    # anything that would make one request expensive to hold in memory.
+    "max_request_bytes": 64 * 1024,
 }
+
+#: DP-020 D1. `GET` reads and `POST` reads-expressed-as-a-body; nothing that writes. A
+#: write to a source is a different safety question and `p0-security.md` has not been asked
+#: it, so the others are refused by name rather than passed through.
+ALLOWED_METHODS: Final[frozenset[str]] = frozenset({"GET", "POST"})
 
 #: Stripped from anything recorded. `p0-security.md` names the first two; the rest are
 #: the shapes a provider credential takes in practice. Matched case-insensitively.
@@ -130,6 +182,146 @@ PROTECTED_HEADERS: Final[frozenset[str]] = frozenset(
 ALLOWED_SCHEMES: Final[frozenset[str]] = frozenset({"https"})
 
 
+#: The shape `secret-setup.md` fixes for a secret-store key, and the same pattern the
+#: `source_credential_ref_is_a_key_name` CHECK holds on the column. Repeated here because
+#: DP-018 puts refs in a jsonb array that a column constraint cannot see inside.
+_KEY_NAME: Final = re.compile(r"^COSMA_SRC_[A-Z0-9_]+$")
+
+
+@dataclass(frozen=True)
+class CredentialPart:
+    """One part of a source's credential: a key name, and the header it fills.
+
+    [DP-018](../../../docs/decisions/DP-018-credential-parts-and-attachment.md) D1. A part
+    exists at all because the first real source needs two of them: DP-008 left
+    `needs_credential` as one boolean and `source.credential_ref` as one column, and Naver
+    API Hub wants `X-NCP-APIGW-API-KEY-ID` and `X-NCP-APIGW-API-KEY` together.
+
+    `ref` is a **key name** and never a value. The whole of what may appear in a log line,
+    a dashboard, or this dataclass's `repr` is the name.
+    """
+
+    header: str
+    ref: str
+
+
+def _as_bytes(body: object) -> bytes | None:
+    """The body as the bytes that will actually be sent, or `None` if that is unknowable.
+
+    `[측정]` **This exists because `len(body)` was the wrong quantity.**
+    `ADVERSARIAL-REVIEW-2026-08-19.md` F1: `len` is a byte count only for `bytes`, and
+    `http.client` accepts far more than that — any bytes-like via the buffer protocol, and
+    any iterable of bytes, which it streams `Transfer-Encoding: chunked`. A one-element
+    `list[bytes]` therefore measured **1** against a 64 KiB grant and put 1 MiB on the wire.
+    DP-020 D3 claims the platform bounds the body; a bound that trusts the add-on's static
+    typing to keep the shape simple is not the platform bounding anything.
+
+    `bytes` remains the declared type and mypy still refuses the alternatives. This is what
+    happens when one reaches here anyway — and the finding is the argument for having it:
+    a `bytearray` is the natural way to assemble a body incrementally, and a helper
+    annotated `-> bytes` that returns one satisfies the checker and not the runtime.
+
+    **An unmeasurable body is refused rather than sent.** A generator cannot be sized without
+    consuming it, and consuming it here would leave the caller an exhausted iterator — so the
+    honest answer is that this guard cannot bound it, and DP-020 D3 says an unbounded body
+    does not go out. `None` is that answer.
+    """
+    if isinstance(body, bytes):
+        return body
+    if isinstance(body, bytearray | memoryview):
+        # Bytes-like: `http.client` sends these through the buffer protocol, and their
+        # length is already a byte count. Copied to `bytes` so that what was measured is
+        # what is sent — a `bytearray` the add-on still holds could change afterwards.
+        return bytes(body)
+    # An iterable of chunks, which `http.client` streams. Materialised here because a
+    # sequence can be measured without being consumed; a generator cannot, and falls through
+    # to the refusal below.
+    if isinstance(body, list | tuple) and all(
+        isinstance(chunk, bytes | bytearray | memoryview) for chunk in body
+    ):
+        return b"".join(bytes(chunk) for chunk in body)
+    return None
+
+
+def _read_endpoints(endpoints: Mapping[str, Any]) -> dict[str, Any]:
+    """Read both endpoint shapes, refusing a method the platform does not grant.
+
+    DP-020 D1. A `ValueError` and not a `Refusal`, like every other malformed-row check
+    here: the row should never have been written, which is a different thing from a request
+    being denied. Refusing at read time also means an operator learns at registration rather
+    than on the first fetch of an endpoint they may not use for weeks.
+    """
+    read: dict[str, Any] = {}
+    for name, entry in endpoints.items():
+        if isinstance(entry, Mapping):
+            method = str(entry.get("method", "GET")).upper()
+            if method not in ALLOWED_METHODS:
+                raise ValueError(
+                    f"outbound_profile.endpoints[{name!r}] asks for method {method!r}; this "
+                    f"platform grants only {', '.join(sorted(ALLOWED_METHODS))} (DP-020 D1)"
+                )
+            read[str(name)] = {"path": str(entry.get("path", "")), "method": method}
+        else:
+            read[str(name)] = str(entry)
+    return read
+
+
+def _read_credentials(profile: Mapping[str, Any]) -> tuple[CredentialPart, ...]:
+    """Read the `credentials` array, refusing a part the platform cannot honour safely.
+
+    Both refusals are `ValueError` rather than `Refusal`, because this is a row that should
+    never have been written — the shape `from_row` already uses for a malformed `endpoints`
+    value, and a different thing from a request being denied.
+
+    **The header must be protected.** DP-018 D3, and the load-bearing half of the packet.
+    `strip_protected_headers` is what keeps a credential out of
+    `raw_envelope.response_headers`, and it works from a fixed list. A profile free to name
+    any header could name one that is attached on the way out and recorded on the way back —
+    a credential in Raw with every individual rule still satisfied. Tying attachment to that
+    list makes "attached" and "stripped" one set by construction instead of by two people
+    remembering.
+
+    **The ref must be a key name.** The column's CHECK cannot see inside a jsonb array, so
+    the same rule is stated where the array is read, and a real token pasted into a profile
+    is refused rather than sent.
+    """
+    stated = profile.get("credentials")
+    if not stated:
+        return ()
+    parts: list[CredentialPart] = []
+    for entry in stated:
+        header = str(entry["header"])
+        ref = str(entry["ref"])
+        if header.lower() not in PROTECTED_HEADERS:
+            raise ValueError(
+                f"outbound_profile.credentials names {header!r}, which is not a protected "
+                "header; a credential may only fill a header that is stripped out of "
+                f"recorded Raw (DP-018 D3). Protected: {', '.join(sorted(PROTECTED_HEADERS))}"
+            )
+        if not _KEY_NAME.match(ref):
+            raise ValueError(
+                "outbound_profile.credentials carries a ref that is not a secret-store key "
+                "name; it must match COSMA_SRC_<SOURCE_ID>_<PURPOSE> and is never a value"
+            )
+        parts.append(CredentialPart(header=header, ref=ref))
+    return tuple(parts)
+
+
+def credential_headers(profile: OutboundProfile) -> dict[str, str]:
+    """Resolve this source's credential into the headers one request will carry.
+
+    Per request and never cached — `domain.secrets.resolve_credential` says why. A profile
+    with no credential resolves nothing and therefore needs no secret store at all, which
+    matters because most sources have none and none of them should be made to depend on a
+    store existing.
+
+    Raises rather than returning what it could resolve. `secret-setup.md` invariant 4: a
+    partially-authenticated request is one a source may answer with `200` and an error body,
+    which a collector would store as Raw and a normalizer would later read as data.
+    """
+    return {part.header: resolve_credential(part.ref).reveal() for part in profile.credentials}
+
+
 @dataclass(frozen=True)
 class OutboundProfile:
     """A source's approved outbound policy, as the `source` row stores it.
@@ -144,6 +336,40 @@ class OutboundProfile:
     limits: Mapping[str, Any] = field(default_factory=lambda: dict(DEFAULT_LIMITS))
     allowed_parameters: tuple[str, ...] | None = None
     allow_loopback: bool = False
+    #: What this source authenticates with, and where each part goes (DP-018 D2). On the
+    #: *profile* rather than in the add-on's manifest: an add-on naming its own header would
+    #: be describing the wire format of a request DP-008 D4 forbids it to compose, which is
+    #: one fact in two places that can disagree. The manifest's `needs_credential` is the
+    #: request; this is the grant, exactly as it already is for hosts and endpoints.
+    credentials: tuple[CredentialPart, ...] = ()
+
+    def path_of(self, endpoint_ref: str) -> str | None:
+        """The approved path for this name, whichever shape the row used.
+
+        DP-020 D1 lets an entry be a bare string — the `GET` form every profile written
+        before it uses — or an object carrying a method. Read here rather than normalised at
+        construction so that a profile built directly in a test and one read from a row take
+        the same path through this code.
+        """
+        entry = self.endpoints.get(endpoint_ref)
+        if entry is None:
+            return None
+        if isinstance(entry, Mapping):
+            return str(entry.get("path", ""))
+        return str(entry)
+
+    def method_of(self, endpoint_ref: str) -> str:
+        """The method the operator granted for this name. `GET` unless the row says otherwise."""
+        entry = self.endpoints.get(endpoint_ref)
+        if isinstance(entry, Mapping):
+            return str(entry.get("method", "GET")).upper()
+        return "GET"
+
+    def approved_paths(self) -> tuple[str, ...]:
+        """Every approved path, for the redirect range. Both entry shapes, one tuple."""
+        return tuple(
+            path for name in self.endpoints if (path := self.path_of(name)) is not None
+        )
 
     @classmethod
     def from_row(cls, profile: Mapping[str, Any] | None) -> OutboundProfile | None:
@@ -157,16 +383,18 @@ class OutboundProfile:
         endpoints = profile.get("endpoints") or {}
         if not isinstance(endpoints, Mapping):
             raise ValueError("outbound_profile.endpoints must be an object of name -> path")
+        endpoints = _read_endpoints(endpoints)
         limits = dict(DEFAULT_LIMITS)
         limits.update(profile.get("limits") or {})
         allowed = profile.get("allowed_parameters")
         return cls(
             hosts=tuple(profile.get("hosts") or ()),
-            endpoints={str(k): str(v) for k, v in endpoints.items()},
+            endpoints=endpoints,
             port=int(profile.get("port", 443)),
             limits=limits,
             allowed_parameters=None if allowed is None else tuple(str(a) for a in allowed),
             allow_loopback=bool(profile.get("allow_loopback", False)),
+            credentials=_read_credentials(profile),
         )
 
 
@@ -174,6 +402,7 @@ def resolve(
     endpoint_ref: str,
     profile: OutboundProfile | None,
     params: Mapping[str, str] | None = None,
+    body: bytes | None = None,
 ) -> PreparedRequest | Refusal:
     """Turn an add-on's endpoint name into an approved request, or refuse it by rule.
 
@@ -189,7 +418,7 @@ def resolve(
             {"endpoint_ref": endpoint_ref},
         )
 
-    path = profile.endpoints.get(endpoint_ref)
+    path = profile.path_of(endpoint_ref)
     if path is None:
         known = ", ".join(sorted(profile.endpoints)) or "none"
         return Refusal(
@@ -223,10 +452,75 @@ def resolve(
             {"endpoint_ref": endpoint_ref},
         )
 
+    if comparable_segments(path) is None:
+        # A stored path that cannot be compared segment by segment would grant a range
+        # `check_redirect` is unable to describe, so every redirect for this source would
+        # be refused and nothing would say why. Refusing on the first fetch puts the
+        # failure where an operator can act on it — see F4 in the review.
+        return Refusal(
+            RefusalReason.PATH_NOT_ALLOWED,
+            f"the approved path for {endpoint_ref!r} carries a dot segment or an encoded "
+            "separator, so the range it grants cannot be decided",
+            {"endpoint_ref": endpoint_ref},
+        )
+
+    method = profile.method_of(endpoint_ref)
+    if method not in ALLOWED_METHODS:
+        return Refusal(
+            RefusalReason.METHOD_NOT_ALLOWED,
+            f"the profile grants method {method!r} for {endpoint_ref!r}, which this platform "
+            f"does not send; granted methods are {', '.join(sorted(ALLOWED_METHODS))}",
+            {"endpoint_ref": endpoint_ref, "method": method},
+        )
+    # DP-020 D4, both directions. A `GET` carrying a body is legal HTTP that many servers
+    # ignore — a request the operator approved and the add-on did not get — and a `POST`
+    # with none is an add-on that forgot the question it came to ask.
+    if method == "GET" and body is not None:
+        return Refusal(
+            RefusalReason.METHOD_NOT_ALLOWED,
+            f"{endpoint_ref!r} is approved for GET and a body was supplied; a body is only "
+            "sent to an endpoint the profile grants POST",
+            {"endpoint_ref": endpoint_ref, "method": method},
+        )
+    if method == "POST" and body is None:
+        return Refusal(
+            RefusalReason.METHOD_NOT_ALLOWED,
+            f"{endpoint_ref!r} is approved for POST and no body was supplied",
+            {"endpoint_ref": endpoint_ref, "method": method},
+        )
+    if body is not None:
+        limit = int(profile.limits.get("max_request_bytes", DEFAULT_LIMITS["max_request_bytes"]))
+        measured = _as_bytes(body)
+        if measured is None or len(measured) > limit:
+            # The body is the add-on's and could carry anything, so the refusal counts it and
+            # never quotes it — the rule `Refusal` already applies to a query.
+            size = -1 if measured is None else len(measured)
+            return Refusal(
+                RefusalReason.REQUEST_TOO_LARGE,
+                f"the request body for {endpoint_ref!r} is {size} bytes and this source "
+                f"grants {limit}"
+                if measured is not None
+                else f"the request body for {endpoint_ref!r} is not bytes this guard can "
+                "measure, and an unmeasured body is not a bounded one",
+                {"endpoint_ref": endpoint_ref, "limit": limit, "size": size},
+            )
+        # The measured bytes are what goes downstream, so the thing counted and the thing
+        # sent cannot differ. `_hop` writes `request.body` and re-measures nothing.
+        body = measured
+
     url = f"https://{host}:{profile.port}{quote(path, safe='/')}"
-    if params:
+    # A `POST` asks its question in the body, so nothing goes in the URL as well: two places
+    # for one fact is two places that can disagree, and only one of them is what was sent.
+    if params and method == "GET":
         url = f"{url}?{urlencode(dict(params))}"
-    return PreparedRequest(url=url, host=host, port=profile.port, endpoint_ref=endpoint_ref)
+    return PreparedRequest(
+        url=url,
+        host=host,
+        port=profile.port,
+        endpoint_ref=endpoint_ref,
+        method=method,
+        body=body,
+    )
 
 
 def check_redirect(
@@ -237,6 +531,13 @@ def check_redirect(
     `p0-security.md`: "HTTP redirect가 발생하면 destination을 같은 정책으로 다시
     검증한다." Same policy means the same function decides — a second, looser check
     written for redirects would be the hole.
+
+    `[측정]` The function was the same and the *comparison* was not. Until 2026-08-18 the
+    path test was `parts.path.startswith(approved)` on the raw path, and
+    `ADVERSARIAL-REVIEW-2026-08-18.md` F4 walked out of the approved range twice over —
+    once with dot segments the far end resolves and this function did not, once with a
+    string prefix that is not a path prefix. `comparable_segments` is the repair, and its
+    docstring carries the reasoning for refusing rather than normalizing.
     """
     if hops > int(profile.limits.get("max_redirects", DEFAULT_LIMITS["max_redirects"])):
         return Refusal(
@@ -265,7 +566,10 @@ def check_redirect(
             f"a redirect to port {port} is not approved for this source",
             {"port": port, "approved": profile.port},
         )
-    if not any(parts.path.startswith(p) for p in profile.endpoints.values()):
+    # A redirect is followed as a `GET` whatever the original method was: `303` says so,
+    # and for `307`/`308` re-sending a body to a destination the add-on never named is a
+    # request nobody approved. Refusing to carry it is the conservative half.
+    if not _is_within_approved_range(parts.path, profile):
         return Refusal(
             RefusalReason.PATH_NOT_ALLOWED,
             "a redirect left the source's approved path range",
@@ -274,6 +578,68 @@ def check_redirect(
     return PreparedRequest(
         url=location, host=parts.hostname, port=port, endpoint_ref="(redirect)"
     )
+
+
+#: Percent-encodings of `.` and `/`. A path is compared as text here and resolved by the
+#: far end after decoding, so a comparison that ignored these would be comparing something
+#: other than what the server will act on — which is exactly how `%2e%2e` walks out of an
+#: approved range while a scan for `..` sees nothing.
+_ENCODED_DOT: Final[tuple[str, ...]] = ("%2e", "%2E")
+_ENCODED_SLASH: Final[tuple[str, ...]] = ("%2f", "%2F")
+
+
+def comparable_segments(path: str) -> tuple[str, ...] | None:
+    """The path's segments, or `None` if what the far end will resolve is not knowable.
+
+    `ADVERSARIAL-REVIEW-2026-08-18.md` F4. The approved range used to be tested with
+    `path.startswith(approved)` on the raw path, and `domain.transport` sends the URL
+    verbatim. Two things got through, and the reviewer carried the first of them end to end
+    over TLS into a body it had written as `{"secret": "THIS-PATH-WAS-NEVER-APPROVED"}`:
+
+    * `/v1/items/../../admin/keys` — the far end removes dot segments as RFC 3986 §5.2.4
+      requires, so the path this function reads is not the path the server acts on.
+    * `/v1/items2/secret` — a string prefix, not a path prefix. `/v1/items2` is beside
+      `/v1/items`, not under it.
+
+    So: **refuse rather than normalize.** Resolving `..` here would mean predicting which
+    of several defensible decodings the far end performs — nginx, Apache, and a bare
+    application server do not agree about `%2f`, and being wrong in the permissive
+    direction is the hole. A `Location` carrying a dot segment is unusual server behaviour;
+    a redirect refused for it costs one collection, and the alternative costs the range.
+    """
+    if not path:
+        return ()
+    lowered = path
+    for encoded in _ENCODED_SLASH:
+        if encoded in lowered:
+            return None
+    for encoded in _ENCODED_DOT:
+        lowered = lowered.replace(encoded, ".")
+    segments = tuple(lowered.split("/"))
+    if any(segment in (".", "..") for segment in segments):
+        return None
+    # A trailing slash makes `/v1/items/` and `/v1/items` the same resource to every server
+    # that matters, and an empty final segment would otherwise make them different ranges.
+    if len(segments) > 1 and segments[-1] == "":
+        segments = segments[:-1]
+    return segments
+
+
+def _is_within_approved_range(path: str, profile: OutboundProfile) -> bool:
+    """Whether `path` is one of the approved paths or under one, compared by segment."""
+    candidate = comparable_segments(path)
+    if candidate is None:
+        return False
+    for approved in profile.approved_paths():
+        granted = comparable_segments(approved)
+        if granted is None:
+            # `resolve` refuses such a source on its first fetch. Skipped rather than
+            # treated as granting everything, so a defect in one endpoint cannot widen
+            # the range the others grant.
+            continue
+        if candidate[: len(granted)] == granted:
+            return True
+    return False
 
 
 def check_resolved_addresses(

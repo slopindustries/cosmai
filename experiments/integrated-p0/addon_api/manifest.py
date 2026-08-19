@@ -38,7 +38,14 @@ from typing import Any, Literal, NamedTuple, Self, get_args
 #: evidence supports it). Recorded here so the exception reads as a decision with a
 #: stated reason rather than as the rule not being followed. The reason expires the
 #: moment a second party writes an add-on.
-CONTRACT_VERSION = "1.0"
+#: `[결정]` 1.1 → 1.2 on 2026-08-19: `CollectContext.accept_status` was added after
+#: `ADVERSARIAL-REVIEW-2026-08-19.md` F2 measured a `401` body stored as Raw data. Additive.
+#:
+#: `[결정]` 1.0 → 1.1 on 2026-08-18 by DP-020: `CollectContext.fetch` gained an optional
+#: `body`. Additive, so every `requires_contract = ">=1.0,<2.0"` add-on still loads and
+#: none had to change — which is the property the additive-versus-breaking rule above
+#: exists to make checkable rather than asserted.
+CONTRACT_VERSION = "1.3"
 
 Kind = Literal["collector", "importer", "normalizer"]
 KINDS: tuple[Kind, ...] = get_args(Kind)
@@ -191,6 +198,10 @@ class Declarations:
 
     hosts: tuple[str, ...] = ()
     endpoints: tuple[str, ...] = ()
+    #: DP-024. The input names an importer asks `open_input` for. The operator's approved
+    #: `input_profile` says which file each one is; this block cannot say, for the same
+    #: reason `endpoints` cannot say which URL.
+    inputs: tuple[str, ...] = ()
     streams: tuple[str, ...] = ()
     needs_credential: bool = False
 
@@ -205,6 +216,7 @@ class Declarations:
         return cls(
             hosts=string_list("hosts"),
             endpoints=string_list("endpoints"),
+            inputs=string_list("inputs"),
             streams=string_list("streams"),
             needs_credential=bool(data.get("needs_credential", False)),
         )
@@ -365,6 +377,14 @@ def _check_kind_consistency(manifest: AddonManifest, where: str) -> None:
             raise ManifestError(
                 f"{where}: only a normalizer declares an output contract version"
             )
+    if manifest.kind != "importer" and manifest.declares.inputs:
+        # DP-024's mirror of the rule below. Only `ImportContext` carries `open_input`,
+        # so an input name declared by anything else is a request nothing can honour —
+        # and a silently ignored declaration is the one an author cannot discover.
+        raise ManifestError(
+            f"{where}: only an importer opens a local input, "
+            "so [declares].inputs must be empty"
+        )
     if manifest.kind == "importer" and (manifest.declares.hosts or manifest.declares.endpoints):
         # `needs_credential` and `streams` stay legal for an importer and that is
         # deliberate: the platform may need a credential to open a protected input,

@@ -678,3 +678,50 @@ def test_a_file_named_as_the_root_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigurationInvalidError, match="existing directory"):
         addon_root({ADDON_DIR_VARIABLE: str(stated)})
+
+
+# --------------------------------------------------------------------------- #
+# DP-024 — only an importer opens a local input
+# --------------------------------------------------------------------------- #
+
+
+IMPORTER_MANIFEST = """
+[addon]
+id = "importer.demo"
+version = "0.1.0"
+kind = "importer"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+
+[config]
+schema_version = "1"
+
+[declares]
+inputs = ["rows"]
+streams = ["rows"]
+"""
+
+
+def test_an_importer_may_declare_the_inputs_it_opens(tmp_path: Path) -> None:
+    install_addon(tmp_path, manifest=IMPORTER_MANIFEST)
+
+    loaded = load_addons(tmp_path)
+
+    assert loaded[0].manifest.declares.inputs == ("rows",)
+
+
+@pytest.mark.parametrize("kind", ["collector", "normalizer"])
+def test_any_other_kind_declaring_an_input_is_refused(tmp_path: Path, kind: str) -> None:
+    """The mirror of the rule that an importer declares no host. A declaration no
+    capability can honour is refused rather than ignored, because an ignored one is
+    undiscoverable — no error, no log, no behaviour change."""
+    manifest = IMPORTER_MANIFEST.replace('kind = "importer"', f'kind = "{kind}"')
+    if kind == "normalizer":
+        manifest = manifest.replace(
+            'requires_contract = ">=1.0,<2.0"',
+            'requires_contract = ">=1.0,<2.0"\noutput_contract_version = "0.1"',
+        ).replace('streams = ["rows"]', "streams = []")
+    install_addon(tmp_path, manifest=manifest)
+
+    with pytest.raises(ManifestError, match="only an importer opens a local input"):
+        load_addons(tmp_path)

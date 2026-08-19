@@ -28,7 +28,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Self
+from typing import Any, Protocol, Self
 
 from addon_api.results import (
     CollectOutcome,
@@ -41,10 +41,11 @@ from addon_api.results import (
 __all__ = [
     "CollectContext",
     "CollectEntry",
+    "Fetch",
     "FetchResponse",
     "ImportContext",
     "ImportEntry",
-    "InputStream",
+    "OpenedInput",
     "Limits",
     "NormalizeContext",
     "NormalizeEntry",
@@ -53,30 +54,37 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Limits:
-    """The bounds on this source, told to the add-on. Not all of them are enforced.
+    """The bounds on this source. An add-on that ignores these is still bounded —
+    the platform enforces every one of them whatever the add-on believes.
 
-    Readable and not settable. An add-on that knows the page limit can stop at it
-    cleanly instead of being cut off mid-request.
+    `[측정]` **That sentence was false twice, and both corrections are kept.** At
+    `27f712b` ``max_pages`` and ``max_records`` were counted by nothing
+    (`ADVERSARIAL-REVIEW-2026-08-18.md` F1). Between DP-020 and 2026-08-19
+    ``max_request_bytes`` counted `len(body)`, which is a byte count only for
+    `bytes` — the independent review of that date measured a one-element
+    `list[bytes]` of 1 MiB passing a 64 KiB grant, because `http.client` streams a
+    sequence of chunks. Both are now counted, and the history stays because this is
+    contract text an add-on author reads to decide what they must defend against.
 
-    **Corrected 2026-08-18.** This docstring said "an add-on that ignores these is
-    still bounded — the platform enforces them whatever the add-on believes", and
-    that was false for two of the six. The adversarial review of `27f712b`
+    Readable and not settable. Knowing the page limit lets an add-on stop at it
+    cleanly, with a cursor it can resume from, instead of being refused at it — but
+    stopping cleanly is the add-on's convenience, not the bound.
+
+    **What is enforced, and where.** ``connect_timeout_s``, ``read_timeout_s`` and
+    ``max_response_bytes`` bound one hop in ``domain.transport``; ``max_redirects``
+    bounds the hops in ``domain.outbound.check_redirect``; ``max_pages`` and
+    ``max_records`` bound the run in the host's capability layer. Running past any of
+    them is an outbound *refusal* — the same class of failure as an unapproved host —
+    and it is not swallowable: catching it and reporting success still fails the job.
+
+    **This paragraph was false once, and the history is kept.** Between `27f712b` and
+    2026-08-18 it promised all six while ``max_pages`` and ``max_records`` were counted
+    by nothing; the adversarial review of that commit
     (`experiments/integrated-p0/ADVERSARIAL-REVIEW-2026-08-18.md`, F1) measured an add-on
     fetching 12 times and emitting 600 items against ``max_pages=2, max_records=3``,
-    and it succeeded.
-
-    As of that review:
-
-    - ``connect_timeout_s``, ``read_timeout_s``, ``max_response_bytes`` and
-      ``max_redirects`` are enforced by the platform. ``read_timeout_s`` bounds each
-      socket read rather than the whole response, which F5 measures.
-    - ``max_pages`` and ``max_records`` are **advisory**. Nothing counts them. An
-      add-on that ignores them is not bounded by them.
-
-    `[결정]` The wording is corrected before the counters are written rather than
-    after, because this is contract text an add-on author reads to decide what they
-    must defend against, and a control promised in the present tense is one nobody
-    writes twice.
+    and it succeeded. `[결정]` The note stays because this is contract text an add-on
+    author reads to decide what they must defend against, and "it says so" was not
+    evidence the last time either.
     """
 
     connect_timeout_s: float
@@ -85,6 +93,11 @@ class Limits:
     max_redirects: int
     max_pages: int
     max_records: int
+    max_request_bytes: int = 64 * 1024
+    #: DP-024. Bounds one input stream an importer opens. Separate from
+    #: ``max_response_bytes`` because a dataset is legitimately larger than an HTTP
+    #: response, and enforced in ``domain.inputs.open_stream`` before the first chunk.
+    max_input_bytes: int = 64 * 1024 * 1024
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -94,6 +107,8 @@ class Limits:
             "max_redirects": self.max_redirects,
             "max_pages": self.max_pages,
             "max_records": self.max_records,
+            "max_request_bytes": self.max_request_bytes,
+            "max_input_bytes": self.max_input_bytes,
         }
 
     @classmethod
@@ -105,6 +120,8 @@ class Limits:
             max_redirects=int(data["max_redirects"]),
             max_pages=int(data["max_pages"]),
             max_records=int(data["max_records"]),
+            max_request_bytes=int(data.get("max_request_bytes", 64 * 1024)),
+            max_input_bytes=int(data.get("max_input_bytes", 64 * 1024 * 1024)),
         )
 
 
@@ -163,8 +180,71 @@ class FetchResponse:
         )
 
 
-#: What ``open_input`` yields: the registered file, in chunks, already class-checked.
-InputStream = Iterator[bytes]
+@dataclass(frozen=True)
+class OpenedInput:
+    """One approved local input, already bounded, already taken into Raw.
+
+    `FetchResponse`'s counterpart, and it exists for the same reason: an add-on that emits
+    a `RawItem` must be able to say **which original it came from**, and `envelope_ref` is
+    that link. DP-024 discovered this while binding `open_input` — the contract's first
+    shape returned a bare `Iterator[bytes]`, which left an importer unable to emit anything
+    at all, because `RawItem.envelope_ref` has no other source.
+
+    `[측정]` **`body` is bytes rather than a stream, and a guard is why.** The second shape
+    of this class carried an `Iterator[bytes]`, and
+    `tests/environment/test_addon_contract_is_serializable.py` refused it: DP-008 H4 keeps
+    every boundary type serializable so that subprocess isolation stays a host change
+    rather than a contract rewrite, and a live iterator cannot cross a process. The input is
+    read whole in any case — `Limits.max_input_bytes` bounds it, and the envelope must
+    exist before `emit_raw` can name it — so the streaming shape bought nothing and cost
+    the property DP-008 was protecting.
+
+    `input_ref` is the name the add-on asked for, never the path it resolved to. The path
+    is the operator's, and an add-on that could read it back would hold a destination it
+    was never given.
+    """
+
+    input_ref: str
+    envelope_ref: str
+    body: bytes
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "input_ref": self.input_ref,
+            "envelope_ref": self.envelope_ref,
+            "body": base64.b64encode(self.body).decode("ascii"),
+        }
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> Self:
+        return cls(
+            input_ref=str(data["input_ref"]),
+            envelope_ref=str(data["envelope_ref"]),
+            body=base64.b64decode(str(data["body"]), validate=True),
+        )
+
+
+
+class Fetch(Protocol):
+    """One request the platform composes, sends, and records.
+
+    A `Protocol` rather than a `Callable` alias because DP-020 gave it an optional third
+    argument and a `Callable[...]` cannot express one. The shape is also the whole of
+    DP-008 D4 restated: the add-on names an **endpoint**, supplies the **question** as
+    parameters or a body, and is handed a response. Nothing here names a host, a path, a
+    method, or a credential — those are the profile's, and an add-on cannot reach them.
+
+    `body` is the add-on's, exactly as `params` always has been: it says *what is being
+    asked for*, not *where the request goes*. It is only accepted for an endpoint the
+    source's profile granted `POST`, and it is bounded by `Limits.max_request_bytes`.
+    """
+
+    def __call__(
+        self,
+        endpoint_ref: str,
+        params: Mapping[str, str] | None = None,
+        body: bytes | None = None,
+    ) -> FetchResponse: ...
 
 
 @dataclass(frozen=True)
@@ -175,7 +255,38 @@ class CollectContext:
     config: Mapping[str, Any]
     cursor: Any | None
     limits: Limits
-    fetch: Callable[[str, Mapping[str, str]], FetchResponse]
+    fetch: Fetch
+    #: Say what a non-success status means for this source, and mean it (contract 1.2).
+    #:
+    #: The platform records every response whose status is not 2xx and **fails the run if
+    #: the add-on returns normally without having decided**. Deciding is either raising —
+    #: which is what a collector does when the status is a failure — or calling this, which
+    #: is what it does when the status is *data*. A `404` is "no results" to one API and
+    #: "wrong endpoint" to another, and only the add-on knows which.
+    #:
+    #: `reason` is required and is written to the log. An operator reading a run that took a
+    #: `404` as data needs to see why someone decided that, not merely that they did.
+    #:
+    #: `[측정]` This exists because `ADVERSARIAL-REVIEW-2026-08-19.md` F2 measured a
+    #: collector emitting from a `401` body: the job reported `SUCCEEDED` and
+    #: `{"errorCode": "SE01"}` landed in `raw_item` as data.
+    #:
+    #: **What this is not.** It is not unswallowable in the sense a refusal is. Swallowing a
+    #: refusal *fails*; calling this on every response *succeeds*, and an add-on that does so
+    #: has restored the behaviour the check was added to remove. The platform cannot tell a
+    #: considered acceptance from a reflexive one, because judging whether a `404` was really
+    #: data means knowing the source — which is the knowledge the add-on boundary exists to
+    #: keep out of the platform.
+    #:
+    #: So what changed is the **default**: silence used to succeed and now fails, and buying
+    #: the old behaviour back costs a call and a written reason per response, both of which
+    #: are in the log and countable. A run that accepted twenty statuses is a different thing
+    #: from one that accepted one, and that is an operator signal rather than a control.
+    #:
+    #: **And it sees nothing of a source that answers `200` with an error body.** The
+    #: platform reads a status, not a meaning. That case is the add-on's alone and is why
+    #: `collector.naver.blog`'s first `[가설]` is about exactly it.
+    accept_status: Callable[[FetchResponse, str], None]
     emit_raw: Callable[[Sequence[RawItem]], None]
     advance_cursor: Callable[[str, Any], None]
     log: Callable[[str, Mapping[str, Any]], None]
@@ -205,7 +316,7 @@ class ImportContext:
     config: Mapping[str, Any]
     cursor: Any | None
     limits: Limits
-    open_input: Callable[[str], InputStream]
+    open_input: Callable[[str], OpenedInput]
     emit_raw: Callable[[Sequence[RawItem]], None]
     advance_cursor: Callable[[str, Any], None]
     log: Callable[[str, Mapping[str, Any]], None]

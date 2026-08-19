@@ -5,9 +5,13 @@ in-repository ``addons/`` tree and can be moved without a code change, which is
 what keeps the rejected candidate 2 — out-of-repository add-ons — reachable later
 as a deployment change rather than a contract rewrite.
 
-It lives here rather than in ``platform_core.config.SETTINGS`` because DP-008 D1
-says ``platform_core`` gains no new dependency and is not modified by this work,
-so the P0-A gate's evidence stands unchanged. One consequence is visible and is
+It lives here rather than in ``platform_core.config.SETTINGS`` because DP-008 D1 says
+``platform_core`` gains no new dependency on the add-on layer. `[측정]` The stronger
+claim this docstring used to make — that ``platform_core`` *is not modified* by this work,
+so the P0-A gate's evidence stands unchanged — is false and was corrected on 2026-08-19:
+``git diff --shortstat f83fe3c -- platform_core`` is **7 files changed, +246 −36**. The
+dependency direction is what DP-008 D1 fixes and that still holds; the P0-A gate's evidence
+covers the revision it named, not this one. One consequence is visible and is
 not hidden: ``platform_core.config.unrecognized_variables`` does not know this
 name, so a process that sets it also reports it as an unknown ``COSMA_``
 variable. That report is non-fatal by SEC-003 case f. It is recorded in the B0.1

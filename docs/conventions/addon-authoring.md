@@ -101,21 +101,113 @@ lease를 잃은 워커는 fence에 거부당하면서 쓰기도 같이 롤백된
 
 `context.fetch("blog", params)`의 `"blog"`는 **애드온 작성자가 고르고 manifest의
 `[declares].endpoints`에 적는 이름**이다. 설정에서 오는 값이 아니고, 경로 조각도 아니다.
-플랫폼이 승인된 outbound profile에서 이 이름을 실제 경로로 옮긴다.
+플랫폼이 승인된 outbound profile에서 이 이름을 실제 **경로와 메서드**로 옮긴다.
+
+### POST 엔드포인트와 `body` — 계약 1.1
+
+`[확인 사실]` `fetch`는 인자를 셋 받는다.
+
+```python
+context.fetch(endpoint_ref, params=None, body=None)
+```
+
+`body`는 [DP-020](../decisions/DP-020-request-method-and-body.md)이 더한 것이고, `params`와
+성격이 같다 — **무엇을 묻는가**이지 **어디로 가는가**가 아니다. 규칙이 셋 있다.
+
+- `[확인 사실]` **메서드는 애드온이 고르지 않는다.** endpoint마다 profile이 `GET` 또는 `POST`로
+  고정한다. `POST`를 승인받지 않은 endpoint에 `body`를 주면 `METHOD_NOT_ALLOWED`로 거부된다.
+- `[확인 사실]` `body`는 `bytes`다. JSON을 보내려면 애드온이 직접 직렬화한다. 애드온은
+  `addon_api` 외에 아무것도 import할 수 없지만 `json`은 표준 라이브러리라 쓸 수 있다.
+- `[확인 사실]` **크기 한도가 있다.** `Limits.max_request_bytes`(기본 64 KiB)를 넘으면
+  `REQUEST_TOO_LARGE`로 거부된다. 이 한도는 요청을 조립하기 **전에** 적용되므로 소켓이 열리지
+  않는다.
+
+`[추론]` manifest에는 endpoint 이름만 적는다. 그 이름이 `GET`인지 `POST`인지는 운영자가
+승인한 profile이 정하므로, 애드온은 자기가 `POST`를 쓸 것을 **선언할 수는 있어도 허가할 수는
+없다**. 이것이 `[declares]`가 요구이지 허가가 아니라는 규칙의 한 사례다.
+
+## importer는 이름으로 파일을 연다 — 계약 1.3
+
+`[확인 사실]` [DP-024](../decisions/DP-024-local-input-registry.md)이 importer를 열었다.
+수집기와 같은 모양이고 네트워크만 빠져 있다.
+
+```python
+opened = context.open_input("rows")     # "rows"는 manifest의 [declares].inputs에 적은 이름
+for line in opened.body.splitlines():   # 파일 전체가 bytes로 온다
+    ...
+context.emit_raw([RawItem(..., envelope_ref=opened.envelope_ref)])
+```
+
+규칙:
+
+- `[확인 사실]` **경로는 절대 애드온의 것이 아니다.** manifest에는 이름만 적고, 그 이름이
+  어느 파일인지는 운영자가 승인한 `source.input_profile`이 정한다. 설정 필드에 경로를 두면
+  **애드온이 자기 목적지를 짓는 것**이고, 그것이 임의 URL 문제와 같은 것이다.
+- `[확인 사실]` **root 밖으로 나갈 수 없다.** `..`, 절대 경로, root 밖을 가리키는 심볼릭 링크는
+  전부 거부된다. 심볼릭 링크까지 해석한 **뒤에** 포함 여부를 검사하므로 문자열로는 통과하는
+  경로도 잡힌다.
+- `[확인 사실]` **`Limits.max_input_bytes`(기본 64 MiB)로 묶인다.** 첫 청크를 읽기 전에
+  검사하므로 넘는 파일은 메모리에 올라오지 않는다.
+- `[확인 사실]` **`opened.body`는 bytes이지 스트림이 아니다.** 계약의 모든 경계 타입은
+  직렬화 가능해야 하고(DP-008 H4), 살아 있는 iterator는 프로세스를 건널 수 없다. 이 절의
+  첫 설계가 그래서 거부당했다 — DP-024 D7.
+- `[확인 사실]` **importer는 `fetch`를 받지 않는다.** host나 endpoint를 선언하면 로드 시점에
+  거부된다. 반대로 `needs_credential`은 합법이다 — 보호된 입력을 여는 데 필요할 수 있다.
+
+⚠️ **거부는 삼킬 수 없다.** `open_input`이 거부되면 예외가 나가고, 애드온이 그것을 잡고
+정상 반환해도 그 실행은 실패한다. 수집기의 `fetch`와 같은 규칙이다.
+
+## 상태 코드를 판정하지 않고 끝내면 실패한다 — 계약 1.2
+
+`[확인 사실]` 성공이 아닌 상태 코드를 받고 **아무 판정도 하지 않은 채 애드온이 정상 반환하면
+그 실행은 실패 처리된다.** 판정은 둘 중 하나다.
+
+- **예외를 던진다** — 그 상태가 실패라는 판정.
+- **`context.accept_status(response, reason)`을 부른다** — 그 상태가 *데이터*라는 판정.
+
+`[추론]` 어떤 API에게 `404`는 "결과 없음"이고 다른 API에게는 "엔드포인트가 틀렸다"이다. 어느
+쪽인지는 애드온만 안다. `reason`은 필수이고 로그에 남는다 — 운영자는 누군가 `404`를 데이터로
+받았다는 사실만이 아니라 **왜 그렇게 판단했는지**를 봐야 한다.
+
+`[측정]` 이 장치가 생긴 이유는
+[ADVERSARIAL-REVIEW-2026-08-19.md](../../experiments/integrated-p0/ADVERSARIAL-REVIEW-2026-08-19.md)
+F2가 실측한 사건이다. 어떤 수집기가 `401` 응답의 본문에서 항목을 뽑아냈고, 잡은 `SUCCEEDED`로
+보고되었으며 `{"errorCode": "SE01"}`이 `raw_item`에 데이터로 저장되었다.
+
+⚠️ **이것은 거부를 삼키는 것과 다르다.** 거부를 삼키면 *실패한다*. 반면 모든 응답에
+`accept_status`를 부르면 *성공한다* — 그렇게 하는 애드온은 이 검사가 없애려던 행동을 그대로
+되살린 것이다. 플랫폼은 숙고한 수용과 반사적인 수용을 구별할 수 없다. 바뀐 것은 **기본값**이다:
+침묵이 성공이었는데 이제 실패다. 옛 행동을 되사는 값은 응답마다 호출 하나와 적힌 이유 하나이고,
+둘 다 로그에 남아 셀 수 있다.
+
+⚠️ **`200`으로 오류를 알리는 API는 이 장치가 보지 못한다.** 플랫폼은 상태를 읽지 의미를 읽지
+않는다. 그 경우는 전적으로 애드온의 몫이고, 본문을 보고 판단해서 예외를 던져야 한다.
 
 `[확인 사실]` 생성 템플릿은 `base_path`라는 설정 필드를 `fetch`에 그대로 넘기는 예를 보여주는데,
 **엔드포인트가 하나뿐인 API에서는 이것이 오히려 오해를 부른다** — 운영자가 설정할 만한 "경로"가
 없기 때문이다. 템플릿의 그 부분은 여러 엔드포인트를 가진 API를 가정한 예시이지 규칙이 아니다.
 
-## credential이 두 조각이면 — 아직 답이 없다
+## credential은 조각들의 집합이고, 애드온은 그 중 무엇도 보지 못한다
 
-`[확인 사실]` `Declarations.needs_credential`은 boolean 하나다. 헤더 두 개를 요구하는 소스
-(예: `X-NCP-APIGW-API-KEY-ID` + `X-NCP-APIGW-API-KEY`)를 어떻게 선언하는지, 그리고 선언한
-secret 필드가 어느 헤더를 채우는지 계약이 말하지 않는다.
+`[확인 사실]` [DP-018](../decisions/DP-018-credential-parts-and-attachment.md)이
+[OQ-009](../open-questions/OQ-009-credential-shape.md)를 P0-B 범위에서 해결했다. credential은
+**이름 붙은 조각들의 집합**이고, 각 조각은 secret store의 키 이름 하나이며 보호 헤더 하나를
+채운다. 헤더 두 개를 요구하는 소스(예: `X-NCP-APIGW-API-KEY-ID` + `X-NCP-APIGW-API-KEY`)는
+조각 두 개로 표현된다.
 
-`[결정]` 이것은 [OQ-009](../open-questions/OQ-009-credential-shape.md)로 열려 있다. 그때까지
-`secret = true` 필드를 필요한 만큼 선언하고 `needs_credential = true`를 적되, **그것이 어느
-헤더로 가는지는 정해진 바 없다는 것을 알고 있어라.** 임시 조치이지 수락된 설계가 아니다.
+`[확인 사실]` 이 매핑은 **운영자가 승인한 outbound profile 안에** 있다. manifest가 아니다.
+애드온이 적는 것은 `needs_credential = true` 하나뿐이고, 그것은 "나에게 credential을 달라"가
+아니라 **"이 source의 요청에는 credential이 붙어야 한다"고 플랫폼에게 알리는 것**이다.
+
+`[확인 사실]` 애드온은 값을 보지 못한다. 키 이름도, 헤더 이름도, 해결된 값도 받지 않는다.
+플랫폼이 워커 경계에서 secret store를 읽어 헤더를 채우고, 애드온에게는 응답만 건넨다.
+
+⚠️ 애드온 코드에 헤더 이름이나 키 이름을 적으면 안 된다. `tests/test_addon_credential_hygiene.py`가
+설치된 모든 애드온의 실행 코드를 훑어 거부한다. **docstring에 벤더 문서 URL을 인용하는 것은
+괜찮다** — 검사는 코드가 무엇을 이름 부르는지를 보지, 산문이 무엇을 설명하는지를 보지 않는다.
+
+`[확인 사실]` 남은 미해결은 OQ-009 H1의 두 경우다: credential이 **쿼리 파라미터**로 가는 소스와
+**서명된 요청**을 요구하는 소스. 헤더로 가는 경우는 답이 나왔고, 그 둘은 아니다.
 
 ## `[declares]`는 요구이지 허가가 아니다
 

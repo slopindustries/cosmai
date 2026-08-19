@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -57,6 +57,7 @@ from addon_api import (
     NormalizeContext,
     NormalizedResult,
     NormalizeOutcome,
+    OpenedInput,
     RawItem,
     SnapshotItem,
     validate_config,
@@ -189,7 +190,20 @@ class _Recorder:
         self._served: dict[str, int] = {}
         self._status = status
 
-    def fetch(self, endpoint_ref: str, params: Mapping[str, str]) -> FetchResponse:
+    def fetch(
+        self,
+        endpoint_ref: str,
+        params: Mapping[str, str] | None = None,
+        body: bytes | None = None,
+    ) -> FetchResponse:
+        """The contract's `Fetch`, offline.
+
+        `body` is accepted and **recorded rather than matched** (DP-020 D2). The harness
+        serves a fixture per call, so an author writing a DataLab collector can see the
+        body their add-on composed in the interaction log and check it against the vendor's
+        documented request shape — which is the whole of what can be checked without a
+        network. What the harness cannot tell them is whether the real endpoint accepts it.
+        """
         available = self._fixtures.get(endpoint_ref)
         served = self._served.get(endpoint_ref, 0)
         if not available or served >= len(available):
@@ -201,16 +215,25 @@ class _Recorder:
             )
         path = available[served]
         self._served[endpoint_ref] = served + 1
-        body = path.read_bytes()
+        served_bytes = path.read_bytes()
         self._result.interactions.append(
-            Interaction("fetch", {"endpoint_ref": endpoint_ref, "params": dict(params),
-                                  "fixture": path.name, "bytes": len(body)})
+            Interaction(
+                "fetch",
+                {
+                    "endpoint_ref": endpoint_ref,
+                    "params": dict(params or {}),
+                    "request_bytes": None if body is None else len(body),
+                    "request_body": None if body is None else body.decode("utf-8", "replace"),
+                    "fixture": path.name,
+                    "bytes": len(served_bytes),
+                },
+            )
         )
         return FetchResponse(
             endpoint_ref=endpoint_ref,
             status=self._status,
             headers={"content-type": _content_type_of(path)},
-            body=body,
+            body=served_bytes,
             # A fixed, obviously-fake reference. The platform assigns a real one when
             # it records the envelope; a plausible-looking id here would invite an
             # add-on to store or parse it.
@@ -218,7 +241,7 @@ class _Recorder:
             retrieved_at="1970-01-01T00:00:00Z",
         )
 
-    def open_input(self, input_ref: str) -> Iterator[bytes]:
+    def open_input(self, input_ref: str) -> OpenedInput:
         available = self._fixtures.get(input_ref)
         if not available:
             known = ", ".join(sorted(self._fixtures)) or "none"
@@ -230,7 +253,33 @@ class _Recorder:
         self._result.interactions.append(
             Interaction("open_input", {"input_ref": input_ref, "fixture": path.name})
         )
-        return iter([path.read_bytes()])
+        # A synthetic envelope_ref. The harness persists nothing, so this is a token an
+        # add-on can carry into `emit_raw` and nothing more — see the harness's own
+        # "what this cannot express" list.
+        return OpenedInput(
+            input_ref=input_ref,
+            envelope_ref=f"harness-{input_ref}",
+            body=path.read_bytes(),
+        )
+
+    def accept_status(self, response: FetchResponse, reason: str) -> None:
+        """Record that the add-on decided a non-success status is data (contract 1.2).
+
+        Recorded rather than checked. The host fails a run that returns normally without
+        deciding; here the point is that an author can *see* the decision in the interaction
+        log and check that the reason they wrote is the reason they meant. What the harness
+        cannot tell them is whether the real source agrees.
+        """
+        self._result.interactions.append(
+            Interaction(
+                "accept_status",
+                {
+                    "endpoint_ref": response.endpoint_ref,
+                    "status": response.status,
+                    "reason": reason,
+                },
+            )
+        )
 
     def emit_raw(self, items: Sequence[RawItem]) -> None:
         self._result.raw_items.extend(items)
@@ -356,6 +405,7 @@ def _context_for(
             cursor=cursor,
             limits=default_limits(),
             fetch=recorder.fetch,
+            accept_status=recorder.accept_status,
             emit_raw=recorder.emit_raw,
             advance_cursor=recorder.advance_cursor,
             log=recorder.log,

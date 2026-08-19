@@ -150,7 +150,21 @@ def redact_text(text: str) -> str:
 
 
 def _redact(value: object, visiting: frozenset[int]) -> Any:
-    if isinstance(value, str | bytes | bytearray):
+    if isinstance(value, str):
+        # `[측정]` A string **value** used to pass through untouched, so a sensitive pair
+        # inside one survived the whole walk. Two independent reviews found it on the same
+        # day, one layer apart: the mutation review measured the API's `redact(fields)`
+        # calls as a no-op on every row they will ever see (B4), and the security review
+        # named it value-level redaction (F3).
+        #
+        # Applying `redact_text` here is the module's own stated principle — mask more than
+        # the contract requires and never less — extended to the one place it was not
+        # applied. SEC-004's key-name limit is unchanged: a *bare* value with no key
+        # introducing it still has nothing to match on.
+        return redact_text(value)
+    if isinstance(value, bytes | bytearray):
+        # Not text, and not ours to rewrite. Raw payloads pass through this walk, and a
+        # mutated payload is a lost original — worse than an unmasked one it never held.
         return value
     if isinstance(value, Mapping):
         identity = id(value)

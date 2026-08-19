@@ -19,10 +19,24 @@ show it.
 unfollowed, because revalidating a redirect is `outbound.check_redirect`'s and a transport
 that quietly followed one would be a second, looser policy nobody wrote down.
 
-**It stops.** The read deadline is a socket timeout and the size limit is enforced while
-reading rather than after, so `SEC-004`'s "oversized/slow response는 bounded failure로
-종료되고 worker를 무기한 점유하지 않는다" holds against a server that never stops sending
-as well as one that never starts.
+**It stops.** One monotonic deadline bounds every connection attempt, the request write, and
+every read; the size limit is enforced while reading rather than after. So `SEC-004`'s
+"oversized/slow response는 bounded failure로 종료되고 worker를 무기한 점유하지 않는다" holds
+against a server that never stops **sending**, one that never **starts**, and one that will
+not **receive**.
+
+`[측정]` All three halves were false at some point and the history is worth reading before
+changing anything here. `ADVERSARIAL-REVIEW-2026-08-18.md` F5: the bound was a socket timeout,
+which bounds each `recv`, while `_read_bounded` called `read(n)`, which blocks until *n* bytes
+arrive — occupancy **linear in `max_response_bytes`**, about 38 days against `DEFAULT_LIMITS`.
+`ADVERSARIAL-REVIEW-2026-08-19.md` F1: the deadline was armed *after*
+`connection.request(...)`, so the write ran under the connect-time timeout alone — a `send()`
+occupying 18.83s against a 0.5s budget. A bound that scales with the thing it bounds is not a
+bound, and a bound that covers three of a request's four phases is not one either.
+
+`[측정]` Two more multipliers sat on top of F5's and both are gone with it: `_connect`
+applied `connect_timeout_s` per address, and the caller's redirect loop gave each hop its own
+full read.
 
 The TLS context is a constructor argument whose default is `ssl.create_default_context()`.
 That is how a test reaches a stub with its own certificate authority without any source
@@ -36,8 +50,9 @@ from __future__ import annotations
 import http.client
 import socket
 import ssl
+import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final, Protocol
 
 from domain.outbound import (
@@ -87,6 +102,18 @@ class TransportLimits:
     connect_timeout_s: float = float(DEFAULT_LIMITS["connect_timeout_s"])
     read_timeout_s: float = float(DEFAULT_LIMITS["read_timeout_s"])
     max_response_bytes: int = int(DEFAULT_LIMITS["max_response_bytes"])
+    max_request_seconds: float = float(DEFAULT_LIMITS["max_request_seconds"])
+
+    #: The instant, on `time.monotonic`'s clock, by which this request must be over.
+    #:
+    #: An absolute instant rather than a duration, because the caller may be spending one
+    #: budget across several hops: `addon_host.capabilities` pins this before the first
+    #: request and hands the same value to every redirect, so the chain cannot cost
+    #: `max_redirects + 1` times the bound. `None` means "start the budget now", which is
+    #: what a single-hop caller wants and what `starting_now` supplies.
+    #:
+    #: Monotonic, so a system clock adjustment mid-request cannot extend or collapse it.
+    deadline: float | None = None
 
     @classmethod
     def from_profile(cls, profile: OutboundProfile) -> TransportLimits:
@@ -95,7 +122,24 @@ class TransportLimits:
             connect_timeout_s=float(limits["connect_timeout_s"]),
             read_timeout_s=float(limits["read_timeout_s"]),
             max_response_bytes=int(limits["max_response_bytes"]),
+            max_request_seconds=float(limits["max_request_seconds"]),
         )
+
+    def starting_now(self) -> TransportLimits:
+        """The same bounds with the deadline pinned, unless a caller already pinned one.
+
+        Idempotent on purpose: a caller spending one budget over several hops calls this
+        once and passes the result down, and a hop calling it again must not be handed a
+        fresh budget — which is exactly the multiplier F5 measured.
+        """
+        if self.deadline is not None:
+            return self
+        return replace(self, deadline=time.monotonic() + self.max_request_seconds)
+
+    def remaining(self) -> float:
+        """Seconds left, or a negative number once the budget is spent."""
+        assert self.deadline is not None, "the budget was never started"
+        return self.deadline - time.monotonic()
 
 
 @dataclass(frozen=True)
@@ -166,7 +210,7 @@ class SocketTransport:
         headers: Mapping[str, str] | None = None,
         limits: TransportLimits | None = None,
     ) -> TransportResponse | Refusal:
-        bounds = limits or TransportLimits.from_profile(profile)
+        bounds = (limits or TransportLimits.from_profile(profile)).starting_now()
         addresses = resolve_addresses(request.host, request.port)
         if not addresses:
             raise TransportUnavailable(
@@ -190,9 +234,30 @@ class SocketTransport:
             # an address: without this the request would announce the IP it dialled and
             # a name-based virtual host would answer the wrong site.
             sent = {"Host": request.host, "Accept-Encoding": "identity", **dict(headers)}
-            connection.request("GET", _path_of(request.url), headers=sent)
+            if request.body is not None:
+                # DP-020 D5. The platform names the media type; the add-on supplies bytes
+                # and never a `Content-Type`, so one source cannot claim an encoding the
+                # guard has no rule for. `Content-Length` is `http.client`'s.
+                sent["Content-Type"] = "application/json"
+            # Armed **before** the write, not after. `ADVERSARIAL-REVIEW-2026-08-19.md` F1:
+            # this call used to follow `connection.request(...)`, so sending the body ran
+            # under the connect-time socket timeout and not the deadline — a `send()`
+            # occupying 18.83s against a 0.5s budget. A server that accepts a connection and
+            # then stops reading blocks the write in the kernel's send buffer, which is the
+            # write-side twin of the read-side stall F5 removed.
+            _arm(connection.sock, bounds, request)
+            # The method is `request.method` and not a literal, which is the whole of
+            # DP-020 D1 at this layer: it came from the operator-approved profile, through
+            # `outbound.resolve`, and no add-on input reaches it.
+            connection.request(request.method, _path_of(request.url), body=request.body,
+                               headers=sent)
+            # Re-armed after the write, because the read is a fresh wait against the same
+            # deadline and the write may have spent most of it.
+            _arm(connection.sock, bounds, request)
             response = connection.getresponse()
-            body, overflowed = _read_bounded(response, bounds.max_response_bytes)
+            body, overflowed = _read_bounded(
+                response, bounds.max_response_bytes, connection.sock, bounds, request
+            )
             if overflowed:
                 return Refusal(
                     RefusalReason.RESPONSE_TOO_LARGE,
@@ -226,10 +291,20 @@ class SocketTransport:
         """
         last: Exception | None = None
         for address in addresses:
+            # Per address, so a name resolving to several unreachable addresses used to
+            # cost `connect_timeout_s` each. The budget is the whole request's, so the
+            # second address gets whatever the first one left. F5 names this multiplier.
+            remaining = bounds.remaining()
+            if remaining <= 0:
+                raise TransportUnavailable(
+                    f"the request to {request.endpoint_ref!r} ran out of time before a "
+                    "connection was open",
+                    {"endpoint_ref": request.endpoint_ref, "budget_s": bounds.max_request_seconds},
+                ) from last
             raw: socket.socket | None = None
             try:
                 raw = socket.create_connection(
-                    (address, request.port), timeout=bounds.connect_timeout_s
+                    (address, request.port), timeout=min(bounds.connect_timeout_s, remaining)
                 )
                 secured = self._context.wrap_socket(raw, server_hostname=request.host)
                 secured.settimeout(bounds.read_timeout_s)
@@ -250,17 +325,53 @@ class SocketTransport:
         ) from last
 
 
-def _read_bounded(source: http.client.HTTPResponse, limit: int) -> tuple[bytes, bool]:
+def _arm(
+    sock: socket.socket | None, bounds: TransportLimits, request: PreparedRequest
+) -> None:
+    """Point the socket at whichever comes first, the read timeout or the deadline.
+
+    Called before every blocking step rather than once at connect time. A socket timeout
+    set once bounds each `recv`, which is precisely the bound
+    `ADVERSARIAL-REVIEW-2026-08-18.md` F5 showed a drip-feeding server walks straight
+    through; re-arming means no single wait can outlast the request's whole budget.
+    """
+    remaining = bounds.remaining()
+    if remaining <= 0:
+        raise TransportUnavailable(
+            f"the request to {request.endpoint_ref!r} exceeded its {bounds.max_request_seconds}s "
+            "budget",
+            {"endpoint_ref": request.endpoint_ref, "budget_s": bounds.max_request_seconds},
+        )
+    if sock is not None:
+        sock.settimeout(min(bounds.read_timeout_s, remaining))
+
+
+def _read_bounded(
+    source: http.client.HTTPResponse,
+    limit: int,
+    sock: socket.socket | None,
+    bounds: TransportLimits,
+    request: PreparedRequest,
+) -> tuple[bytes, bool]:
     """Read at most `limit` bytes, and say whether there were more.
 
     One byte past the limit is requested on purpose. Reading exactly `limit` cannot tell a
     body that ended at the limit from one that was cut at it, and "we do not know whether
     this is complete" is not a state Raw may hold — losslessness is the claim Raw makes.
+
+    **`read1`, not `read`.** `ADVERSARIAL-REVIEW-2026-08-18.md` F5: `read(n)` blocks until
+    *n* bytes have arrived, so a server sending one byte at a time keeps a single call
+    inside this loop for as long as it likes while every `recv` completes promptly and no
+    socket timeout ever fires. `read1` returns whatever has arrived, which puts the loop
+    back in charge of when to stop — and `_arm` on each pass is what makes stopping happen.
+    The cost is one iteration per arriving chunk instead of per 64 KiB; a drip-feeding
+    server is the only case where that is many, and it is the case being refused.
     """
     chunks: list[bytes] = []
     remaining = limit + 1
     while remaining > 0:
-        chunk = source.read(min(_CHUNK, remaining))
+        _arm(sock, bounds, request)
+        chunk = source.read1(min(_CHUNK, remaining))
         if not chunk:
             break
         chunks.append(chunk)
