@@ -201,6 +201,7 @@ The first two hypotheses can begin in P0-A. Acquisition and normalization hypoth
 | [OQ-008](open-questions/OQ-008-operator-reexecution-authority.md) | `OPEN` | P0-B | May an operator re-execute work that already succeeded, and what distinguishes that from retrying a failure? | Operator action set in `PoC Contract 0.1` |
 | [OQ-009](open-questions/OQ-009-credential-shape.md) | `OPEN` | P0-B | How is a source's credential declared, and where does each part of it go? | Multi-part `credential_ref`, outbound header attachment, dashboard credential form |
 | [OQ-010](open-questions/OQ-010-cursor-stream-read-back.md) | `OPEN` | P0-B | Which cursor does an add-on read back when it writes several streams? | Multi-stream collectors and importers, conformance resume scenario |
+| [OQ-011](open-questions/OQ-011-agent-memory-and-area-boundary.md) | `OPEN` | P0-B | Do the two rules the operating-model adoption wrote without asking — the private-memory rule and the development-area exception — bind? | Nothing under way; both are marked proposed |
 
 Stage expresses evidence routing, not long-term business importance.
 

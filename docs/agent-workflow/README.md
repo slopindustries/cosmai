@@ -51,10 +51,12 @@ checked**, so they are written separately — the same split, for the same reaso
 One item. An earlier revision of this section listed two and was wrong about the second;
 [`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F1 is the correction and the demonstration.
 
-- `[확인 사실]` `tests/environment/test_agent_packet_record.py` fails the suite when a
-  packet claims `ACCEPTED` without a linked attack report and a `PASS` result. That is the
+- `[확인 사실]` `tests/environment/test_agent_packet_record.py` fails the suite when a packet
+  claims `ACCEPTED` without a `PASS` result and a markdown link to a file that exists inside
+  this repository, or when it carries a duplicate `Status`, `Attack report`, or `Result` line.
+  [`TASK-PACKET-TEMPLATE.md`](TASK-PACKET-TEMPLATE.md) states the rule precisely. That is the
   checkable half of the orchestrator's prohibition on accepting work because the worker
-  reported success.
+  reported success — and no more than that half: the guard never opens the report it resolves.
 
 ### Convention only
 
@@ -98,12 +100,26 @@ It is **not** required for:
 
 - the local implementation choices [`project-state.md`](../project-state.md) §7 lists;
 - a documentation correction that changes no accepted claim;
-- work already governed by a convention document carrying its own scope, evidence, and
-  review checklist. The collector integration path is governed by
-  [collector integration handoff](../conventions/collector-integration-handoff.md) §6–§8,
-  which **is** that path's packet. A second packet over the same work duplicates
-  authority, which the [project memory convention](../conventions/project-memory.md)
-  forbids.
+- work already governed by a convention document that carries its own scope, required
+  evidence, and review checklist. The collector integration path is governed by
+  [collector integration handoff](../conventions/collector-integration-handoff.md) — scope in
+  §1 and §"Ownership boundary", evidence in §6, unresolved choices in §7, the checklist in §8 —
+  and that document **is** that path's packet. A second packet over the same work duplicates
+  authority, which the [project memory convention](../conventions/project-memory.md) forbids.
+
+`[결정]` **Two rules bound that exemption, because as first written it was unsound**
+([`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F5):
+
+- **The exemption is from the packet, never from the attacker.** Nothing in the handoff guide
+  requires independent falsification, so exempting a path from the packet must not exempt it
+  from the attack report. `[추론]` The collector path is the *last* place to drop that: the
+  three blocking findings this whole model is argued from came from an independent review of
+  `27f712b`, which is collector work. An exemption that removed the attacker there would remove
+  the control from the case that produced it.
+- **"Required" wins when both lists fire.** Collector work that also changes a contract, or
+  that adds the page-limit enforcement the 2026-08-18 review found missing, is required work.
+  `[결정]` The overlap resolves upward, not by discretion — a threshold whose ambiguous cases
+  are settled case by case is the "rule applied when convenient" this section warns about.
 
 `[추론]` The threshold is load-bearing, not a convenience. Applied to everything, the flow
 costs three documents for a typo and gets skipped — and a rule applied when convenient has

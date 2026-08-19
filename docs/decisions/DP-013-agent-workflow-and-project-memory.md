@@ -6,7 +6,7 @@
 - Owner confirmation: `CONFIRMED (project owner, 2026-08-19 — scope: the instruction to merge b702c79 onto 6d1e965 and adopt it as far as it helps this project. The adapted text below was NOT reviewed clause by clause; §Decision's seven rules, the consequential boundary, and the threshold are in force on that instruction and nothing narrower.)`
 - Origin: `b702c79` on `feat/agent-operating-model`, written 2026-08-18, held in isolation by [branching](../branching.md) after being reverted from `main` by agreement
 - Renumbered: proposed as `DP-006`, which [DP-006](DP-006-p0a-platform-foundation.md) already held
-- Related Open Questions: none. This decision governs how consequential questions are asked and recorded, not the answer to any one of them.
+- Related Open Questions: [OQ-011](../open-questions/OQ-011-agent-memory-and-area-boundary.md) — two rules this packet's own adoption wrote without asking. Otherwise none: this decision governs how consequential questions are asked and recorded, not the answer to any one of them.
 - Affected contracts: agent task packets and review reports
 - Affected acceptance tests: `tests/environment/test_agent_packet_record.py`
 
@@ -218,6 +218,12 @@ been produced in the first place.
 - Agent instructions: add owner-question, memory, and role-boundary rules. **Done**, `AGENTS.md`.
 - Templates: add task packet and attack report templates. **Done**.
 - Repository guide: link the new convention and operating model. **Done**, `README.md`.
-- Branching: retire the isolated-branch note now that the branch is merged. **Done**.
+- Branching: retire the isolated-branch note now that the branch is merged, and record the
+  area exception the rule does not cover. **Done**, marked proposed pending OQ-011 R2.
+- Project memory convention: routing table, the control-disclosure rule, and the private-memory
+  rule. **Done**, the last marked proposed pending OQ-011 R1.
+- Execution plan: correct the branch-disposition rows this reapplication made stale. **Done**.
+- Open Question: record the two rules written without an owner question.
+  **Done**, [OQ-011](../open-questions/OQ-011-agent-memory-and-area-boundary.md).
 - Implementation handoff: use the workflow for new agent-assigned work above the threshold
   after this decision.

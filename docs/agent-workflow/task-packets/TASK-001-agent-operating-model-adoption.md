@@ -71,6 +71,10 @@ adapt it so that every claim it makes about this project is true of this project
 - `docs/decisions/DP-TEMPLATE.md`, `docs/open-questions/OQ-TEMPLATE.md`, `docs/open-questions/README.md`
 - `docs/project-state.md`, `docs/branching.md`
 - `tests/environment/test_agent_packet_record.py`
+- added 2026-08-19 during rework, on REVIEW-TASK-001 F7 and F4: `docs/p0-execution-plan.md`,
+  `docs/open-questions/OQ-011-agent-memory-and-area-boundary.md`. `[확인 사실]` The first was
+  missing because this list was fitted to the diff rather than written before it — the concrete
+  cost of the planner separation this packet records as not having happened.
 
 ### Forbidden files and material
 
@@ -87,14 +91,37 @@ adapt it so that every claim it makes about this project is true of this project
    phase P0-A, or claims the P0-A Completion Gate is still ahead. The name survives on
    purpose in superseded `DP-002`, in `docs/history/`, and in `DP-013`'s account of what the
    proposal said — `DP-007` left history untouched deliberately.
-4. Every relative link in every changed document resolves, and every repository path a
-   changed document names in backticks exists.
+4. Every relative link in every changed document resolves. Every backticked repository path
+   that a changed document **asserts exists** resolves — a path named inside a prohibition
+   (`apps/`) or introduced by "such as" is excluded, and any exclusion must be nameable.
 5. Each role states which part of its prohibition the harness enforces and which part is
-   convention, and no convention is described as a control.
-6. A threshold states which work requires the full flow and which does not.
-7. `tests/environment/test_agent_packet_record.py` rejects an `ACCEPTED` packet with no
-   resolvable attack report, and its positive controls fail when the validator is weakened.
-8. `.venv/bin/python -m pytest tests/environment/ -q` passes.
+   convention, and no convention is described as a control. A denial of some tools is not a
+   denial of the capability those tools provide, and must not be written as one.
+6. The threshold does all four of: names which work requires the full flow; names a precedence
+   rule for work that fires both lists; states whether an exemption from the packet also exempts
+   the independent attack report; and cites its exemption document by the sections that actually
+   carry scope, evidence, and a checklist.
+7. `tests/environment/test_agent_packet_record.py` rejects, with a named case each, an
+   `ACCEPTED` packet whose attack report is: absent, prose without a link, a URL, a relative
+   path that does not exist, an absolute path outside the repository, a `..` escape out of the
+   repository, and a directory. It rejects a duplicate `Status`, `Attack report`, or `Result`
+   line at any position, which is what closes the three override bypasses. It reports a
+   non-UTF-8 file by name and keeps scanning rather than aborting. Every one of those rejection
+   cases goes red when `packet_problems` is weakened to `return []`.
+8. `.venv/bin/python -m pytest tests/environment/ -q` passes, and `ruff` and `mypy` are clean on
+   the guard.
+9. Every finding in [`REVIEW-TASK-001`](../reviews/REVIEW-TASK-001.md) is either repaired or
+   recorded with the reason it was not, and no finding is closed by rewording the claim it
+   contradicts unless the reworded claim is true.
+
+`[확인 사실]` Criteria 4, 6, and 7 were rewritten on 2026-08-19. As first written, criterion 6
+was satisfied by the existence of any threshold, criterion 4 failed on a prohibition and two
+illustrative filenames, and criterion 7 called the guard's rejection cases "positive controls".
+[`REVIEW-TASK-001`](../reviews/REVIEW-TASK-001.md) F10 and F11 are the findings.
+`[추론]` They are the F1 defect of `ADVERSARIAL-REVIEW-2026-08-18.md` one level up — a criterion
+satisfied by the shape of the thing rather than by the property — and they are what happens when
+the session that writes the criteria is the session that satisfies them, which is the condition
+this packet already admits.
 
 ## Verification
 

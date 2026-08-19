@@ -36,7 +36,12 @@ disagrees is the one somebody will follow.
 
 ## What does not belong in an agent's private memory
 
-`[결정]` A fact about **this project** belongs in this repository. An assistant's or a
+`[가설]` **Proposed, not accepted.** This rule was written without being put to the owner, and
+[OQ-011](../open-questions/OQ-011-agent-memory-and-area-boundary.md) R1 asks whether it binds and
+in what form. The recommendation there is to keep the repository half and drop the claim on a
+private store. Until that is answered, treat the paragraph below as a proposal.
+
+A fact about **this project** belongs in this repository. An assistant's or a
 person's private memory store may hold how the owner prefers to be addressed, which
 language a reply is written in, or how a command behaves on one machine. It must not be the
 only place holding a project constraint, a concurrency limit, a verification requirement,
@@ -77,7 +82,8 @@ not completion evidence.
 
 `[확인 사실]` One narrow part of this is executable rather than trusted:
 `tests/environment/test_agent_packet_record.py` fails the suite when a task packet claims
-`ACCEPTED` without a resolvable attack-report link and a `PASS` result. Nothing checks that
-a packet exists for a given piece of work, or that its report is any good.
+`ACCEPTED` without a link to a report file that exists inside this repository and a `PASS`
+result. Nothing checks that a packet exists for a given piece of work, or that its report is
+any good.
 `docs/agent-workflow/README.md` lists what is enforced and what is convention, separately
 and on purpose.

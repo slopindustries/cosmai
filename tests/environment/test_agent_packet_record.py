@@ -12,14 +12,24 @@ for exactly this purpose. Every packet, regardless of status, must at least name
 a ``Status:`` the template recognises; an unrecognised status is a packet the
 orchestrator flow has no rule for.
 
-**Two claims this docstring made are false, and are corrected here rather than
-repaired**; ``docs/agent-workflow/reviews/REVIEW-TASK-001.md`` F2, F3, and F12
-hold the measurements. First, ``## Review`` membership is not checked at all:
-every field lookup takes the first matching line anywhere in the file, so a
-``- Status:`` line above that heading silently overrides the real one, and so
-does an earlier ``- Result:``. Second, "a repository path" below means only
-"not a URL, not ``mailto:``, not a bare anchor" — an absolute path such as
-``/etc/hosts``, a ``..`` escape out of the tree, and a directory all pass.
+``docs/agent-workflow/reviews/REVIEW-TASK-001.md`` found two ways the checks
+above did not mean what this docstring said. **F2:** "a repository path" was
+tested as only "not a URL, not ``mailto:``, not a bare anchor", so an absolute
+path (``/etc/hosts``), a ``..`` escape out of the tree, and a link to a
+directory all passed. Fixed by resolving the target and requiring the
+*resolved* path to be both inside ``REPO_ROOT`` and a file: ``Path.resolve()``
+returns an absolute input unchanged and collapses every ``..`` segment, so
+containment has to be checked after resolution — a string search for the
+substring ``..`` cannot do it, because a legitimate link needs ``..`` too
+(reports live in ``../reviews/`` and deeper). **F3:** every field lookup took
+the first matching line anywhere in the document, with no regard for how many
+there were or where, so an earlier decoy ``- Status:``, ``- Result:``, or
+``- Attack report:`` line silently overrode the real one under ``## Review``.
+Fixed by rejecting any field that has more than one matching line, wherever
+they fall, instead of picking a first-match or last-match winner: a
+last-match rule would close this exact bypass while opening the same one from
+the other direction — a decoy appended *after* the real line — so refusing to
+choose is the version that is not just as breakable from the opposite side.
 
 ``STATUS_VALUES`` below is a copy of the template's own vocabulary rather than
 something parsed out of it at import time, so that a template formatting
@@ -30,25 +40,35 @@ instead of silently changing what every other test in this file accepts.
 repository — beside the experiment it attacks, or under
 ``docs/agent-workflow/reviews/`` when there is none. A link is therefore
 always possible for a real report, so ``Attack report:`` must contain a
-markdown link whose target is a repository path that exists: prose alone
-("reviewed manually, no defects found") is exactly the unverifiable claim
-this project keeps catching, and accepting it would make the non-emptiness
-check decorative. A target that reads as a URL, a ``mailto:`` link, or a
-same-document ``#anchor`` is rejected for the same reason — none of those can
-name a file in this repository. The link target is resolved relative to
+markdown link whose target, once resolved against
 ``docs/agent-workflow/task-packets/`` (where ``task-packets/README.md`` says
-every packet is created), and a ``#fragment`` on an otherwise-valid path is
-stripped before that check, so a heading anchor on a real file still
-resolves.
+every packet is created) and stripped of any ``#fragment``, names an existing
+file inside this repository. A target that reads as a URL or a ``mailto:``
+link is rejected without resolving it at all; a bare same-document ``#anchor``
+is rejected the same way. Everything else is resolved and must then be
+contained in the repository, existing, and a file — not a directory, and not
+anything a ``..`` segment or an absolute target reaches outside the tree.
 
 The real directory scan below proves nothing by itself: it can only fail when
 some packet under ``docs/agent-workflow/task-packets/`` is both ``ACCEPTED``
 and defective, and today that directory may hold no ``ACCEPTED`` packet at
 all. What gives this guard teeth is ``packet_problems`` being exercised
-directly against malformed packet bodies built inline, below. Four of those
-cases do depend on ``docs/agent-workflow/README.md`` existing, because they use
-it as the link target that resolves; this sentence used to claim they depend on
-nothing on disk, which was false.
+directly against malformed packet bodies built inline, below. Two of those
+inline cases resolve a link against ``TASK_PACKET_TEMPLATE`` rather than
+inventing a new dependency: that file is already load-bearing for this module
+(``test_status_values_match_the_template`` reads it too), so it going missing
+breaks this file in an obvious, already-tested way instead of turning two
+unrelated cases red for a reason that has nothing to do with the validator —
+which is what happened, per REVIEW-TASK-001.md **F12**, when they depended on
+``docs/agent-workflow/README.md`` instead.
+
+``scan_task_packets`` — the function both the real scan and its own tests
+below call — does not recurse into a subdirectory of the directory it is
+given, and does not let one file it cannot decode abort the rest of the scan.
+``task-packets/README.md`` describes one packet file per task, directly in
+the directory; a subdirectory is not a place this guard knows how to look for
+more packets, so it is reported as a defect in its own right rather than
+silently skipped or silently walked into (REVIEW-TASK-001.md **F13**).
 
 This does **not** check that a packet exists at all for a given piece of
 work, that a report's content is any good, or that whoever wrote it was
@@ -96,21 +116,32 @@ _MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 _URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 
 
-def _field_value(text: str, field: str) -> str | None:
-    r"""Return the trailing text of a ``- {field}: ...`` line, or ``None`` if absent.
+def _field_values(text: str, field: str) -> list[str]:
+    r"""Return the trailing text of every ``- {field}: ...`` line, in document order.
 
-    The gaps around the field name use ``[ \t]*`` rather than ``\s*`` on purpose:
-    ``\s`` matches a newline, so an empty field (``- Attack report:`` with
-    nothing after it) would let the pattern run on and capture the *next*
-    line's content as this field's value instead of an empty string.
+    Returning every match rather than just the first is what lets
+    ``packet_problems`` refuse to pick a winner among several instead of
+    picking the wrong one — see the module docstring's account of F3.
+
+    The gaps around the field name use ``[ \t]*`` rather than ``\s*`` on
+    purpose: ``\s`` matches a newline, so an empty field (``- Attack report:``
+    with nothing after it) would let the pattern run on and capture the
+    *next* line's content as this field's value instead of an empty string.
     """
     pattern = re.compile(rf"^-[ \t]*{re.escape(field)}:[ \t]*(.*)$", re.MULTILINE)
-    match = pattern.search(text)
-    return None if match is None else match.group(1).strip()
+    return [match.group(1).strip() for match in pattern.finditer(text)]
 
 
 def _unquoted(value: str) -> str:
-    """Strip one wrapping pair of backticks, the convention every Status/Result value uses."""
+    """Strip one wrapping pair of backticks, the convention every Status/Result value uses.
+
+    Anything else — unbalanced, or with trailing text after the closing
+    backtick — is returned unchanged rather than partially cleaned, so it
+    fails the exact-equality check downstream instead of risking a partial
+    strip that happens to match. ``status-with-trailing-text-after-the-
+    closing-backtick-is-rejected`` and its unbalanced-backtick sibling below
+    are the proof that this does not quietly accept either shape.
+    """
     if len(value) >= 2 and value[0] == "`" and value[-1] == "`":
         return value[1:-1].strip()
     return value
@@ -122,14 +153,28 @@ def _linked_report_target(report: str) -> str | None:
     return None if match is None else match.group(1).strip()
 
 
-def _is_repository_path(target: str) -> bool:
-    """True unless ``target`` is a URL, a mail link, or a same-document ``#anchor``.
+def _report_target_problem(target: str) -> str | None:
+    """Why ``target`` cannot stand as an ``Attack report:`` link, or ``None`` if it can.
 
-    None of those name a file this guard can check for existence, and the task
-    that specified this guard asked to keep the check narrow: only something
-    that reads as a path into this repository is resolved on disk.
+    REVIEW-TASK-001.md F2: the previous check tested only that ``target`` was
+    not a URL, a ``mailto:`` link, or a bare ``#anchor`` — so an absolute
+    path, a ``..`` escape, and a link to a directory all passed as "a
+    repository path". ``Path.resolve()`` returns an absolute input unchanged
+    and collapses every ``..`` segment, so checking containment on the
+    *resolved* path is what catches both kinds of escape; a string check for
+    the substring ``..`` cannot, because a legitimate link needs it too.
     """
-    return not _URL_SCHEME.match(target) and not target.startswith(("mailto:", "#"))
+    if _URL_SCHEME.match(target) or target.startswith(("mailto:", "#")):
+        return "which is not a repository path"
+    path_part = target.split("#", 1)[0].strip()
+    resolved = (TASK_PACKETS_DIR / path_part).resolve()
+    if not resolved.is_relative_to(REPO_ROOT):
+        return "which is not a repository path"
+    if resolved.is_dir():
+        return f"but {resolved} is a directory, not a file"
+    if not resolved.exists():
+        return f"but {resolved} does not exist"
+    return None
 
 
 def packet_problems(text: str, name: str) -> list[str]:
@@ -139,11 +184,16 @@ def packet_problems(text: str, name: str) -> list[str]:
     ``Attack report:`` is resolved against :data:`TASK_PACKETS_DIR`, not
     against ``name``, so the malformed-packet cases below can exercise this
     function without a corresponding file on disk.
+
+    A field with more than one matching line is rejected outright, before its
+    content is examined at all — see the module docstring's account of F3.
     """
-    raw_status = _field_value(text, "Status")
-    if raw_status is None:
+    statuses = _field_values(text, "Status")
+    if not statuses:
         return [f"{name}: no `Status:` line"]
-    status = _unquoted(raw_status)
+    if len(statuses) > 1:
+        return [f"{name}: {len(statuses)} `Status:` lines found; exactly one is required"]
+    status = _unquoted(statuses[0])
     if status not in STATUS_VALUES:
         return [f"{name}: Status {status!r} is not one of {sorted(STATUS_VALUES)}"]
     if status != ACCEPTED_STATUS:
@@ -151,46 +201,70 @@ def packet_problems(text: str, name: str) -> list[str]:
 
     problems: list[str] = []
 
-    raw_report = _field_value(text, "Attack report")
-    if not raw_report:
+    reports = _field_values(text, "Attack report")
+    if len(reports) > 1:
+        problems.append(
+            f"{name}: {len(reports)} `Attack report:` lines found; exactly one is required"
+        )
+    elif not reports or not reports[0]:
         problems.append(f"{name}: Status is {ACCEPTED_STATUS} but Attack report: is empty")
     else:
-        target = _linked_report_target(raw_report)
+        target = _linked_report_target(reports[0])
         if target is None:
             problems.append(
                 f"{name}: Status is {ACCEPTED_STATUS} but Attack report: has no markdown link"
             )
-        elif not _is_repository_path(target):
-            problems.append(
-                f"{name}: Attack report links to {target!r}, which is not a repository path"
-            )
         else:
-            path_part = target.split("#", 1)[0].strip()
-            resolved = (TASK_PACKETS_DIR / path_part).resolve()
-            if not resolved.exists():
-                problems.append(
-                    f"{name}: Attack report links to {target!r}, but {resolved} does not exist"
-                )
+            reason = _report_target_problem(target)
+            if reason is not None:
+                problems.append(f"{name}: Attack report links to {target!r}, {reason}")
 
-    raw_result = _field_value(text, "Result")
-    result = None if raw_result is None else _unquoted(raw_result)
-    if result != "PASS":
+    results = _field_values(text, "Result")
+    if len(results) > 1:
         problems.append(
-            f"{name}: Status is {ACCEPTED_STATUS} but Result is {result!r}, not `PASS`"
+            f"{name}: {len(results)} `Result:` lines found; exactly one is required"
         )
+    else:
+        result = _unquoted(results[0]) if results else None
+        if result != "PASS":
+            problems.append(
+                f"{name}: Status is {ACCEPTED_STATUS} but Result is {result!r}, not `PASS`"
+            )
 
     return problems
 
 
-def packet_paths() -> list[Path]:
-    """Every task packet under :data:`TASK_PACKETS_DIR`, excluding its own index."""
-    if not TASK_PACKETS_DIR.is_dir():
+def scan_task_packets(directory: Path) -> list[str]:
+    """Scan ``directory`` the way :data:`TASK_PACKETS_DIR` is scanned for real.
+
+    Does not recurse: ``task-packets/README.md`` describes one file per
+    packet, directly in the directory, so a subdirectory is not a place to
+    look for more packets — it is reported as a problem in its own right,
+    the same way a file that is not valid UTF-8 is reported and skipped
+    rather than left to raise and abort the scan before later packets are
+    read (REVIEW-TASK-001.md F13).
+
+    Parameterized on ``directory`` rather than closing over
+    :data:`TASK_PACKETS_DIR` so the tests below can reproduce both failure
+    modes against a throwaway ``tmp_path`` tree instead of the real one.
+    """
+    if not directory.is_dir():
         return []
-    return sorted(
-        path
-        for path in TASK_PACKETS_DIR.iterdir()
-        if path.is_file() and path.name not in NON_PACKET_FILES
-    )
+    problems: list[str] = []
+    for path in sorted(directory.iterdir()):
+        if path.name in NON_PACKET_FILES:
+            continue
+        label = path.relative_to(directory)
+        if not path.is_file():
+            problems.append(f"{label}: task-packets holds one file per packet, not a directory")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as error:
+            problems.append(f"{label}: not valid UTF-8 ({error})")
+            continue
+        problems.extend(packet_problems(text, str(label)))
+    return problems
 
 
 def test_every_accepted_task_packet_carries_its_closing_evidence() -> None:
@@ -202,10 +276,7 @@ def test_every_accepted_task_packet_carries_its_closing_evidence() -> None:
     The parametrized tests below are what actually prove ``packet_problems``
     rejects a bad one.
     """
-    problems: list[str] = []
-    for path in packet_paths():
-        text = path.read_text(encoding="utf-8")
-        problems.extend(packet_problems(text, str(path.relative_to(REPO_ROOT))))
+    problems = scan_task_packets(TASK_PACKETS_DIR)
     assert not problems, "\n".join(problems)
 
 
@@ -222,6 +293,45 @@ def test_status_values_match_the_template() -> None:
     assert match is not None, f"{TASK_PACKET_TEMPLATE}: no backticked Status: line found"
     documented = frozenset(part.strip() for part in match.group(1).split("|"))
     assert documented == STATUS_VALUES
+
+
+def test_scanning_reports_a_non_utf8_file_and_keeps_going(tmp_path: Path) -> None:
+    """F13's reproduction: a bad file must not abort the scan before later packets.
+
+    ``path.read_text(encoding="utf-8")`` used to be unguarded, so one binary
+    file raised ``UnicodeDecodeError`` and stopped the ``for`` loop — a
+    defective packet that sorts after it was never read at all. ``TASK-999``
+    is named to sort after ``TASK-000`` so this reproduces that ordering.
+    """
+    (tmp_path / "TASK-000-not-utf8.md").write_bytes(b"x \xff\xfe\n")
+    (tmp_path / "TASK-999-defective.md").write_text(
+        "- Status: `ACCEPTED`\n\n## Review\n\n- Attack report:\n- Result: `PASS`\n",
+        encoding="utf-8",
+    )
+    problems = scan_task_packets(tmp_path)
+    assert any("not valid UTF-8" in problem for problem in problems), problems
+    assert any("Attack report" in problem for problem in problems), problems
+
+
+def test_scanning_reports_a_subdirectory_instead_of_silently_skipping_it(
+    tmp_path: Path,
+) -> None:
+    """F13: the previous scan filtered out non-files with no report at all.
+
+    A packet filed in a subdirectory was invisible to the scan — neither
+    read nor named as a problem. This makes the subdirectory itself the
+    finding, rather than silently recursing into it or silently ignoring it.
+    """
+    (tmp_path / "nested").mkdir()
+    problems = scan_task_packets(tmp_path)
+    assert len(problems) == 1, problems
+    assert "directory" in problems[0], problems
+
+
+def test_scanning_still_excludes_the_directory_index(tmp_path: Path) -> None:
+    """The README exclusion survives the F13 rewrite, not just the pre-rewrite version."""
+    (tmp_path / "README.md").write_text("# Active Task Packets\n", encoding="utf-8")
+    assert scan_task_packets(tmp_path) == []
 
 
 REJECTED_CASES = [
@@ -248,14 +358,14 @@ REJECTED_CASES = [
     ),
     pytest.param(
         "- Status: `ACCEPTED`\n\n## Review\n\n"
-        "- Attack report: [operating model](../README.md)\n"
+        "- Attack report: [operating model](../TASK-PACKET-TEMPLATE.md)\n"
         "- Result: `FAIL`\n",
         "Result",
         id="accepted-with-failing-result",
     ),
     pytest.param(
         "- Status: `ACCEPTED`\n\n## Review\n\n"
-        "- Attack report: [operating model](../README.md)\n",
+        "- Attack report: [operating model](../TASK-PACKET-TEMPLATE.md)\n",
         "Result",
         id="accepted-with-no-result-line",
     ),
@@ -281,6 +391,72 @@ REJECTED_CASES = [
         "not a repository path",
         id="accepted-report-links-to-a-url-is-rejected",
     ),
+    # --- F2: containment, not just "not a URL/mailto/anchor" (REVIEW-TASK-001.md) ---
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "- Attack report: [leaked](/etc/hosts)\n"
+        "- Result: `PASS`\n",
+        "not a repository path",
+        id="accepted-report-links-to-an-absolute-path-outside-the-tree",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "- Attack report: [leaked](../../../../../../../../../../etc/hosts)\n"
+        "- Result: `PASS`\n",
+        "not a repository path",
+        id="accepted-report-link-escapes-the-tree-through-dot-dot",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "- Attack report: [the repository root](../../..)\n"
+        "- Result: `PASS`\n",
+        "is a directory, not a file",
+        id="accepted-report-links-to-the-repository-root",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "- Attack report: [the whole directory](../reviews)\n"
+        "- Result: `PASS`\n",
+        "is a directory, not a file",
+        id="accepted-report-links-to-a-directory",
+    ),
+    # --- F3: an earlier line must not silently override the real one (REVIEW-TASK-001.md) ---
+    pytest.param(
+        "- Status: `DRAFT`\n\n(real header below)\n\n- Status: `ACCEPTED`\n\n"
+        "## Review\n\n- Attack report:\n- Result: `FAIL`\n",
+        "2 `Status:` lines",
+        id="an-earlier-status-line-no-longer-exempts-the-packet",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n- Result: `PASS`\n\n## Review\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n- Result: `FAIL`\n",
+        "2 `Result:` lines",
+        id="an-earlier-result-line-no-longer-overrides-the-real-one",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n\n"
+        "## Review\n\n- Attack report: none, reviewed by eye\n- Result: `PASS`\n",
+        "2 `Attack report:` lines",
+        id="an-earlier-attack-report-line-no-longer-overrides-the-real-one",
+    ),
+    # --- _unquoted: a value cannot be partially stripped into an accidental match ---
+    pytest.param(
+        "- Status: `ACCEPTED` extra\n",
+        "not one of",
+        id="status-with-trailing-text-after-the-closing-backtick-is-rejected",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED\n",
+        "not one of",
+        id="status-with-an-unbalanced-backtick-is-rejected",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS` extra\n",
+        "not `PASS`",
+        id="result-with-trailing-text-after-the-closing-backtick-is-rejected",
+    ),
 ]
 
 
@@ -295,15 +471,26 @@ def test_a_malformed_packet_is_rejected_and_named(text: str, expected: str) -> N
 CLEAN_CASES = [
     pytest.param(
         "- Status: `ACCEPTED`\n\n## Review\n\n"
-        "- Attack report: [operating model](../README.md)\n"
+        "- Attack report: [operating model](../TASK-PACKET-TEMPLATE.md)\n"
         "- Result: `PASS`\n",
         id="accepted-report-links-to-an-existing-file",
     ),
     pytest.param(
         "- Status: `ACCEPTED`\n\n## Review\n\n"
-        "- Attack report: [operating model](../README.md#required-flow)\n"
+        "- Attack report: [operating model](../TASK-PACKET-TEMPLATE.md#objective)\n"
         "- Result: `PASS`\n",
         id="accepted-report-link-fragment-is-stripped-before-checking-existence",
+    ),
+    pytest.param(
+        # Three levels of `..` — as deep as the real `../../../experiments/...` reports
+        # reviews/README.md describes — landing on AGENTS.md rather than anything under
+        # experiments/: AGENTS.md itself says that tree is disposable, so it is the one
+        # anchor in this repository less likely to move than the guard's own module-level
+        # dependencies.
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "- Attack report: [project instructions](../../../AGENTS.md)\n"
+        "- Result: `PASS`\n",
+        id="accepted-report-link-through-dot-dot-that-stays-inside-the-tree",
     ),
     pytest.param(
         "- Status: `DRAFT`\n",

@@ -187,13 +187,19 @@ into a pass.
 |---|---|---|
 | `main` | P0-A and the initial P0-B add-on work are accepted through PR #2. Its history has the gate merge commit that `dev` does not. | Do not work from it; `main` moves only at an accepted gate. |
 | `dev` | Current at `c0a266d`, with six subsequent work commits not yet accepted into `main`. It contains EXP-003, its review, and the latest P0-B truth. | All deadline work branches from this revision or a later `dev`. |
-| `.claude/agents/` on `dev` | `mechanical` and `addon-author` implement bounded work; `adversarial-reviewer` attacks claims without write access. | Use these roles; keep implementation and adversarial review separate. |
-| `feat/agent-operating-model` and its duplicate remote branch | Isolated, behind the active architecture, and carries a Decision Packet identifier that collides with accepted DP-006. The implementation owner reported on 2026-08-19 that the agent work will be reapplied. | Reapply through a separate reviewed change only after renumbering the Decision Packet and reconciling current contracts. Do not bundle it into the product-scope PR or treat the report as merge approval. |
+| `.claude/agents/` on `dev` | `mechanical` and `addon-author` implement bounded work; `adversarial-reviewer` attacks claims with `Write`, `Edit`, and `NotebookEdit` denied. `[확인 사실]` **That is not "no write access"** — `Bash` remains, and [REVIEW-TASK-001](agent-workflow/reviews/REVIEW-TASK-001.md) F1 measured an attacker writing through it. An earlier revision of this row said "without write access". | Use these roles; keep implementation and adversarial review separate. The separation is a convention held by whoever assigns the work, not a barrier. |
+| `feat/agent-operating-model` and its duplicate remote branch | `[확인 사실]` Reapplied on 2026-08-19 as `agent/operating-model`, branched from `6d1e965`: `b437013` merges it with `b702c79` preserved as a parent, the Decision Packet is renumbered [DP-013](decisions/DP-013-agent-workflow-and-project-memory.md), and `933bbae` records an independent review that returned `FAIL` on two blocking findings. No contract under `contracts/` is affected, which is the contract-reconciliation half of the earlier instruction. | Not merged into `dev` or `main`. `TASK-001` is `REWORK`; a second independent review is the condition for acceptance. Do not bundle it into the product-scope PR or treat any report as merge approval. |
 | `p0a/platform-core` and `sooho` | Historical tips with no unique work beyond the accepted line. | No merge action. |
 
 The current repository therefore has a worker/attacker split but no approved dedicated
 planner subagent. The delivery lead remains the planner and issues one bounded work packet
 at a time; restoring the larger operating model is not on the product critical path.
+
+`[확인 사실]` Both sentences still hold as delivery statements on 2026-08-19. The operating
+model was reapplied on a working branch (`agent/operating-model`) and has not entered `dev` or
+`main`, so the delivery lead remains the planner and no deadline work depends on it. `[결정]`
+What the reapplication changes is where the model's rules are written down, not who is doing
+the deadline work.
 
 ### B1 bounded candidate set
 

@@ -9,14 +9,21 @@
 - Created:
 - Updated:
 
-`[확인 사실]` Five things in this file are checked by
-`tests/environment/test_agent_packet_record.py`: that `Status` holds one of the values above,
-and — when it is `ACCEPTED` — that `Attack report` carries a markdown link, that the link is
-not a URL, `mailto:`, or bare `#anchor`, that the target resolves to something that exists,
-and that `Result` is `PASS`. An earlier revision of this note said "four" and said the link
-must "name a path inside this repository". Neither was accurate:
-[`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F2 shows the guard accepting `/etc/hosts`, a
-`..` escape, and a directory.
+`[확인 사실]` What `tests/environment/test_agent_packet_record.py` checks, exactly: `Status`,
+`Attack report`, and `Result` must each appear **at most once** in the file — a duplicate is its
+own defect, whatever its position, which is how the three override bypasses
+[`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F3 found are closed without parsing heading
+boundaries. `Status` must hold one of the values above. When it is `ACCEPTED`, `Attack report`
+must carry a markdown link whose target — `#fragment` stripped, then resolved — lies **inside
+this repository**, is a file rather than a directory, and exists; and `Result` must be `PASS`.
+
+`[확인 사실]` It does **not** judge whether the linked file is a credible report, whether a
+packet exists at all for a given piece of work, or whether the attacker was independent of the
+worker. `docs/agent-workflow/README.md` lists what is convention rather than implying it.
+
+`[확인 사실]` An earlier revision of this note counted the checks wrong and described the
+containment test the guard did not yet have. F2 of the review is the finding; the guard now has
+it, and rejects `/etc/hosts`, a `..` escape out of the tree, and a directory.
 Everything else here is convention, which `docs/agent-workflow/README.md` lists rather than
 implies.
 
