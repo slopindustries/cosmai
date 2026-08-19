@@ -82,8 +82,14 @@ assumptions?
    private datasets are not project memory and are not committed. A fact about this project
    is not kept only in an agent's private memory store.
 6. **The full flow is required by threshold, not by default.** `docs/agent-workflow/README.md`
-   names the work that requires a packet and an independent report, and the work that does
-   not. Deciding which applies is the orchestrator's call and recording the call is part of it.
+   names the work that requires a packet and an independent report, and the work that does not.
+   **When both lists fire, "required" wins**, and an exemption from the packet is never an
+   exemption from the independent attack report. Deciding which list a piece of work falls under
+   is the orchestrator's call and recording the call is part of it; resolving an *overlap* is
+   not — that is settled here. `[확인 사실]` This clause originally left the overlap to
+   discretion, `297fbee` bounded it in the convention document without amending the packet, and
+   [`REVIEW-TASK-001-R2`](../agent-workflow/reviews/REVIEW-TASK-001-R2.md) F3 found the
+   contradiction.
 7. **What the harness enforces and what is convention are recorded separately**, in the
    same document, and neither is described in the other's language.
 
@@ -183,11 +189,20 @@ been produced in the first place.
     material.
 13. `AGENTS.md` promoted the attacker's `BLOCKED` rule to a project-wide one. In `b702c79` it
     bound only the attacker; it now binds every agent that reads `AGENTS.md`.
-14. `branching.md` gained a `[확인 사실]` exception to the one-area rule for documents that
-    change the project's operating method — **whose worked example is this branch.** A rule
-    that legitimizes the change introducing it belongs on a disclosure list, not inferred from
-    a diff. `docs/areas/README.md` was not updated to match. **Also consequential and also not
-    shown to the owner as a decision.**
+14. `branching.md` gained an exception to the one-area rule for documents that change the
+    project's operating method — **whose worked example is this branch.** A rule that
+    legitimizes the change introducing it belongs on a disclosure list, not inferred from a
+    diff. `docs/areas/README.md` was not updated to match. It is now
+    [OQ-011](../open-questions/OQ-011-agent-memory-and-area-boundary.md) R2 and is marked
+    `[가설]` proposed where it lives; this item said `[확인 사실]` until
+    [`REVIEW-TASK-001-R2`](../agent-workflow/reviews/REVIEW-TASK-001-R2.md) F9 caught it
+    describing the state one commit earlier.
+15. **The threshold's exemption gained two bounding rules** (`README.md` §"When this flow is
+    required"): the exemption is from the packet and never from the attacker, and "required"
+    wins when both lists fire. Both were added by `297fbee` to repair
+    [`REVIEW-TASK-001`](../agent-workflow/reviews/REVIEW-TASK-001.md) F5, and the second amends
+    D6 above rather than merely refining it — which is why it is listed rather than folded into
+    item 6.
 
 ## Remaining uncertainty
 

@@ -31,6 +31,24 @@ last-match rule would close this exact bypass while opening the same one from
 the other direction — a decoy appended *after* the real line — so refusing to
 choose is the version that is not just as breakable from the opposite side.
 
+A second, independent review of that repair (``REVIEW-TASK-001-R2.md``) found
+two more. **R2-F1:** the field pattern anchored ``-`` at column 0, so a real
+``## Review`` field written indented — still a valid list item — or with a
+``*``/``+`` bullet was invisible, and the duplicate rule F3 built only sees
+what the pattern matches. Fixed by matching a list item at any indentation
+and any of ``-``/``*``/``+``. This makes a packet that quotes its own field
+syntax inside a fenced code block trip the duplicate rule too; that trade is
+deliberate and explained on ``_field_values``, not solved by skipping fenced
+content, which would let the real field disappear from the count entirely
+instead of merely surviving under a wider pattern. **R2-F4:** resolving a
+link target could raise instead of returning an answer — an over-long target
+raises ``OSError`` (not at ``Path.resolve()`` itself on every platform;
+measured here, at the ``is_dir()``/``exists()`` calls that follow it) and an
+embedded NUL raises ``ValueError`` at ``resolve()``. Both are now caught
+around every filesystem-touching call on the resolved path, and reported as
+a defect rather than aborting ``scan_task_packets`` before a later packet is
+read — the same failure shape F13 named for an undecodable file.
+
 ``STATUS_VALUES`` below is a copy of the template's own vocabulary rather than
 something parsed out of it at import time, so that a template formatting
 change fails one named test (``test_status_values_match_the_template``)
@@ -53,14 +71,18 @@ The real directory scan below proves nothing by itself: it can only fail when
 some packet under ``docs/agent-workflow/task-packets/`` is both ``ACCEPTED``
 and defective, and today that directory may hold no ``ACCEPTED`` packet at
 all. What gives this guard teeth is ``packet_problems`` being exercised
-directly against malformed packet bodies built inline, below. Two of those
-inline cases resolve a link against ``TASK_PACKET_TEMPLATE`` rather than
-inventing a new dependency: that file is already load-bearing for this module
-(``test_status_values_match_the_template`` reads it too), so it going missing
-breaks this file in an obvious, already-tested way instead of turning two
-unrelated cases red for a reason that has nothing to do with the validator —
-which is what happened, per REVIEW-TASK-001.md **F12**, when they depended on
-``docs/agent-workflow/README.md`` instead.
+directly against malformed packet bodies built inline, below. Every inline
+case whose link resolves depends on one of exactly two real files —
+:data:`DISCLOSED_ON_DISK_DEPENDENCIES` names them, and
+``test_every_inline_case_that_resolves_depends_on_a_disclosed_file`` checks
+it — rather than inventing an undisclosed dependency, which is what happened
+twice: first when several cases resolved against
+``docs/agent-workflow/README.md`` instead of something this module already
+needed (REVIEW-TASK-001.md **F12**), and again when the directory-rejection
+case resolved against ``docs/agent-workflow/reviews/`` instead
+(REVIEW-TASK-001-R2.md **R2-F5**, which also found this paragraph, a commit
+message, and a hand count each stating a different number of such cases —
+the reason the count is a checked fact now and not a sentence here).
 
 ``scan_task_packets`` — the function both the real scan and its own tests
 below call — does not recurse into a subdirectory of the directory it is
@@ -112,6 +134,19 @@ STATUS_VALUES = frozenset(
 #: The one status this guard holds to a bar higher than "is a recognised value".
 ACCEPTED_STATUS = "ACCEPTED"
 
+#: The only real files the inline cases below are allowed to depend on, besides
+#: TASK_PACKETS_DIR itself. Both are already load-bearing for this module —
+#: TASK_PACKET_TEMPLATE is read directly by test_status_values_match_the_template,
+#: and AGENTS.md is this repository's chosen permanence anchor (see CLEAN_CASES).
+#: How many cases use which is checked by
+#: test_every_inline_case_that_resolves_depends_on_a_disclosed_file, not counted
+#: in prose here — REVIEW-TASK-001-R2.md R2-F5 found three different counts of
+#: that number in this file's own history (a docstring, a commit message, and
+#: the true count), which is what a hand-maintained count does eventually.
+DISCLOSED_ON_DISK_DEPENDENCIES = frozenset(
+    {TASK_PACKET_TEMPLATE.resolve(), (REPO_ROOT / "AGENTS.md").resolve()}
+)
+
 _MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 _URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 
@@ -123,12 +158,27 @@ def _field_values(text: str, field: str) -> list[str]:
     ``packet_problems`` refuse to pick a winner among several instead of
     picking the wrong one — see the module docstring's account of F3.
 
+    A list item is matched at any indentation and with any of ``-``, ``*``,
+    or ``+`` as the bullet (REVIEW-TASK-001-R2.md R2-F1): the previous
+    pattern anchored ``-`` at column 0, so a real ``## Review`` field written
+    two spaces indented — still a valid list item — or with a ``*``/``+``
+    bullet was invisible, leaving exactly one visible match: the decoy.
+
+    Fenced code blocks are deliberately *not* stripped before matching, even
+    though a packet that quotes its own field syntax verbatim inside a fence
+    now trips the duplicate rule too. Skipping fenced content would let the
+    real, binding field be hidden inside a fence — removed from the count
+    entirely, not merely indented out of the old pattern's reach — while an
+    unfenced decoy stood alone and unchallenged. A false positive against an
+    unusual but honest packet is the safe direction to be wrong in; a fence
+    that can make a real field disappear is not.
+
     The gaps around the field name use ``[ \t]*`` rather than ``\s*`` on
     purpose: ``\s`` matches a newline, so an empty field (``- Attack report:``
     with nothing after it) would let the pattern run on and capture the
     *next* line's content as this field's value instead of an empty string.
     """
-    pattern = re.compile(rf"^-[ \t]*{re.escape(field)}:[ \t]*(.*)$", re.MULTILINE)
+    pattern = re.compile(rf"^[ \t]*[-*+][ \t]*{re.escape(field)}:[ \t]*(.*)$", re.MULTILINE)
     return [match.group(1).strip() for match in pattern.finditer(text)]
 
 
@@ -153,6 +203,13 @@ def _linked_report_target(report: str) -> str | None:
     return None if match is None else match.group(1).strip()
 
 
+def _short(text: str, limit: int = 80) -> str:
+    """Truncate ``text`` for an error message; an attacker controls its length, not its use."""
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}...({len(text)} chars)"
+
+
 def _report_target_problem(target: str) -> str | None:
     """Why ``target`` cannot stand as an ``Attack report:`` link, or ``None`` if it can.
 
@@ -163,16 +220,34 @@ def _report_target_problem(target: str) -> str | None:
     and collapses every ``..`` segment, so checking containment on the
     *resolved* path is what catches both kinds of escape; a string check for
     the substring ``..`` cannot, because a legitimate link needs it too.
+
+    Every filesystem-touching call below is inside one ``try`` (REVIEW-TASK-001-R2.md
+    R2-F4), not just ``Path.resolve()``: a target long enough to blow a
+    filesystem's name-length limit does not fail at ``resolve()`` on every
+    platform — measured here, it raises ``OSError`` only once something
+    actually calls ``stat`` on it, which ``is_dir()`` and ``exists()`` both
+    do. Guarding ``resolve()`` alone leaves those two calls exposed to the
+    exact defect this is fixing. An embedded NUL byte does fail at
+    ``resolve()`` itself. Either raised exception, unhandled, would abort
+    ``scan_task_packets`` the way F13's undecodable file used to: not a
+    silent pass, but a scan that stops short and blames the wrong packet.
     """
     if _URL_SCHEME.match(target) or target.startswith(("mailto:", "#")):
         return "which is not a repository path"
     path_part = target.split("#", 1)[0].strip()
-    resolved = (TASK_PACKETS_DIR / path_part).resolve()
-    if not resolved.is_relative_to(REPO_ROOT):
-        return "which is not a repository path"
-    if resolved.is_dir():
+    try:
+        resolved = (TASK_PACKETS_DIR / path_part).resolve()
+        if not resolved.is_relative_to(REPO_ROOT):
+            return "which is not a repository path"
+        is_directory = resolved.is_dir()
+        already_exists = resolved.exists()
+    except (OSError, ValueError) as error:
+        # str(error) embeds the OS message's own copy of the offending path, which
+        # is exactly as unbounded as ``target`` — truncate it too, not only ``target``.
+        return f"whose target does not resolve to a path at all ({_short(str(error))})"
+    if is_directory:
         return f"but {resolved} is a directory, not a file"
-    if not resolved.exists():
+    if not already_exists:
         return f"but {resolved} does not exist"
     return None
 
@@ -217,7 +292,7 @@ def packet_problems(text: str, name: str) -> list[str]:
         else:
             reason = _report_target_problem(target)
             if reason is not None:
-                problems.append(f"{name}: Attack report links to {target!r}, {reason}")
+                problems.append(f"{name}: Attack report links to {_short(target)!r}, {reason}")
 
     results = _field_values(text, "Result")
     if len(results) > 1:
@@ -414,8 +489,13 @@ REJECTED_CASES = [
         id="accepted-report-links-to-the-repository-root",
     ),
     pytest.param(
+        # "." resolves to TASK_PACKETS_DIR itself — a directory the module already
+        # depends on structurally, rather than an undisclosed one. The original
+        # version of this case used `../reviews` and REVIEW-TASK-001-R2.md R2-F5
+        # named that: it fails with "does not exist" instead of "is a directory,
+        # not a file" in a tree without that directory, naming the wrong defect.
         "- Status: `ACCEPTED`\n\n## Review\n\n"
-        "- Attack report: [the whole directory](../reviews)\n"
+        "- Attack report: [the packet directory itself](.)\n"
         "- Result: `PASS`\n",
         "is a directory, not a file",
         id="accepted-report-links-to-a-directory",
@@ -438,6 +518,54 @@ REJECTED_CASES = [
         "## Review\n\n- Attack report: none, reviewed by eye\n- Result: `PASS`\n",
         "2 `Attack report:` lines",
         id="an-earlier-attack-report-line-no-longer-overrides-the-real-one",
+    ),
+    # --- R2-F1: indentation and bullet character (REVIEW-TASK-001-R2.md) ---
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "  - Result: `FAIL`\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS`\n",
+        "2 `Result:` lines",
+        id="an-indented-decoy-result-line-is-no-longer-invisible",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "* Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Attack report: none, reviewed by eye\n"
+        "- Result: `PASS`\n",
+        "2 `Attack report:` lines",
+        id="a-star-bullet-decoy-attack-report-line-is-no-longer-invisible",
+    ),
+    pytest.param(
+        # A packet that quotes its own field syntax inside a fenced example is a
+        # false positive this guard accepts on purpose — see _field_values's
+        # docstring for why skipping fenced content would be worse.
+        "- Status: `ACCEPTED`\n\n"
+        "## Worker handoff\n\n"
+        "Example of the field this packet must carry:\n\n"
+        "```\n"
+        "- Result: `FAIL`\n"
+        "```\n\n"
+        "## Review\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS`\n",
+        "2 `Result:` lines",
+        id="a-quoted-example-inside-a-fenced-block-still-counts-as-a-duplicate",
+    ),
+    # --- R2-F4: a pathological link target must not abort the scan (REVIEW-TASK-001-R2.md) ---
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        f"- Attack report: [r]({'x' * 5000})\n"
+        "- Result: `PASS`\n",
+        "does not resolve to a path",
+        id="a-link-target-too-long-for-the-filesystem-is-reported-not-raised",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "- Attack report: [r](a\x00b)\n"
+        "- Result: `PASS`\n",
+        "does not resolve to a path",
+        id="a-link-target-with-an-embedded-null-byte-is-reported-not-raised",
     ),
     # --- _unquoted: a value cannot be partially stripped into an accidental match ---
     pytest.param(
@@ -503,3 +631,28 @@ CLEAN_CASES = [
 def test_a_well_formed_packet_produces_no_problems(text: str) -> None:
     """The validator must not simply reject everything it is given."""
     assert packet_problems(text, "packet") == []
+
+
+def test_every_inline_case_that_resolves_depends_on_a_disclosed_file() -> None:
+    """Replaces a hand count with a check (REVIEW-TASK-001-R2.md R2-F5).
+
+    Every link target across every case above that this guard would accept as
+    a real repository path is resolved the same way ``packet_problems``
+    resolves one, and the file it lands on must be in
+    :data:`DISCLOSED_ON_DISK_DEPENDENCIES`. A case depending on anything else
+    — the way ``accepted-report-links-to-a-directory`` used to depend on
+    ``docs/agent-workflow/reviews/`` before R2-F5 — fails here by name instead
+    of surfacing later as an unrelated red test in a tree missing that file.
+    """
+    found: set[Path] = set()
+    for case in (*REJECTED_CASES, *CLEAN_CASES):
+        text = case.values[0]
+        assert isinstance(text, str)  # pytest.param's values are untyped; narrow for mypy
+        for match in _MARKDOWN_LINK.finditer(text):
+            target = match.group(1).strip()
+            if _report_target_problem(target) is not None:
+                continue  # rejected outright; not a dependency this case relies on
+            path_part = target.split("#", 1)[0].strip()
+            found.add((TASK_PACKETS_DIR / path_part).resolve())
+    undisclosed = found - DISCLOSED_ON_DISK_DEPENDENCIES
+    assert not undisclosed, undisclosed

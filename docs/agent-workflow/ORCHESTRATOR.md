@@ -33,6 +33,12 @@ report has produced a record that reads as independent review and is not one —
 more than having skipped the review, because the record will be believed later.
 
 `[결정]` Not every change goes through a packet. [`README.md`](README.md) states which work
-requires the full flow and which does not; deciding that is the orchestrator's call and
-recording the call is part of it.
+requires the full flow and which does not; deciding which list a piece of work falls under is
+the orchestrator's call and recording the call is part of it.
+
+`[결정]` **An overlap is not yours to resolve.** When work fires both lists, "required" wins,
+and an exemption from the packet is never an exemption from the independent attack report.
+`README.md` §"When this flow is required" and [`DP-013`](../decisions/DP-013-agent-workflow-and-project-memory.md)
+D6 both say so. An earlier revision of this paragraph left the overlap to discretion —
+[`REVIEW-TASK-001-R2`](reviews/REVIEW-TASK-001-R2.md) F3.
 
