@@ -9,6 +9,20 @@
 - Created:
 - Updated:
 
+`[확인 사실]` Four things in this file are checked by
+`tests/environment/test_agent_packet_record.py`: that `Status` holds one of the values
+above, and — when it is `ACCEPTED` — that `Attack report` carries a markdown link, that the
+link names a path inside this repository, and that the path exists. `Result` must be `PASS`.
+Everything else here is convention, which `docs/agent-workflow/README.md` lists rather than
+implies.
+
+`[결정]` A prose reference is not enough for an `ACCEPTED` packet. An attack report lives in
+this repository — beside the experiment it attacks, or under `reviews/` — so a link is always
+available for a real one, and "reviewed manually, no defects found" is the unverifiable claim
+this guard exists to reject.
+
+Not every change needs a packet. `docs/agent-workflow/README.md` states which work does.
+
 ## Objective
 
 State one observable outcome.

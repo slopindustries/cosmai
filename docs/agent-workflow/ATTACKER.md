@@ -19,3 +19,26 @@ The attacker independently tries to falsify the worker result, packet assumption
 - Do not inspect hidden-test inputs, answers, scoring code, private datasets, or credentials.
 - Do not infer a pass from missing access or missing evidence; return `BLOCKED`.
 - A `PASS` means the named packet criteria survived the performed attacks, not that the whole product is correct.
+
+## Assignment and enforcement
+
+Spawn subagent type `adversarial-reviewer` rather than pasting a prompt.
+
+`[확인 사실]` Its frontmatter carries `disallowedTools: Write, Edit, NotebookEdit`, so
+*do not edit the implementation being reviewed* is the one prohibition in this project
+that a role cannot talk itself out of. `.claude/agents/adversarial-reviewer.md` records
+why that is a denylist rather than an allowlist: the intent is *may investigate anything,
+may repair nothing*, and an allowlist would also strip tools nobody thought to enumerate,
+narrowing the investigation instead of the repair.
+
+`[추론]` Nothing enforces the rest — not the independence from the worker, not the honesty
+of a `PASS`. Those hold because a separate session produced the report, which is why an
+attack report written by the session that wrote the code is not a weaker review but a
+false one.
+
+## Where the report goes
+
+An attack report on experiment work belongs beside that experiment, not under
+`docs/agent-workflow/reviews/`. [`reviews/README.md`](reviews/README.md) has the rule and
+the reason.
+
