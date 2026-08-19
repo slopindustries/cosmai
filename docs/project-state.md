@@ -140,6 +140,7 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 - `[결정]` [DP-021](decisions/DP-021-schema-0-2-trend-points.md) makes Schema 0.2 a discriminated union on `record_type` so a document and a trend point can share one table.
 - `[결정]` [DP-025](decisions/DP-025-two-branch-record-reconciliation.md) reconciles the two decision records that grew from `c0a266d` without seeing each other: the published numbers stand, the P0-B packets moved to DP-018–DP-024 and OQ-013–OQ-014, OQ-014 closes into DP-012 carrying its measurement as falsification input, and the P0-B completion claim states the plan it is measured against.
 - `[결정]` [DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) closes P0 against `p0-charter.md` rather than DP-011, moving DP-011's product scope to P1's first milestone; keeps the three NAVER collectors calling their source directly as `ARCHIVE_REFERENCE_ONLY`, which is the P0 disposition DP-012 was waiting for; and binds DP-012's independent-service-plus-adapter topology to collectors added from here. The result is a hybrid, and P1 carries both seams.
+- `[결정]` [DP-027](decisions/DP-027-dataset-standard-and-share-alike.md) reads the charter's "one dataset" as category-independent — sunscreen and toner entered through DP-011, which DP-026 moved to P1 — and selects Open Beauty Facts as P0's dataset source at `CONDITIONAL GO`. `[측정]` Zero Korean sunscreen and zero Korean toner rows, so **P0 gains no product-relevant dataset evidence**, and ODbL's share-alike attaches on first publication as an obligation P1 inherits.
 
 ### Technology constraints
 
@@ -261,6 +262,7 @@ The first two hypotheses can begin in P0-A. Acquisition and normalization hypoth
 | [OQ-011](open-questions/OQ-011-agent-memory-and-area-boundary.md) | `RESOLVED` | P0-B | Do the two rules the operating-model adoption wrote without asking — the private-memory rule and the development-area exception — bind? | Resolved 2026-08-19 by DP-014: the memory rule narrowed to the repository half, the area exception accepted |
 | [OQ-013](open-questions/OQ-013-addon-responsibility-boundary.md) | `OPEN` | P0-B | What is an add-on responsible for, and what holds a judgment no other layer can check? | Repair shape for mutation review B5; any fourth collector; the P1 add-on contract |
 | [OQ-014](open-questions/OQ-014-externalized-acquisition.md) | `RESOLVED` | P0-B | Should acquisition leave this service and be read over REST from a service that accumulates it? | Answered by [DP-012](decisions/DP-012-independent-scraper-services.md), accepted the same day on another branch. OQ-014's measurement is carried into DP-012 as falsification input |
+| [OQ-015](open-questions/OQ-015-share-alike-data-class.md) | `OPEN` | P1 | Where does share-alike-encumbered data sit in a three-class taxonomy? | The first P1 artifact published from a store holding an ODbL source; opened by [DP-027](decisions/DP-027-dataset-standard-and-share-alike.md) D4 |
 
 Stage expresses evidence routing, not long-term business importance.
 

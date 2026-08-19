@@ -20,6 +20,8 @@ below is backed by a run whose evidence is linked.
 |---|---|---|---|---|---|---|---|---|---|
 | `SRC-001` NCP NAVER API HUB | `REST_API` | `PASS` | `PASS` | `PASS` | `PASS` | `PASS` | Redistribution **not** permitted, so nothing captured may be committed; rate-limit and `Retry-After` behaviour `UNKNOWN`; one blog capture's digest lost before it was recorded | `CONDITIONAL GO` | [SRC-001](SRC-001-naver-api-hub.md) |
 | `SRC-002` locally authored JSONL | `DATASET_IMPORT` | `PASS` (trivially) | `PASS` (trivially) | `PASS` | `PASS` | `PASS` | **Not an external dataset.** Self-authored, so the rights gate passes without testing anything; duplicate-row behaviour unexercised | `CONDITIONAL GO` *as a structural stand-in only* | [SRC-002](SRC-002-local-jsonl.md) |
+| `SRC-003` Open Beauty Facts | `DATASET_IMPORT` | `PASS` | `PASS` | `PASS` | **`FAIL`** | `PASS` | **Korean sunscreen `0`, Korean toner `0`** of 73,464 products; only 36 South Korea rows at all, 22 of them with no category. ODbL share-alike and a machine-readable-copy offer attach to the derived store as soon as any output built from it is published; `code` identity verified against real change (delta export vs live API, 23 h apart) | **`NO-GO`** | [SRC-003](SRC-003-open-beauty-facts.md) |
+| `SRC-004` KHISS cosmetics industry statistics | `DATASET_IMPORT` | `PASS` | `PASS` | **`FAIL`** | **`FAIL`** | `PASS` | **No retrievable file** — the data.go.kr entry carries no attachment and the tables sit behind a KOSIS SSO redirect. Finest granularity is one of 13 statutory product classes by year; sunscreen is not a class and toner is never broken out of 기초 화장용 제품류. Latest period 2021 | **`NO-GO`** | [SRC-004](SRC-004-khiss-cosmetics-statistics.md) |
 
 ## Decision rules
 
