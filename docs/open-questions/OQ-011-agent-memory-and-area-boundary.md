@@ -1,12 +1,12 @@
 # OQ-011 — Two rules the operating-model adoption wrote without asking
 
-- Status: `OPEN`
+- Status: `RESOLVED`
 - Priority: low for delivery, immediate for the record
 - Owner: project owner
-- Owner decision: `AWAITING_USER`
-- Blocks: nothing under way. Both rules are written down and both are marked as proposed rather than in force.
+- Owner decision: `CONFIRMED ([DP-014](../decisions/DP-014-agent-memory-scope-and-area-exception.md))`
+- Blocks: nothing. Neither rule blocked work while open; both are now in force in the form DP-014 records.
 - Related experiments: none
-- Resolution Decision Packet: to be created; would amend [DP-013](../decisions/DP-013-agent-workflow-and-project-memory.md)
+- Resolution Decision Packet: [DP-014](../decisions/DP-014-agent-memory-scope-and-area-exception.md), amending [DP-013](../decisions/DP-013-agent-workflow-and-project-memory.md)
 
 ## Question
 
@@ -92,5 +92,13 @@ updated if R2 option 2 is chosen.
 
 ## Resolution
 
-- Outcome:
-- Decision Packet:
+- Outcome: **R1 — option 2, the repository half only.** The rule states where a project fact
+  belongs and no longer regulates what a private memory store may hold. Withdrawing that half is
+  conditional on the facts it targeted actually reaching the repository, so the subagent
+  concurrency limit and the verification-before-handoff rule are now recorded in
+  `project-state.md` §4.
+- Outcome: **R2 — option 1, recorded as an exception.** A sixth area was rejected because it
+  would answer `docs/areas/README.md`'s open hypothesis by adding a boundary to it.
+  `docs/areas/README.md` is unchanged.
+- Decision Packet: [DP-014](../decisions/DP-014-agent-memory-scope-and-area-exception.md),
+  accepted 2026-08-19.

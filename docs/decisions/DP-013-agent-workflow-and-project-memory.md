@@ -79,8 +79,11 @@ assumptions?
    attacker independently tries to falsify the result. The orchestrator accepts the result
    or requests a new packet.
 5. Raw conversations, session snapshots, credentials, private evaluation material, and
-   private datasets are not project memory and are not committed. A fact about this project
-   is not kept only in an agent's private memory store.
+   private datasets are not project memory and are not committed. **A fact about this project
+   belongs in this repository.** `[확인 사실]` This clause originally added "and is not kept only
+   in an agent's private memory store"; [DP-014](DP-014-agent-memory-scope-and-area-exception.md)
+   R1 withdrew that half — it reached past what this repository can back up or check, and the
+   facts it targeted are recorded in [`project-state.md`](../project-state.md) §4 instead.
 6. **The full flow is required by threshold, not by default.** `docs/agent-workflow/README.md`
    names the work that requires a packet and an independent report, and the work that does not.
    **When both lists fire, "required" wins**, and an exemption from the packet is never an

@@ -17,6 +17,7 @@ Active decisions:
 - [DP-011 — P0-B product decision and delivery scope](DP-011-p0b-product-and-delivery-scope.md) — accepted 2026-08-19; fixes the two-category R&D review flow and the 2026-08-26/27 delivery boundary
 - [DP-012 — Independent scraper services and COSMAI REST adapters](DP-012-independent-scraper-services.md) — accepted 2026-08-19; keeps scraper runtimes and first-stage storage outside COSMAI and integrates them through in-repository REST adapter add-ons
 - [DP-013 — Documented memory and role-separated agent workflow](DP-013-agent-workflow-and-project-memory.md) — accepted 2026-08-19; renumbered from the `DP-006` the isolated branch used, which [DP-006](DP-006-p0a-platform-foundation.md) already held
+- [DP-014 — Project memory scope, and the development-area exception](DP-014-agent-memory-scope-and-area-exception.md) — accepted 2026-08-19; resolves OQ-011 and amends DP-013 D5
 
 
 Superseded decisions:

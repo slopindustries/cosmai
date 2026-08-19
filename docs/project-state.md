@@ -1,7 +1,7 @@
 # Project State
 
 - Project: Cosmai
-- Version: 0.7
+- Version: 0.8
 - Updated: 2026-08-19
 - Phase: P0-B — Domain Integration, Evidence Synthesis, and Disposition
 - Next gate: P1 Entry Gate (inside P0-B)
@@ -172,6 +172,8 @@ The following accepted principles become executable domain behavior in P0-B, not
 - `[결정]` Consequential directions require an explicit owner question and a recorded answer before implementation.
 - `[결정]` Agent work is separated into orchestrator, planner, worker, and attacker responsibilities and handed off through bounded task packets and review reports.
 - `[결정]` The full agent flow applies by the threshold recorded in [Agent Operating Model](agent-workflow/README.md), not to every change.
+- `[결정]` [DP-014](decisions/DP-014-agent-memory-scope-and-area-exception.md) fixes what project memory covers: this repository is where a project fact belongs, and the convention does not regulate a private memory store. It also accepts that documents changing the project's operating method belong to no development area.
+- `[결정]` **Subagent operation.** P0-B runs at most **two concurrent subagents**; P0-A's one-at-a-time rule was scoped to P0-A and no longer applies. Hand work to a subagent only when that work has a means of **verifying its own result** — a task with no verification available is deferred even when a slot is free. `[확인 사실]` These were operating constraints held only outside the repository until DP-014 R1 required them to be recorded here.
 - `[확인 사실]` **One** part of that model is enforced: `tests/environment/test_agent_packet_record.py` rejects an `ACCEPTED` packet with no resolvable attack report. The rest is convention and is listed as such rather than implied. An earlier revision of this line also claimed `adversarial-reviewer` cannot write; that was false — its frontmatter denies three edit tools but not `Bash`. [REVIEW-TASK-001](agent-workflow/reviews/REVIEW-TASK-001.md) F1 measured the write.
 
 ## 5. Architecture hypotheses
@@ -201,7 +203,7 @@ The first two hypotheses can begin in P0-A. Acquisition and normalization hypoth
 | [OQ-008](open-questions/OQ-008-operator-reexecution-authority.md) | `OPEN` | P0-B | May an operator re-execute work that already succeeded, and what distinguishes that from retrying a failure? | Operator action set in `PoC Contract 0.1` |
 | [OQ-009](open-questions/OQ-009-credential-shape.md) | `OPEN` | P0-B | How is a source's credential declared, and where does each part of it go? | Multi-part `credential_ref`, outbound header attachment, dashboard credential form |
 | [OQ-010](open-questions/OQ-010-cursor-stream-read-back.md) | `OPEN` | P0-B | Which cursor does an add-on read back when it writes several streams? | Multi-stream collectors and importers, conformance resume scenario |
-| [OQ-011](open-questions/OQ-011-agent-memory-and-area-boundary.md) | `OPEN` | P0-B | Do the two rules the operating-model adoption wrote without asking — the private-memory rule and the development-area exception — bind? | Nothing under way; both are marked proposed |
+| [OQ-011](open-questions/OQ-011-agent-memory-and-area-boundary.md) | `RESOLVED` | P0-B | Do the two rules the operating-model adoption wrote without asking — the private-memory rule and the development-area exception — bind? | Resolved 2026-08-19 by DP-014: the memory rule narrowed to the repository half, the area exception accepted |
 
 Stage expresses evidence routing, not long-term business importance.
 
