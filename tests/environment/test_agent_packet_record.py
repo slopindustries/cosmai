@@ -12,6 +12,15 @@ for exactly this purpose. Every packet, regardless of status, must at least name
 a ``Status:`` the template recognises; an unrecognised status is a packet the
 orchestrator flow has no rule for.
 
+**Two claims this docstring made are false, and are corrected here rather than
+repaired**; ``docs/agent-workflow/reviews/REVIEW-TASK-001.md`` F2, F3, and F12
+hold the measurements. First, ``## Review`` membership is not checked at all:
+every field lookup takes the first matching line anywhere in the file, so a
+``- Status:`` line above that heading silently overrides the real one, and so
+does an earlier ``- Result:``. Second, "a repository path" below means only
+"not a URL, not ``mailto:``, not a bare anchor" — an absolute path such as
+``/etc/hosts``, a ``..`` escape out of the tree, and a directory all pass.
+
 ``STATUS_VALUES`` below is a copy of the template's own vocabulary rather than
 something parsed out of it at import time, so that a template formatting
 change fails one named test (``test_status_values_match_the_template``)
@@ -36,8 +45,10 @@ The real directory scan below proves nothing by itself: it can only fail when
 some packet under ``docs/agent-workflow/task-packets/`` is both ``ACCEPTED``
 and defective, and today that directory may hold no ``ACCEPTED`` packet at
 all. What gives this guard teeth is ``packet_problems`` being exercised
-directly against malformed packet bodies built inline, below, which do not
-depend on anything existing on disk.
+directly against malformed packet bodies built inline, below. Four of those
+cases do depend on ``docs/agent-workflow/README.md`` existing, because they use
+it as the link target that resolves; this sentence used to claim they depend on
+nothing on disk, which was false.
 
 This does **not** check that a packet exists at all for a given piece of
 work, that a report's content is any good, or that whoever wrote it was

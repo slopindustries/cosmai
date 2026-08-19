@@ -33,9 +33,10 @@ this only for a worker that is neither:
 
 ## Attacker
 
-Subagent type `adversarial-reviewer`. Its `disallowedTools: Write, Edit, NotebookEdit`
-is the only role prohibition in this project that a role cannot talk itself out of, so
-**spawn it rather than pasting this**:
+Subagent type `adversarial-reviewer`. **Spawn it rather than pasting this** — its
+`disallowedTools: Write, Edit, NotebookEdit` blocks the reflex edit that a pasted prompt only
+asks for. It is not a write barrier: `Bash` remains, and
+[`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F1 demonstrates the write.
 
 ```text
 너는 Cosmai의 어태커다. AGENTS.md, docs/project-state.md, docs/agent-workflow/ATTACKER.md와 [작업 패킷] 및 [워커 인수인계]를 읽고 주장을 독립적으로 깨뜨려 PASS·FAIL·BLOCKED 근거를 보고하라. 절대 구현을 고치거나 비공개 평가자료를 보지 마라.

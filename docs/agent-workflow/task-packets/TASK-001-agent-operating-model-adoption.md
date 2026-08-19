@@ -1,13 +1,13 @@
 # TASK-001 — Adopt the isolated agent operating model on the current branch
 
-- Status: `REVIEWING`
+- Status: `REWORK`
 - Phase: P0-B
 - Planner: none — see "How this packet came to exist" below
 - Worker: main session, 2026-08-19
 - Attacker: `adversarial-reviewer`
-- Orchestrator: project owner
+- Orchestrator: main session. `ORCHESTRATOR.md` says the role is the session that spawns the others; an earlier revision of this line named the project owner, which collapses the one action the role is defined by — REVIEW-TASK-001 F8
 - Created: 2026-08-19
-- Updated: 2026-08-19
+- Updated: 2026-08-19 (reworked after REVIEW-TASK-001 returned `FAIL`)
 
 ## How this packet came to exist
 
@@ -19,8 +19,14 @@ the person recording this are the same session.
 says work that changes an item accepted in `project-state.md` §4 requires the full flow, and
 this work changes one. Recording the packet honestly is worth more than either pretending
 the front half ran or leaving the first application of the model undocumented — which is the
-gap `DP-013` lists as the proposal's own self-exemption. The independent attack below is
-real; the planning separation is not, and the two are marked differently on purpose.
+gap `DP-013` lists as the proposal's own self-exemption. The planning separation did not
+happen, and is recorded as not having happened.
+
+`[확인 사실]` An earlier revision of this paragraph said "the independent attack below is real"
+while the `Attack report:` field was still empty — an intention written in the present tense,
+which is the first item on the list of things this project punishes. The attack has since run
+and returned `FAIL`; [`REVIEW-TASK-001`](../reviews/REVIEW-TASK-001.md) F15 is the finding
+against that sentence.
 
 ## Objective
 
@@ -96,7 +102,8 @@ adapt it so that every claim it makes about this project is true of this project
 # Replayable commands only; never include secret values.
 git log --oneline --graph -3 agent/operating-model     # b702c79 present as a merge parent
 # Expect hits only in superseded DP-002, docs/history/, and DP-013's account of the proposal.
-git grep -n 'CosmaSignal' -- docs AGENTS.md README.md
+# This packet and its review are excluded: criterion 3 names the string it tests for.
+git grep -n 'CosmaSignal' -- docs AGENTS.md README.md ':!docs/agent-workflow'
 ls docs/decisions/                                     # one DP-006, one DP-013
 .venv/bin/python -m pytest tests/environment/ -q
 ```
@@ -122,6 +129,12 @@ ls docs/decisions/                                     # one DP-006, one DP-013
 
 ## Review
 
-- Attack report:
-- Result: `PASS | FAIL | BLOCKED`
-- Orchestrator disposition:
+- Attack report: [REVIEW-TASK-001](../reviews/REVIEW-TASK-001.md)
+- Result: `FAIL`
+- Orchestrator disposition: **reworked, not accepted.** Two blocking and four major findings.
+  The claims that were false in the present tense are corrected in the commit that records the
+  report, repairing nothing — the `c0a266d` pattern. The defects themselves (the guard's path
+  check and its section scoping, the threshold's overlap, `docs/p0-execution-plan.md`'s stale
+  rows, the criteria that cannot fail) are repaired in the commit after it. This packet stays
+  `REWORK` rather than `ACCEPTED`: no second independent review has run, and marking it
+  `ACCEPTED` on a `FAIL` report would be the acceptance control failing in its first use.

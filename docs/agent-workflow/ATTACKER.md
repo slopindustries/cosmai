@@ -24,16 +24,23 @@ The attacker independently tries to falsify the worker result, packet assumption
 
 Spawn subagent type `adversarial-reviewer` rather than pasting a prompt.
 
-`[확인 사실]` Its frontmatter carries `disallowedTools: Write, Edit, NotebookEdit`, so
-*do not edit the implementation being reviewed* is the one prohibition in this project
-that a role cannot talk itself out of. `.claude/agents/adversarial-reviewer.md` records
-why that is a denylist rather than an allowlist: the intent is *may investigate anything,
-may repair nothing*, and an allowlist would also strip tools nobody thought to enumerate,
-narrowing the investigation instead of the repair.
+`[확인 사실]` Its frontmatter carries `disallowedTools: Write, Edit, NotebookEdit`, and the
+denial resolves. `.claude/agents/adversarial-reviewer.md` records why that is a denylist
+rather than an allowlist: the intent is *may investigate anything, may repair nothing*, and
+an allowlist would also strip tools nobody thought to enumerate, narrowing the investigation
+instead of the repair.
 
-`[추론]` Nothing enforces the rest — not the independence from the worker, not the honesty
-of a `PASS`. Those hold because a separate session produced the report, which is why an
-attack report written by the session that wrote the code is not a weaker review but a
+`[확인 사실]` **It is not a write barrier.** The same file hands this role `Bash` and tells it
+to run things, and `Bash` writes files. `[측정]` The reviewer of the change that adopted this
+document proved it on 2026-08-19 by modifying the repository's own packet guard and restoring
+it — [`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F1. An earlier revision of this section
+called the prohibition "the one prohibition a role cannot talk itself out of". That was false.
+
+`[결정]` So *do not repair what you review* is a rule you hold, not a wall you are behind.
+What the denial buys is that the accidental repair — the reflex edit while reading — is
+blocked. The deliberate one is not, and neither is your independence from the worker or the
+honesty of a `PASS`. Those hold because a separate session produced the report, which is why
+an attack report written by the session that wrote the code is not a weaker review but a
 false one.
 
 ## Where the report goes

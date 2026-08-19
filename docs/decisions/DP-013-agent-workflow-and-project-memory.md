@@ -3,7 +3,7 @@
 - Status: `ACCEPTED_FOR_POC`
 - Date: 2026-08-19
 - Owners: Project owner and project team
-- Owner confirmation: `CONFIRMED (project owner, 2026-08-19 — instruction to merge b702c79 onto 6d1e965 and adopt it as far as it helps this project)`
+- Owner confirmation: `CONFIRMED (project owner, 2026-08-19 — scope: the instruction to merge b702c79 onto 6d1e965 and adopt it as far as it helps this project. The adapted text below was NOT reviewed clause by clause; §Decision's seven rules, the consequential boundary, and the threshold are in force on that instruction and nothing narrower.)`
 - Origin: `b702c79` on `feat/agent-operating-model`, written 2026-08-18, held in isolation by [branching](../branching.md) after being reverted from `main` by agreement
 - Renumbered: proposed as `DP-006`, which [DP-006](DP-006-p0a-platform-foundation.md) already held
 - Related Open Questions: none. This decision governs how consequential questions are asked and recorded, not the answer to any one of them.
@@ -36,18 +36,31 @@ assumptions?
   the report was committed beside the experiment rather than summarized into it, and the
   follow-up commit repaired nothing — it corrected only the claims that were false. The
   worker/attacker separation is therefore existing practice getting a name, not a new cost.
-- `[확인 사실]` That review's first blocking finding is the argument for the planner/worker
-  split, in the reviewer's own words: *"the add-on cooperated" was read as "the platform
-  enforced" — the exact reading the experiment was designed to prevent, made by the person
-  who designed it.* One session wrote the acceptance criterion and the code that satisfied
-  it, and `max_pages` and `max_records` are enforced nowhere.
-- `[확인 사실]` Only one role prohibition in this model is structural. `adversarial-reviewer`
-  carries `disallowedTools: Write, Edit, NotebookEdit`. The planner's prohibition is **not
-  expressible** as a tool denial, because the planner needs `Write` to produce the packet.
-- `[추론]` The model's front half — a packet whose acceptance criteria are written by a role
-  that will not implement them — is therefore the part that is genuinely new here, and it is
-  also the part with no enforcement. Both facts belong in the same sentence whenever this
-  model is described.
+- `[확인 사실]` That review's first blocking finding is the measurement behind the
+  planner/worker split: an add-on fetching 12 times and emitting 600 items against
+  `max_pages=2, max_records=3` succeeded, because `max_pages` and `max_records` are enforced
+  nowhere. One session wrote the acceptance criterion and the code that satisfied it.
+- `[추론]` The diagnosis is the **author's**, not the reviewer's, and it is quoted here as an
+  inference rather than a finding: *"the add-on cooperated" was read as "the platform
+  enforced". That is the exact reading the experiment was designed to avoid, made by the person
+  who designed it.* — [`EXP-003`](../../experiments/integrated-p0/EXP-003-capability-layer.md)
+  §"Three defects", added by `c0a266d`. An earlier revision of this packet attributed it to the
+  reviewer and labelled it `[확인 사실]`; [`REVIEW-TASK-001`](../agent-workflow/reviews/REVIEW-TASK-001.md)
+  F6 is the correction. The accurate version is the stronger one — an independent reviewer
+  measured the gap and the author, reading the measurement, named the mechanism. That is the
+  split working.
+- `[확인 사실]` **No role prohibition in this model is structural.** An earlier revision of
+  this packet said one was — `adversarial-reviewer`'s `disallowedTools: Write, Edit,
+  NotebookEdit` — and [`REVIEW-TASK-001`](../agent-workflow/reviews/REVIEW-TASK-001.md) F1
+  refuted it by measurement: the denial resolves, but it does not remove `Bash`, and the same
+  agent definition hands the role `Bash` and tells it to run things. The denial blocks the
+  reflex edit and raises the cost of a deliberate one. It is a mitigation.
+- `[확인 사실]` The planner's prohibition is not expressible as a tool denial either, for a
+  different reason: the planner needs `Write` to produce the packet.
+- `[추론]` So the whole model rests on convention, and one repository guard. Both facts belong
+  in the same sentence whenever this model is described — which is why
+  `docs/agent-workflow/README.md` keeps the enforced and convention columns apart and why its
+  enforced column now holds one item instead of two.
 
 ## Decision
 
@@ -153,6 +166,28 @@ owner can reverse any of them:
    is checked rather than trusted.
 9. `Status`/`Owner confirmation` in this packet were set from the owner's adoption
    instruction; the adapted content itself has not been reviewed line by line.
+
+`[확인 사실]` Items 10-14 were **missing** from this list when it first claimed to be complete.
+[`REVIEW-TASK-001`](../agent-workflow/reviews/REVIEW-TASK-001.md) F4 found them by diffing
+`b702c79` against the result rather than reading the intent, which is how the list should have
+been produced in the first place.
+
+10. `project-memory.md` gained a section, "What does not belong in an agent's private memory".
+    It is a `[결정]` that reaches outside this repository: a private memory store must not be
+    the only place holding a project constraint. **This is consequential and the owner has not
+    been shown it as a decision.**
+11. `project-memory.md` gained a required recording rule: "Where a control is claimed, record
+    what it does not cover." F1 is the first thing it catches.
+12. `project-memory.md`'s routing table gained two rows, `docs/conventions/` and
+    `.claude/agents/` — the latter designating a directory `TASK-001` also lists as forbidden
+    material.
+13. `AGENTS.md` promoted the attacker's `BLOCKED` rule to a project-wide one. In `b702c79` it
+    bound only the attacker; it now binds every agent that reads `AGENTS.md`.
+14. `branching.md` gained a `[확인 사실]` exception to the one-area rule for documents that
+    change the project's operating method — **whose worked example is this branch.** A rule
+    that legitimizes the change introducing it belongs on a disclosure list, not inferred from
+    a diff. `docs/areas/README.md` was not updated to match. **Also consequential and also not
+    shown to the owner as a decision.**
 
 ## Remaining uncertainty
 

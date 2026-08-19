@@ -172,7 +172,7 @@ The following accepted principles become executable domain behavior in P0-B, not
 - `[결정]` Consequential directions require an explicit owner question and a recorded answer before implementation.
 - `[결정]` Agent work is separated into orchestrator, planner, worker, and attacker responsibilities and handed off through bounded task packets and review reports.
 - `[결정]` The full agent flow applies by the threshold recorded in [Agent Operating Model](agent-workflow/README.md), not to every change.
-- `[확인 사실]` Two parts of that model are enforced — `adversarial-reviewer` cannot write, and `tests/environment/test_agent_packet_record.py` rejects an `ACCEPTED` packet with no resolvable attack report. The rest is convention and is listed as such rather than implied.
+- `[확인 사실]` **One** part of that model is enforced: `tests/environment/test_agent_packet_record.py` rejects an `ACCEPTED` packet with no resolvable attack report. The rest is convention and is listed as such rather than implied. An earlier revision of this line also claimed `adversarial-reviewer` cannot write; that was false — its frontmatter denies three edit tools but not `Bash`. [REVIEW-TASK-001](agent-workflow/reviews/REVIEW-TASK-001.md) F1 measured the write.
 
 ## 5. Architecture hypotheses
 

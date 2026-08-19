@@ -9,10 +9,14 @@
 - Created:
 - Updated:
 
-`[확인 사실]` Four things in this file are checked by
-`tests/environment/test_agent_packet_record.py`: that `Status` holds one of the values
-above, and — when it is `ACCEPTED` — that `Attack report` carries a markdown link, that the
-link names a path inside this repository, and that the path exists. `Result` must be `PASS`.
+`[확인 사실]` Five things in this file are checked by
+`tests/environment/test_agent_packet_record.py`: that `Status` holds one of the values above,
+and — when it is `ACCEPTED` — that `Attack report` carries a markdown link, that the link is
+not a URL, `mailto:`, or bare `#anchor`, that the target resolves to something that exists,
+and that `Result` is `PASS`. An earlier revision of this note said "four" and said the link
+must "name a path inside this repository". Neither was accurate:
+[`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F2 shows the guard accepting `/etc/hosts`, a
+`..` escape, and a directory.
 Everything else here is convention, which `docs/agent-workflow/README.md` lists rather than
 implies.
 

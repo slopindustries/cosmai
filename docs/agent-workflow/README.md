@@ -34,7 +34,7 @@ Questions](../open-questions/README.md) states the same rule from the other side
 | [Orchestrator](ORCHESTRATOR.md) | owner questions, role assignment, boundary enforcement, final acceptance | silently choose consequential direction or implement a packet it is accepting | nothing — it is the session that spawns the others |
 | [Planner](PLANNER.md) | one bounded task packet and one-line role prompts | implement product code or accept its own plan | nothing expressible in frontmatter; see `PLANNER.md` |
 | [Worker](WORKER.md) | one packet's allowed changes and verification | expand scope, edit forbidden files, or choose blocked direction | `.claude/agents/mechanical.md`, `.claude/agents/addon-author.md` — reading order and model, not scope |
-| [Attacker](ATTACKER.md) | independent falsification and reproducible review result | fix the reviewed implementation or inspect private evaluation material | `.claude/agents/adversarial-reviewer.md` — `disallowedTools` makes "never repairs" structural |
+| [Attacker](ATTACKER.md) | independent falsification and reproducible review result | fix the reviewed implementation or inspect private evaluation material | `.claude/agents/adversarial-reviewer.md` denies three edit tools — a mitigation, **not** a barrier; `Bash` remains. See below |
 
 Spawn the subagent type rather than pasting a prompt where one exists. A constraint in
 frontmatter is loaded before the role can forget it; [`PROMPTS.md`](PROMPTS.md) has the
@@ -46,14 +46,11 @@ one-liners for the cases with no agent definition.
 checked**, so they are written separately — the same split, for the same reason, that
 [branching](../branching.md) uses.
 
-### Enforced by the harness or the test suite
+### Enforced by the test suite
 
-- `[확인 사실]` `adversarial-reviewer` cannot write, edit, or modify a notebook. Its
-  frontmatter denies those tools, so *the attacker does not repair what it reviews* holds
-  even for an attacker that never opened [`ATTACKER.md`](ATTACKER.md). Verified 2026-08-19
-  by the harness's own subagent registry, which lists this type as having every tool
-  *except* those three — a resolved denial rather than a key that was accepted and ignored,
-  which is what `fcf4b8a` found the reasoning-effort keys to be.
+One item. An earlier revision of this section listed two and was wrong about the second;
+[`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F1 is the correction and the demonstration.
+
 - `[확인 사실]` `tests/environment/test_agent_packet_record.py` fails the suite when a
   packet claims `ACCEPTED` without a linked attack report and a `PASS` result. That is the
   checkable half of the orchestrator's prohibition on accepting work because the worker
@@ -61,6 +58,17 @@ checked**, so they are written separately — the same split, for the same reaso
 
 ### Convention only
 
+- **That the attacker does not repair what it reviews.** `adversarial-reviewer`'s frontmatter
+  denies `Write`, `Edit`, and `NotebookEdit`, and `[확인 사실]` the denial resolves — the
+  harness's subagent registry lists the type as having every tool *except* those three, which
+  is more than `fcf4b8a` could say about the reasoning-effort keys. But **every tool includes
+  `Bash`**, and `.claude/agents/adversarial-reviewer.md` hands it `Bash` and tells it to run
+  things. `[측정]` On 2026-08-19 the reviewer of this change created a file under
+  `docs/agent-workflow/` and modified `tests/environment/test_agent_packet_record.py` through
+  `Bash`, then restored it. The denial removes the *likely* path to an accidental repair and
+  raises its cost. It is a mitigation, not a write barrier. `[추론]` The 2026-08-18 reviewer
+  had the stronger property this section used to claim — it worked from a **copy** — and that
+  property belongs to the copy, not to `disallowedTools`.
 - **That a packet exists at all.** Nothing detects work done without one.
 - **That the attacker was independent of the worker.** One session can write the packet,
   write the code, and write the attack report while naming itself three roles, and no
@@ -69,7 +77,8 @@ checked**, so they are written separately — the same split, for the same reaso
   record that reads as evidence.
 - **That `Owner confirmation` in a Decision Packet names an answer the owner gave.**
 - **That the planner did not implement.** Not expressible as a tool denial.
-- Every field value in a packet or report other than the four the guard checks.
+- Every field in a packet other than the ones the guard checks, and every field in a report.
+  The guard never opens a report; it only tests that a path resolves.
 
 `[결정]` This is recorded rather than smoothed over. A control that looks stronger than it
 is, is worse than a recorded absence.
