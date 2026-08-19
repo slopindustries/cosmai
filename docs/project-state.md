@@ -42,6 +42,12 @@ and all four B5 outputs were written on 2026-08-19.
 | B4 real-data and failure evidence | complete with named gaps — [`B4-SCENARIO-COVERAGE.md`](../experiments/integrated-p0/evidence/B4-SCENARIO-COVERAGE.md) |
 | B5 synthesis, disposition, P1 entry | documents written; **acceptance pending** |
 
+`[확인 사실]` The [execution plan's starting measurement](p0-execution-plan.md#starting-measurement)
+records the same packages as *not started*, because it measured what was **committed** at
+`c0a266d` while this section measured the working tree of the same day. Its fourth column
+carries what has since become history, and where that history still falls short of the
+plan's criterion. Read the two together; neither is wrong alone.
+
 `[확인 사실]` **[DP-011](decisions/DP-011-p0b-product-and-delivery-scope.md) and
 [DP-012](decisions/DP-012-independent-scraper-services.md) were accepted the same day, on a
 branch this work could not see.** They name a product scope — an evidence-backed R&D

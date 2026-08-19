@@ -168,16 +168,24 @@ into a pass.
 
 `[확인 사실]` The starting revision is `c0a266d` on `dev`.
 
-| Package | State at the starting revision | Completion evidence still missing |
-|---|---|---|
-| P0-A | `COMPLETED`, gate accepted `GO` | None for the P0-A boundary; domain claims remain outside that gate. |
-| B0 / EXP-002 | Closed by timebox; contract, host, domain tables, authoring kit, conformance normalizer, and first collector exist | Full conformance suite and domain operator surfaces. |
-| EXP-003 | Procedure complete, status `RUNNING`, result `PARTIAL` | Ten adversarial-review findings are unrepaired: 3 blocking, 3 major, 3 moderate, 1 minor. |
-| B1 | Not started | Rights and capability profiles, source matrix, one REST and one dataset decision, real captures. |
-| B2 | Product decision now fixed by DP-011; other domain contracts not started | Sample-driven Schema 0.x, Raw/snapshot/normalization/operations contracts and scenarios. |
-| B3 | A direct Naver add-on prototype exists but has run only against a local stub; the selected independent-service boundary and adapter do not yet exist; structural normalizer only | Naver service and adapter, real-source run, importer, semantic rule baseline, normalized-result lineage, cards, domain operator behavior. |
-| B4 | Not started | Real-data replay, failure, concurrency, recovery, security, and operator evidence. |
-| B5 | Not started | Architecture Synthesis, disposition, `PoC Contract 0.1`, reconstruction plan, and P1 Entry Gate. |
+`[확인 사실]` **The fourth column exists because this table and
+[`project-state.md`](project-state.md) appeared to disagree and did not.** This table
+measured what was *committed* at `c0a266d`; `project-state.md` measured what was in the
+working tree on the same day. Both were right about different things, and a reader meeting
+"B4 — Not started" beside "B4 — complete with named gaps" cannot tell that without being
+told. The column records what has since become history, and — more usefully — where the
+committed work still does not meet this plan's criterion.
+
+| Package | State at the starting revision | Completion evidence still missing | Committed since this measurement, on `p0b/domain-and-synthesis` |
+|---|---|---|---|
+| P0-A | `COMPLETED`, gate accepted `GO` | None for the P0-A boundary; domain claims remain outside that gate. | `[확인 사실]` Unchanged. |
+| B0 / EXP-002 | Closed by timebox; contract, host, domain tables, authoring kit, conformance normalizer, and first collector exist | Full conformance suite and domain operator surfaces. | `addon_api` 1.0 → 1.3, written down as [`CONTRACT-ADDON@1.3`](../contracts/experimental/CONTRACT-ADDON-1.3.md); the host binds all three kinds; `addon_host` gained an API, a worker, and an entrypoint. Domain operator surfaces exist for collector and normalizer only — **no route creates an import job**. |
+| EXP-003 | Procedure complete, status `RUNNING`, result `PARTIAL` | Ten adversarial-review findings are unrepaired: 3 blocking, 3 major, 3 moderate, 1 minor. | Status still `RUNNING`. `[측정]` The five blocking work items are repaired, the mutation review's B series is repaired, and `SEC-006` is waived rather than satisfied ([DP-023](decisions/DP-023-sec-006-waived-for-p0.md)). The experiment is not closed. |
+| B1 | Not started | Rights and capability profiles, source matrix, one REST and one dataset decision, real captures. | `SRC-001` (NAVER API Hub), `SRC-002`, and the selection matrix are committed. **The REST half is real; the dataset half is not.** `SRC-002` is a file this project writes for itself, recorded as a deliberate substitution — so B1's dataset decision, in this plan's sense, is still open. |
+| B2 | Product decision now fixed by DP-011; other domain contracts not started | Sample-driven Schema 0.x, Raw/snapshot/normalization/operations contracts and scenarios. | [`PoC Contract 0.1`](../contracts/experimental/POC-CONTRACT-0.1.md), Schema 0.1 ([DP-019](decisions/DP-019-normalized-schema-0-1-and-results.md)) and Schema 0.2 ([DP-021](decisions/DP-021-schema-0-2-trend-points.md)) are committed. **None of it is DP-011's product schema** — no card, product, ingredient, or topic identity. |
+| B3 | A direct Naver add-on prototype exists but has run only against a local stub; the selected independent-service boundary and adapter do not yet exist; structural normalizer only | Naver service and adapter, real-source run, importer, semantic rule baseline, normalized-result lineage, cards, domain operator behavior. | Three collectors, one importer, three normalizers, and a domain operator screen. `[확인 사실]` **They call the source directly.** The independent-service boundary and adapter [DP-012](decisions/DP-012-independent-scraper-services.md) selects do not exist, and neither does a rule baseline, a trend evaluator, or a card. |
+| B4 | Not started | Real-data replay, failure, concurrency, recovery, security, and operator evidence. | [`B4-SCENARIO-COVERAGE.md`](../experiments/integrated-p0/evidence/B4-SCENARIO-COVERAGE.md) and real captures against the live API on 2026-08-19, with digests for two of three and the third recorded as a lost-digest gap. Covers platform and acquisition failure; covers nothing about cards or trend classes. |
+| B5 | Not started | Architecture Synthesis, disposition, `PoC Contract 0.1`, reconstruction plan, and P1 Entry Gate. | Architecture Synthesis v0.1, artifact disposition, and the P1 reconstruction plan are written. `[확인 사실]` They synthesize the pre-DP-011 delivery. The P1 Entry Gate has not been held. |
 
 ### Branch and agent-work disposition
 
