@@ -21,8 +21,11 @@ path check can know.
 
 ## Who commits it
 
-`[확인 사실]` The attacker does not commit its own report. `adversarial-reviewer` is denied
-`Write` and `Edit`, so it returns the report body and **the session under review commits it.**
+`[결정]` The attacker does not commit its own report: it returns the report body and **the
+session under review commits it.** That is a convention, not a consequence of the tool denial —
+an earlier revision of this sentence wrote "is denied `Write` and `Edit`, **so** it returns the
+report body", which the next paragraph refutes
+([`REVIEW-TASK-001-R2`](REVIEW-TASK-001-R2.md) F7).
 That is the one place independence leaks, and the rule that closes it is the one `c0a266d`
 followed: commit the body **verbatim**. A report paraphrased by its subject is the thing
 `reviews/README.md` opens by rejecting.

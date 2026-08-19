@@ -154,18 +154,35 @@ verify what it was asked to verify returns `BLOCKED`; it does not return a quali
 
 ## This flow ran once before these documents existed
 
-`[확인 사실]` `27f712b` and `c0a266d` are a worker result and an independent attack on it,
+`[추론]` `27f712b` and `c0a266d` are a worker result and an independent attack on it,
 run on 2026-08-18 at 20:24 and 21:38 — hours *after* `b702c79` wrote these documents at
-14:48 the same day, on a branch that had never seen them. A reviewer with no write access
-returned three blocking, three major, three moderate, and one minor finding, the report was
-committed beside the work as
+14:48 the same day, on a branch that had never seen them. The reviewer returned three blocking,
+three major, three moderate, and one minor finding, and the report was committed beside the work as
 [`ADVERSARIAL-REVIEW-2026-08-18.md`](../../experiments/integrated-p0/ADVERSARIAL-REVIEW-2026-08-18.md)
 rather than summarized into it, and the follow-up commit repaired nothing — it corrected
-only the claims that were false.
+only the claims that were false. The commits, the counts, and the timestamps are `[확인 사실]`;
+the reviewer's independence is `[추론]`, resting on that report's own self-description
+("an independent agent with no write access to the repository, **working from a copy**"). An
+earlier revision of this paragraph asserted "a reviewer with no write access" as
+`[확인 사실]` while §"What is enforced" said the opposite two screens above —
+[`REVIEW-TASK-001-R2`](reviews/REVIEW-TASK-001-R2.md) F6. The copy is the half that carries
+the property.
 
 `[추론]` Two things follow. The back half of this model is existing practice getting a
 name, so adopting it costs little. And the front half — a packet whose acceptance criteria
 are written by someone who will not implement them — is the part that is genuinely new,
-which is why the review's first blocking finding is the argument for it: *"the add-on
-cooperated" was read as "the platform enforced" — the exact reading the experiment was
-designed to prevent, made by the person who designed it.*
+which is why that review's first blocking finding is the argument for it: an add-on fetching
+12 times and emitting 600 items against `max_pages=2, max_records=3` succeeded, because those
+limits are enforced nowhere. The session that wrote the acceptance criterion also wrote the code
+that satisfied it.
+
+`[추론]` The diagnosis of *how* that happened is the **author's**, not the reviewer's, and it is
+an inference rather than a finding: *"the add-on cooperated" was read as "the platform
+enforced". That is the exact reading the experiment was designed to avoid, made by the person
+who designed it.* — [`EXP-003`](../../experiments/integrated-p0/EXP-003-capability-layer.md),
+added by `c0a266d`. An earlier revision of this paragraph attributed that sentence to the
+reviewer and altered one word of it;
+[`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F6 found it and
+[`REVIEW-TASK-001-R2`](reviews/REVIEW-TASK-001-R2.md) F2 found that only `DP-013` had been
+corrected. The accurate version is the stronger one: an independent reviewer measured the gap,
+and the author, reading the measurement, named the mechanism.

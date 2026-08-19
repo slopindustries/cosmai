@@ -41,8 +41,11 @@ adapt it so that every claim it makes about this project is true of this project
   and [DP-011](../../decisions/DP-011-p0b-product-and-delivery-scope.md) for the delivery
   boundary the threshold is calibrated against
 - Contracts: none
-- Open Questions: none
-- Owner decisions required: `none` — the owner instructed the merge and the adaptation on 2026-08-19
+- Open Questions: [OQ-011](../../open-questions/OQ-011-agent-memory-and-area-boundary.md) — two rules this work wrote without asking, both marked proposed in place
+- Owner decisions required: **two**, and they are `OQ-011` R1 and R2. An earlier revision said
+  `none`; [`REVIEW-TASK-001-R2`](../reviews/REVIEW-TASK-001-R2.md) §"Scope and decision-boundary
+  review" found that inconsistent with the packet's own dependencies. The merge and the
+  adaptation were instructed on 2026-08-19; the two rules were not.
 - Required evidence or environment: the checkout's virtualenv; `.venv/bin/python -m pytest`
 
 ## Scope
@@ -156,7 +159,7 @@ ls docs/decisions/                                     # one DP-006, one DP-013
 
 ## Review
 
-- Attack report: [REVIEW-TASK-001](../reviews/REVIEW-TASK-001.md)
+- Attack report: [REVIEW-TASK-001-R2](../reviews/REVIEW-TASK-001-R2.md), the latest; the first round is [REVIEW-TASK-001](../reviews/REVIEW-TASK-001.md). `[확인 사실]` Both links share one line on purpose — a second `- Attack report:` line would trip the guard's own duplicate rule.
 - Result: `FAIL`
 - Orchestrator disposition: **reworked, not accepted.** Two blocking and four major findings.
   The claims that were false in the present tense are corrected in the commit that records the
