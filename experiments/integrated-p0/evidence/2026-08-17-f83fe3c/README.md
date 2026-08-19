@@ -23,32 +23,43 @@ git diff f83fe3c..HEAD -- experiments/integrated-p0/platform_core \
 - The path list included `experiments/integrated-p0/tests`, which P0-B necessarily adds
   files to, so the claim could not survive P0-B by construction.
 
-`[측정]` What has changed under the two code paths since `f83fe3c`:
+`[측정]` What has changed under the two code paths since `f83fe3c`, **re-measured
+2026-08-19**:
 
-| Change | Commit | Why |
+| Path | Files | Lines |
 |---|---|---|
-| `dashboard/src/App.tsx` — `"CosmaSignal P0-A operator surface"` → `"Cosmai …"` | `d714b3b` | [DP-007](../../../../docs/decisions/DP-007-project-rename-to-cosmai.md) |
-| `platform_core/api/app.py` — `title="CosmaSignal P0-A operator API"` → `"Cosmai …"` | `d714b3b` | DP-007 |
-| `platform_core/config.py` — `COSMA_ADDON_DIR` added to `RECOGNIZED_UNUSED` | B0 | See below |
+| `platform_core/` | 7 | +246 −36 |
+| `dashboard/` | 7 | +393 −47 |
 
-`[추론]` The first two are worth naming plainly, because DP-007 declined to rename the
-`COSMA_` prefix *on the grounds that* churn would "spend that claim on a cosmetic edit" —
-and then spent it on two display strings for the same kind of reason. The packet's
-conclusion still stands; its stated rationale was inconsistent with its own effect, and
-that is recorded here rather than left for a later reader to discover.
+`[확인 사실]` The largest are `jobs/store.py` (+107), `jobs/runner.py` (+71),
+`jobs/registry.py` (+31), and `worker.py` (+27), landed by `b91d51c`, `27f712b` and
+`c0a266d`. **These are behaviour changes**, not display strings: the claim-conflict
+statement, the runner's classification boundary, the registry's binding seam, and the
+worker's per-connection registry.
 
-The third is a one-line entry, not a behaviour change. Without it every process setting
-`COSMA_ADDON_DIR` logs that the variable "is ignored", which is false — `addon_host`
-reads it. A standing false positive in the unknown-variable report defeats the thing that
-report is for.
+`[측정]` **This section previously listed three cosmetic changes and concluded that none of
+them altered any behaviour these artifacts measure.** That was true when it was written and
+became false as P0-B proceeded; it was found by
+[`ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md`](../../ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md)
+M5 and corrected on 2026-08-19. The three original entries — two DP-007 display strings and
+the `COSMA_ADDON_DIR` entry in `RECOGNIZED_UNUSED` — are still accurate as *examples*; what
+was wrong was treating them as the complete list.
 
-**What the artifacts below still support.** They were produced by `f83fe3c` and none of
-the three changes above alters any behaviour they measure: two display strings and one
-membership test in a report none of these artifacts contain. The hashes are unchanged and
-still verify. What is no longer available is the stronger form of the claim — "no code has
-changed at all" — and re-capturing at a current revision is the only way to restore it.
-That is recorded as a limitation rather than repaired, because the artifacts are evidence
-for P0-A and P0-A is closed.
+`[추론]` The two display strings are still worth naming plainly, because
+[DP-007](../../../../docs/decisions/DP-007-project-rename-to-cosmai.md) declined to rename
+the `COSMA_` prefix *on the grounds that* churn would "spend that claim on a cosmetic edit"
+— and then spent it on two display strings for the same kind of reason. The packet's
+conclusion still stands; its stated rationale was inconsistent with its own effect.
+
+**What the artifacts below still support — and what they no longer do.** They were produced
+by `f83fe3c` and their hashes still verify against that revision. `[추론]` What they can no
+longer support is any claim about the *current* platform: behaviour they measured has since
+changed under them. Reading them as current evidence would be reading a photograph as a
+window.
+
+`[결정]` The repair is to re-capture at a current revision — `--capture-evidence=DIR` exists
+for exactly this — not to weaken the sentence. Until that capture exists, these artifacts
+are evidence about `f83fe3c` and about nothing else.
 
 Getting here took two corrections, both found by review. The directory was first named
 `5b26d47`, the revision the work started from, which has no `/events` endpoint at all.

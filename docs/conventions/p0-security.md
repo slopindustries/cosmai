@@ -100,6 +100,38 @@ P0-A implements only the repository-external secret-store location guard, redact
 - `SEC-005` — P0-A/P0-B: P0 operator surface가 기본 설정에서 loopback 밖에 노출되지 않는다.
 - `SEC-006` — P0-B entry: Agent 샌드박스의 `allowedDomains`가 P0-A의 `["*"]`에서 등록된 source host와 필요한 registry로 좁혀져 있다.
 
+### ⚠️ 위 번호는 `tests/acceptance/SEC-00N`과 다른 번호 체계다
+
+`[확인 사실]` 이 문서의 `SEC-00N`은 **요구사항 baseline**이고,
+[`tests/acceptance/`](../../tests/acceptance/)의 `SEC-00N`은 **시나리오 id**다. 접두사가 같고
+번호가 겹치는데 **가리키는 것이 하나도 일치하지 않는다.**
+[ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md](../../experiments/integrated-p0/ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md)
+M5가 찾았다.
+
+| 이 문서 | 내용 | 대응하는 시나리오 |
+|---|---|---|
+| `SEC-001` | secret이 log·error·metadata에 나타나지 않는다 | **`SEC-004`** redaction boundary holds |
+| `SEC-002` | 미등록 source·미허용 host 거부 | 없음 — P0-B `SEC` 시나리오로 추가되어야 한다 |
+| `SEC-003` | redirect·DNS가 정책을 벗어나면 거부 | 없음 — 같음 |
+| `SEC-004` | oversized·slow response가 bounded failure로 종료 | 없음 — 같음 |
+| `SEC-005` | operator surface가 loopback 밖에 노출되지 않는다 | **`SEC-002`** operator surfaces bind to loopback |
+| `SEC-006` | 샌드박스 `allowedDomains` 축소 | 없음 — [DP-023](../decisions/DP-023-sec-006-waived-for-p0.md)으로 면제 |
+
+`[확인 사실]` 시나리오 쪽에만 있고 이 목록에 대응이 없는 것도 둘 있다:
+`SEC-001`(secret store 경로 가드)과 `SEC-003`(잘못된 설정은 재시도 불가).
+
+`[추론]` **"SEC-002가 통과했다"는 문장은 이 대조표 없이는 뜻이 정해지지 않는다.** 둘 중 어느
+체계인지에 따라 전혀 다른 주장이 된다. 번호를 다시 매기지 않고 대조표를 두는 쪽을 골랐는데,
+개명은 두 방향의 기존 링크를 모두 깨뜨리고 이 혼동은 링크가 아니라 **인용**에서 생기기
+때문이다. Architecture Synthesis는 이 표를 거쳐 인용해야 한다.
+
+  `[결정]` **P0 범위에서 면제됨 — [DP-023](../decisions/DP-023-sec-006-waived-for-p0.md).**
+  2026-08-19 기준 좁혀져 있지 않고, 수집기 셋이 이미 실제 API에 요청을 보냈다. 독립 mutation
+  리뷰가 이를 blocking으로 보고했고(`ADVERSARIAL-REVIEW-2026-08-19-MUTATION.md` B1), 운영자가
+  노출을 인지한 상태에서 수용했다. **미수행이 아니라 면제이며, 둘은 settings 파일에서 똑같이
+  보이지만 전혀 다른 것이다.** 이 면제는 P1 Entry Gate에서 만료된다. 따라서 `SEC-006`은
+  충족된 acceptance evidence 목록에 올라갈 수 없다.
+
 ## Non-goals
 
 - Production identity provider 선택

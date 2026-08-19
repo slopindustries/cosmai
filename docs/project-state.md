@@ -2,7 +2,7 @@
 
 - Project: Cosmai
 - Version: 0.5
-- Updated: 2026-08-18
+- Updated: 2026-08-19
 - Phase: P0-B — Domain Integration, Evidence Synthesis, and Disposition
 - Next gate: P1 Entry Gate (inside P0-B)
 
@@ -25,6 +25,30 @@ No stage advances automatically because code appears to work. Update this file a
 First build and test a source- and normalization-independent platform core. Then, in P0-B, select one REST source and one dataset, define and implement the acquisition and normalization domain, execute realistic integrated failures, and synthesize enough evidence to write `PoC Contract 0.1` and a P1 reconstruction plan.
 
 P0 remains disposable. P1 is reconstructed from accepted contracts and evidence rather than evolved directly from P0 implementation modules.
+
+### Where this stands, 2026-08-19
+
+`[측정]` **Every P0-B work package's deliverables exist.** B0–B3 were complete before this
+date; B1's *records* (`SRC-001`, `SRC-002`, the selection matrix), B4's evidence coverage,
+and all four B5 outputs were written on 2026-08-19.
+
+| Package | State |
+|---|---|
+| B0 add-on layer | complete |
+| B1 source exploration and selection | complete — REST real, dataset a recorded structural substitution |
+| B2 decision use and domain contracts | complete — folded into [`PoC Contract 0.1`](../contracts/experimental/POC-CONTRACT-0.1.md) by owner decision |
+| B3 concrete implementation | complete — 3 collectors, 1 importer, 3 normalizers, dashboard |
+| B4 real-data and failure evidence | complete with named gaps — [`B4-SCENARIO-COVERAGE.md`](../experiments/integrated-p0/evidence/B4-SCENARIO-COVERAGE.md) |
+| B5 synthesis, disposition, P1 entry | documents written; **acceptance pending** |
+
+`[확인 사실]` **Two acts remain and neither is a document.** The P0 archive tag does not
+exist, and the P1 Entry Gate has not been held. Both are the project owner's:
+`AGENTS.md` makes commits, pushes, and tags things that happen when asked, and a gate that
+accepted itself would not be a gate.
+
+`[결정]` Until that gate is held, P0-B is **complete as work and unaccepted as a stage**.
+The distinction matters: `apps/` stays empty, and `SEC-006`'s waiver
+([DP-023](decisions/DP-023-sec-006-waived-for-p0.md)) has not yet expired.
 
 ## 2. Final product goal
 
@@ -71,6 +95,10 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 - `[결정]` [DP-005](decisions/DP-005-two-part-pre-p1-execution.md) divides all pre-P1 delivery into P0-A and P0-B.
 - `[결정]` [DP-008](decisions/DP-008-addon-architecture.md) makes collectors, importers, and normalizers in-repository add-ons behind a contract, superseding DP-005's P0-B order steps 4–6 and DP-006's module layout.
 - `[결정]` [DP-010](decisions/DP-010-durable-work-in-the-completion-transaction.md) lets a handler enlist work into the transaction that completes its attempt, closing the gap the P0-A gate recorded first. It restates DP-008 D1's principle: `platform_core` stays **source-neutral**, not frozen.
+- `[결정]` [DP-018](decisions/DP-018-credential-parts-and-attachment.md) makes a credential a set of named parts, each a secret-store key name filling one **protected** header, declared in the source's operator-approved outbound profile. Resolves OQ-009 for P0-B.
+- `[결정]` [DP-019](decisions/DP-019-normalized-schema-0-1-and-results.md) fixes `Normalized Schema 0.1`, the `normalized_result` table, and what a snapshot selects. It also records the **provisional decision use** §2 requires before a concrete normalizer exists.
+- `[결정]` [DP-020](decisions/DP-020-request-method-and-body.md) puts the request method on the approved profile and the request body with the add-on, and bumps `addon_api` to contract 1.1. Two of the three selected NAVER endpoints are `POST` with a JSON body and were unreachable without it.
+- `[결정]` [DP-021](decisions/DP-021-schema-0-2-trend-points.md) makes Schema 0.2 a discriminated union on `record_type` so a document and a trend point can share one table.
 
 ### Technology constraints
 
@@ -157,10 +185,10 @@ These are not contracts.
 
 - `[가설]` A source- and normalization-independent platform core can expose useful execution, recovery, operator, and safety evidence before P0-B introduces the domain pipeline.
 - `[가설]` PostgreSQL job tables with at-least-once processing and idempotent platform effects are sufficient for P0 concurrency.
-- `[가설]` A shared Raw envelope plus source-specific payload can represent both REST responses and dataset rows without loss.
-- `[가설]` A materialized snapshot plus manifest and hashes is sufficient for replay despite later Raw-store changes or migration.
-- `[가설]` One small `Normalized Schema 0.x` can express useful common meaning across the first two sources.
-- `[가설]` A rule baseline can expose schema and quality problems before ML or LLM providers are introduced.
+- `[가설]` A shared Raw envelope plus source-specific payload can represent both REST responses and dataset rows without loss. `[측정]` **Supported for the shapes tested, 2026-08-19.** One `raw_envelope` carried a REST response and a local file through the same completion transaction; `endpoint_ref` and `status` became nullable and `input_ref` joined them ([DP-024](decisions/DP-024-local-input-registry.md)) — a column becoming optional, not a second table. The dataset half is self-authored, so nothing here is evidence about a real producer.
+- `[가설]` A materialized snapshot plus manifest and hashes is sufficient for replay despite later Raw-store changes or migration. `[측정]` **Half tested, 2026-08-19.** Tampering is detected and named. **Raw-store evolution was never exercised** — no migration changed the Raw tables after a snapshot was sealed — so the half the hypothesis is actually about has no evidence.
+- `[가설]` One small `Normalized Schema 0.x` can express useful common meaning across the first two sources. `[측정]` **Refuted in its strong form on 2026-08-19.** Against a blog document and a DataLab trend point the only overlap is identity, time, and provenance — the fields any record needs to *be* a record — and there is no common domain meaning between "someone wrote this" and "people searched this much". [DP-021](decisions/DP-021-schema-0-2-trend-points.md) adopts the weaker form: one schema carries a common **envelope** and a per-type body. The Architecture Synthesis should carry the refutation rather than restate the hypothesis.
+- `[가설]` A rule baseline can expose schema and quality problems before ML or LLM providers are introduced. `[측정]` **Not tested in P0.** No quality baseline was built; the normalizers extract, they do not judge.
 
 The first two hypotheses can begin in P0-A. Acquisition and normalization hypotheses are tested only in P0-B.
 
@@ -176,8 +204,10 @@ The first two hypotheses can begin in P0-A. Acquisition and normalization hypoth
 | [OQ-006](open-questions/OQ-006-job-concurrency.md) | `OPEN` | P0-A/P0-B | Is the PostgreSQL job model sufficient under platform and domain failures? | Worker, retry, and transaction contract |
 | [OQ-007](open-questions/OQ-007-credential-scope.md) | `OPEN` | P0-A/P0-B | What does the platform protect before a source exists, and which real credentials may a domain worker resolve? | Secret guard and source credential contract |
 | [OQ-008](open-questions/OQ-008-operator-reexecution-authority.md) | `OPEN` | P0-B | May an operator re-execute work that already succeeded, and what distinguishes that from retrying a failure? | Operator action set in `PoC Contract 0.1` |
-| [OQ-009](open-questions/OQ-009-credential-shape.md) | `OPEN` | P0-B | How is a source's credential declared, and where does each part of it go? | Multi-part `credential_ref`, outbound header attachment, dashboard credential form |
+| [OQ-009](open-questions/OQ-009-credential-shape.md) | `RESOLVED` | P0-B | How is a source's credential declared, and where does each part of it go? | Resolved for P0-B by [DP-018](decisions/DP-018-credential-parts-and-attachment.md) on one source's evidence; H1's query-parameter and signed-request cases stay open |
 | [OQ-010](open-questions/OQ-010-cursor-stream-read-back.md) | `OPEN` | P0-B | Which cursor does an add-on read back when it writes several streams? | Multi-stream collectors and importers, conformance resume scenario |
+| [OQ-013](open-questions/OQ-013-addon-responsibility-boundary.md) | `OPEN` | P0-B | What is an add-on responsible for, and what holds a judgment no other layer can check? | Repair shape for mutation review B5; any fourth collector; the P1 add-on contract |
+| [OQ-014](open-questions/OQ-014-externalized-acquisition.md) | `OPEN` | P1 candidate | Should acquisition leave this service and be read over REST from a service that accumulates it? | Architecture Synthesis, `PoC Contract 0.1`, P1 reconstruction plan |
 
 Stage expresses evidence routing, not long-term business importance.
 

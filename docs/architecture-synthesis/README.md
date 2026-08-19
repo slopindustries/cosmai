@@ -1,6 +1,19 @@
 # Architecture Synthesis and P0 Disposition
 
-Architecture Synthesis is the final work package inside P0-B, not a separate delivery stage. This directory remains mostly empty until the real-data and failure evidence required by the P0 Charter has been collected.
+Architecture Synthesis is the final work package inside P0-B, not a separate delivery stage.
+
+`[확인 사실]` **As of 2026-08-19 the first three outputs exist and none is accepted.**
+
+| Output | File | Status |
+|---|---|---|
+| Architecture Synthesis | [architecture-synthesis-v0.1.md](architecture-synthesis-v0.1.md) | `DRAFT_FOR_GATE` |
+| Artifact disposition register | [P0-ARTIFACT-DISPOSITION.md](P0-ARTIFACT-DISPOSITION.md) | `DRAFT` — one acceptance check unmet |
+| `PoC Contract 0.1` | [`../../contracts/experimental/POC-CONTRACT-0.1.md`](../../contracts/experimental/POC-CONTRACT-0.1.md) | `EXPERIMENTAL` |
+| P1 reconstruction plan | [P1-RECONSTRUCTION-PLAN.md](P1-RECONSTRUCTION-PLAN.md) | `DRAFT_FOR_GATE` |
+| P1 Entry Gate | [P1-ENTRY-GATE-TEMPLATE.md](P1-ENTRY-GATE-TEMPLATE.md) | not started |
+
+`[결정]` Acceptance is the P1 Entry Gate's act and not these documents'. A draft that
+declared itself accepted would be the gate deciding its own outcome.
 
 Architecture Synthesis must answer:
 
