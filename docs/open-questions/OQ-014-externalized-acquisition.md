@@ -1,11 +1,11 @@
 # OQ-014 — Whether acquisition leaves this service and becomes something we read over REST
 
-- Status: `OPEN`
+- Status: `RESOLVED`
 - Priority: P1 candidate — an architecture choice, not a P0-B implementation task
 - Owner: Project team
 - Blocks: the Architecture Synthesis; `PoC Contract 0.1`; the P1 reconstruction plan
 - Related: [OQ-013](OQ-013-addon-responsibility-boundary.md), [DP-008](../decisions/DP-008-addon-architecture.md), [DP-018](../decisions/DP-018-credential-parts-and-attachment.md), [DP-020](../decisions/DP-020-request-method-and-body.md)
-- Resolution Decision Packet: not created
+- Resolution Decision Packet: [DP-012](../decisions/DP-012-independent-scraper-services.md), accepted 2026-08-19 on `agent/operating-model` — before this question was written, and without seeing it
 
 ## Question
 
@@ -157,5 +157,25 @@ alternative — with H1 measured rather than assumed.
 
 ## Resolution
 
-Not completed while status is `OPEN` or `EXPLORING`. Resolution requires a Decision Packet
-and belongs to the P1 Entry Gate, not to P0-B.
+`[확인 사실]` **Answered by [DP-012](../decisions/DP-012-independent-scraper-services.md),
+which decided the same question on the same day.** DP-012 was accepted on
+`agent/operating-model` while this question was being written on the domain branch; neither
+document cites the other because neither existed to the other. DP-012 selects the second
+alternative below — the external service, with this side a collector over REST — and its
+Candidate 1 is this question's "stay in-process".
+
+`[결정]` **This question closes rather than competing with an accepted packet.** Two records
+of one question, one `ACCEPTED` and one `OPEN`, is not a disagreement a reader can act on. The
+material this question holds that DP-012 does not is its **measurement**, and that is carried
+into DP-012 as falsification input rather than kept here as a rival opinion. What survives:
+
+- H5's falsification condition — the relocated 85% re-growing the same duplication outside,
+  now without the layer guard that made it visible — is the risk DP-012's H1 does not cover
+  and is now recorded there.
+- H1 is still **unmeasured**. DP-012 assumes cadence separation buys something; nothing in P0
+  measured contention or rate-limit proximity. That gap moves to DP-012's experiment section.
+- The sequencing note stands: [OQ-013](OQ-013-addon-responsibility-boundary.md)'s clause C
+  lands before an adapter is written, for the reason given above.
+
+`[추론]` Closing this does not make DP-012 more certain than it is. It makes the record say
+once what it was saying twice.

@@ -3,6 +3,7 @@
 - Status: `OPEN | EXPLORING | RESOLVED | DEFERRED | SUPERSEDED`
 - Priority:
 - Owner:
+- Owner decision: `NOT_REQUESTED | AWAITING_USER | CONFIRMED (Decision Packet)`
 - Blocks:
 - Related experiments:
 - Resolution Decision Packet:
@@ -36,6 +37,13 @@ Bound each hypothesis to the named candidate set, inputs, environment, and timeb
 ## Alternatives
 
 List materially different answers that the experiment must not silently exclude.
+
+## Owner question
+
+- Decision needed:
+- Options and tradeoffs:
+- Recommendation and evidence:
+- Work blocked until answer:
 
 ## Minimum experiment
 

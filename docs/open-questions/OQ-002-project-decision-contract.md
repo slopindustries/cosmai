@@ -1,19 +1,19 @@
 # OQ-002 — Final Project Decision Contract
 
-- Status: `OPEN`
-- Priority: P0-B, after initial source sampling and before concrete normalization design
+- Status: `RESOLVED`
+- Priority: P0-B; resolved by owner direction before source sampling and validated during B1/B2
 - Owner: Project team
-- Blocks: the P0-B concrete normalizer boundary, `Normalized Schema 1.0`, final quality metrics, final product workflows
-- Related experiments: not started
-- Resolution Decision Packet: not created
+- Blocks: no current P0 item; long-term learned targets and organization-wide workflows remain outside this resolution
+- Related experiments: P0-B source and integrated-flow experiments remain to be executed
+- Resolution Decision Packet: [DP-011](../decisions/DP-011-p0b-product-and-delivery-scope.md)
 
 ## Question
 
 Which user or R&D decision should Cosmai improve, and what evidence must the system provide for that decision?
 
-## Why this cannot be decided yet
+## Why this required a decision
 
-“Understanding trends” does not identify the decision consumer, action, time horizon, acceptable uncertainty, evidence standard, or cost of false positive and false negative results.
+“Understanding trends” did not identify the decision consumer, action, time horizon, acceptable uncertainty, evidence standard, or cost of false positive and false negative results. DP-011 fixes a reversible P0 answer without claiming that the final organization-wide workflow is settled.
 
 ## Scope
 
@@ -64,4 +64,10 @@ P0-A does not explore or resolve this question. P0-B does not require a final pr
 
 ## Resolution
 
-Not completed while status is `OPEN` or `EXPLORING`. The accepted Project Decision Contract and its Decision Packet close this question while preserving unresolved future consumers and workflows.
+`[결정]` Resolved for P0 by [DP-011](../decisions/DP-011-p0b-product-and-delivery-scope.md): a cosmetics R&D or product-planning reviewer receives an evidence-backed opportunity card for a canonical sunscreen or toner topic and chooses `REVIEW_NOW`, `WATCH`, `EXPAND_EVIDENCE`, or `REJECT`.
+
+The card carries deterministic trend metrics, uncertainty, provenance, `evidence_id` values, and original URLs. Cosmai abstains when the evidence gate fails. It does not approve a formula, make a safety or efficacy claim, predict sales, or replace human review.
+
+Long-term consumers, learned prediction targets, and organization-wide workflows remain outside this resolved P0 scope and require a later decision.
+
+The owner decision is a reversible `ACCEPTED_FOR_POC` default. B1/B2 must still apply it to representative source records; failure of H1 or H2 reopens this question rather than changing the evidence-card definition silently.
