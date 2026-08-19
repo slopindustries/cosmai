@@ -9,13 +9,20 @@
 - Created:
 - Updated:
 
-`[확인 사실]` What `tests/environment/test_agent_packet_record.py` checks, exactly: `Status`,
-`Attack report`, and `Result` must each appear **at most once** in the file — a duplicate is its
-own defect, whatever its position, which is how the three override bypasses
-[`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F3 found are closed without parsing heading
-boundaries. `Status` must hold one of the values above. When it is `ACCEPTED`, `Attack report`
-must carry a markdown link whose target — `#fragment` stripped, then resolved — lies **inside
-this repository**, is a file rather than a directory, and exists; and `Result` must be `PASS`.
+`[확인 사실]` What `tests/environment/test_agent_packet_record.py` checks, exactly:
+
+`Status`, `Attack report`, and `Result` must each be stated by **exactly one** line — not at
+most one, and position and section do not matter. Zero lines and two lines are both defects.
+A line counts as stating a field if it reads that way to a human: after any whitespace, any
+number of `>` blockquote markers, and at most one marker — a `-`/`*`/`+`/`•` bullet, a table
+row's leading `|`, or an ordinal like `1.` — or none at all, it gives the field name and then
+`:` or `|`. BOMs are stripped and non-breaking spaces are treated as ordinary spaces before any
+of that. **This is a count, not a parse:** a fenced code block quoting this very syntax is
+counted too, deliberately — see the reasoning on `_field_values`.
+
+When `Status` is `ACCEPTED`: `Attack report` must carry **exactly one** markdown link, whose
+target — `#fragment` stripped, then resolved — lies **inside this repository**, is a file rather
+than a directory, and exists; and `Result` must be `PASS`.
 
 `[확인 사실]` It does **not** judge whether the linked file is a credible report, whether a
 packet exists at all for a given piece of work, or whether the attacker was independent of the

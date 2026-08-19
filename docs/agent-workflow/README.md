@@ -52,11 +52,13 @@ One item. An earlier revision of this section listed two and was wrong about the
 [`REVIEW-TASK-001`](reviews/REVIEW-TASK-001.md) F1 is the correction and the demonstration.
 
 - `[확인 사실]` `tests/environment/test_agent_packet_record.py` fails the suite when a packet
-  claims `ACCEPTED` without a `PASS` result and a markdown link to a file that exists inside
-  this repository, or when it carries a duplicate `Status`, `Attack report`, or `Result` line.
-  [`TASK-PACKET-TEMPLATE.md`](TASK-PACKET-TEMPLATE.md) states the rule precisely. That is the
-  checkable half of the orchestrator's prohibition on accepting work because the worker
-  reported success — and no more than that half: the guard never opens the report it resolves.
+  claims `ACCEPTED` without a `PASS` result and exactly one markdown link to a file that exists
+  inside this repository, or when `Status`, `Attack report`, or `Result` is stated by anything
+  other than exactly one line. [`TASK-PACKET-TEMPLATE.md`](TASK-PACKET-TEMPLATE.md) states the
+  rule precisely, including what counts as stating a field — three rounds of review each found
+  a placement the previous rule could not see. That is the checkable half of the orchestrator's
+  prohibition on accepting work because the worker reported success, and no more than that half:
+  the guard never opens the report it resolves.
 
 ### Convention only
 

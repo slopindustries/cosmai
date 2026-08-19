@@ -32,22 +32,49 @@ the other direction — a decoy appended *after* the real line — so refusing t
 choose is the version that is not just as breakable from the opposite side.
 
 A second, independent review of that repair (``REVIEW-TASK-001-R2.md``) found
-two more. **R2-F1:** the field pattern anchored ``-`` at column 0, so a real
-``## Review`` field written indented — still a valid list item — or with a
-``*``/``+`` bullet was invisible, and the duplicate rule F3 built only sees
-what the pattern matches. Fixed by matching a list item at any indentation
-and any of ``-``/``*``/``+``. This makes a packet that quotes its own field
-syntax inside a fenced code block trip the duplicate rule too; that trade is
-deliberate and explained on ``_field_values``, not solved by skipping fenced
-content, which would let the real field disappear from the count entirely
-instead of merely surviving under a wider pattern. **R2-F4:** resolving a
-link target could raise instead of returning an answer — an over-long target
-raises ``OSError`` (not at ``Path.resolve()`` itself on every platform;
-measured here, at the ``is_dir()``/``exists()`` calls that follow it) and an
-embedded NUL raises ``ValueError`` at ``resolve()``. Both are now caught
-around every filesystem-touching call on the resolved path, and reported as
-a defect rather than aborting ``scan_task_packets`` before a later packet is
-read — the same failure shape F13 named for an undecodable file.
+three more. **R2-F1:** the field pattern anchored ``-`` at column 0, so a
+real ``## Review`` field written indented — still a valid list item — or
+with a ``*``/``+`` bullet was invisible, and the duplicate rule F3 built
+only sees what the pattern matches. That round's fix widened the pattern to
+match those two forms; it was an instance-level fix, and the paragraph below
+explains what replaced it. **R2-F4:** resolving a link target could raise
+instead of returning an answer — an over-long target raises ``OSError`` (not
+at ``Path.resolve()`` itself on every platform; measured here, at the
+``is_dir()``/``exists()`` calls that follow it) and an embedded NUL raises
+``ValueError`` at ``resolve()``. Both are now caught around every
+filesystem-touching call on the resolved path, and reported as a defect
+rather than aborting ``scan_task_packets`` before a later packet is read —
+the same failure shape F13 named for an undecodable file. **R2-F10:** an
+``Attack report:`` value carrying two markdown links resolved only the
+first, via ``.search()`` — so a harmless placeholder link could sit beside a
+second, unrelated one nobody checked. Left open through this round and the
+next; the fix is below, with F3's duplicate rule as the reason.
+
+A third review (``REVIEW-TASK-001-R3.md``) measured a pattern across the
+first two, not a defect: *"every round has repaired what the previous report
+demonstrated and left what it characterised."* **R3-F1 — the class R2-F1's
+fix was an instance of:** a blockquote (``> - Field: ...``), no bullet at
+all, an ordered-list marker (``1.``), a table row (``| Field | value |``), a
+non-breaking space or a BOM before the bullet, and a Unicode ``•`` bullet
+were all still invisible to R2-F1's widened-but-still-a-list-item pattern —
+each one a real field could plausibly be written as, each one a decoy could
+use to stay the only visible match. ``_field_values`` no longer parses a
+list item; it counts a line as stating a field whenever, once every BOM is
+stripped and every non-breaking space is normalised, the line reads to a
+human as declaring that field. The rule in full, including why fenced
+content is still not excluded, is on ``_field_values`` itself. **R2-F10** is
+fixed in this same round, by the reasoning F3 already established: more
+than one markdown link in an ``Attack report:`` value is rejected rather
+than resolving only the first, the same way more than one matching field
+line is rejected rather than picking one. **R3-F7:** the sibling defect to
+R2-F4, in the function F13 was originally about —
+``scan_task_packets``'s ``read_text`` caught only ``UnicodeDecodeError``,
+leaving a permission-denied file (``PermissionError``, an ``OSError``) able
+to abort the scan the same way an undecodable one used to; ``iterdir()`` and
+``is_file()`` were exposed to the same class unguarded. All three now are.
+**R3-F9:** two of the three messages ``_report_target_problem`` can return
+interpolated the resolved path raw, where the third already went through
+``_short``; all three now do.
 
 ``STATUS_VALUES`` below is a copy of the template's own vocabulary rather than
 something parsed out of it at import time, so that a template formatting
@@ -57,8 +84,8 @@ instead of silently changing what every other test in this file accepts.
 ``docs/agent-workflow/reviews/README.md`` says an attack report lives in this
 repository — beside the experiment it attacks, or under
 ``docs/agent-workflow/reviews/`` when there is none. A link is therefore
-always possible for a real report, so ``Attack report:`` must contain a
-markdown link whose target, once resolved against
+always possible for a real report, so ``Attack report:`` must contain exactly
+one markdown link (R2-F10), whose target, once resolved against
 ``docs/agent-workflow/task-packets/`` (where ``task-packets/README.md`` says
 every packet is created) and stripped of any ``#fragment``, names an existing
 file inside this repository. A target that reads as a URL or a ``mailto:``
@@ -101,6 +128,7 @@ to verify mechanically; they are only as good as the roles in
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -152,34 +180,60 @@ _URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 
 
 def _field_values(text: str, field: str) -> list[str]:
-    r"""Return the trailing text of every ``- {field}: ...`` line, in document order.
+    r"""Return the trailing text of every line that states ``{field}:``, in document order.
 
     Returning every match rather than just the first is what lets
     ``packet_problems`` refuse to pick a winner among several instead of
     picking the wrong one — see the module docstring's account of F3.
 
-    A list item is matched at any indentation and with any of ``-``, ``*``,
-    or ``+`` as the bullet (REVIEW-TASK-001-R2.md R2-F1): the previous
-    pattern anchored ``-`` at column 0, so a real ``## Review`` field written
-    two spaces indented — still a valid list item — or with a ``*``/``+``
-    bullet was invisible, leaving exactly one visible match: the decoy.
+    REVIEW-TASK-001-R2.md R2-F1 widened this from "a ``-`` bullet at column
+    0" to "any indentation, with ``-``/``*``/``+``" — an instance-level fix.
+    REVIEW-TASK-001-R3.md R3-F1 measured what that left open: a blockquote
+    (``> - Field: ...``), no bullet at all, an ordered-list marker (``1.``),
+    a table row (``| Field | value |``), a non-breaking space or a BOM
+    before the bullet, and a Unicode ``•`` bullet were all still invisible —
+    each one a real ``## Review`` field could plausibly be written as, and
+    each one a decoy could use to stay the pattern's only visible match.
 
-    Fenced code blocks are deliberately *not* stripped before matching, even
-    though a packet that quotes its own field syntax verbatim inside a fence
-    now trips the duplicate rule too. Skipping fenced content would let the
-    real, binding field be hidden inside a fence — removed from the count
-    entirely, not merely indented out of the old pattern's reach — while an
-    unfenced decoy stood alone and unchallenged. A false positive against an
-    unusual but honest packet is the safe direction to be wrong in; a fence
-    that can make a real field disappear is not.
+    So this stops parsing "a list item" and counts instead: a line counts if,
+    once normalised, it reads as stating the field to a human. Normalising
+    means stripping every BOM and treating every non-breaking space as an
+    ordinary one, across the whole text, before matching begins. A counted
+    line then allows, from its start: any amount of whitespace; a leading
+    blockquote run of any length (``>``, ``>>``, ``> >``); more whitespace;
+    at most one marker — a ``-``/``*``/``+``/``•`` bullet, a table row's
+    leading ``|``, or an ordinal like ``1.``/``1)`` — or no marker at all;
+    more whitespace; the field name; more whitespace; and a separator that
+    is ``:`` or ``|`` (a table cell has no colon). What follows is the
+    captured value.
+
+    Fenced code blocks are deliberately *not* excluded, even though this
+    means a packet that quotes its own field syntax verbatim inside a fence
+    trips the duplicate rule too. Skipping fenced content would let the
+    real, binding field disappear from the count entirely — hidden inside a
+    fence, not merely written in a form the pattern misses — while an
+    unfenced decoy stood alone and unchallenged. A false rejection of an
+    unusual but honest packet is the safe direction to be wrong in, and that
+    trade only grows as the pattern widens; it is accepted for the same
+    reason each time.
 
     The gaps around the field name use ``[ \t]*`` rather than ``\s*`` on
     purpose: ``\s`` matches a newline, so an empty field (``- Attack report:``
     with nothing after it) would let the pattern run on and capture the
     *next* line's content as this field's value instead of an empty string.
     """
-    pattern = re.compile(rf"^[ \t]*[-*+][ \t]*{re.escape(field)}:[ \t]*(.*)$", re.MULTILINE)
-    return [match.group(1).strip() for match in pattern.finditer(text)]
+    # Explicit \u escapes, not literal characters: a BOM and a non-breaking
+    # space are visually indistinguishable from "nothing" and "a regular
+    # space" in a source file, which is exactly the property that makes them
+    # worth normalising in a packet in the first place. Escapes keep this line
+    # honest about what it does.
+    normalized = text.replace("\ufeff", "").replace("\u00a0", " ")
+    pattern = re.compile(
+        rf"^[ \t]*(?:>[ \t]*)*[ \t]*(?:[-*+\u2022|]|\d+[.)])?[ \t]*"
+        rf"{re.escape(field)}[ \t]*(?::|\|)[ \t]*(.*)$",
+        re.MULTILINE,
+    )
+    return [match.group(1).strip() for match in pattern.finditer(normalized)]
 
 
 def _unquoted(value: str) -> str:
@@ -197,10 +251,19 @@ def _unquoted(value: str) -> str:
     return value
 
 
-def _linked_report_target(report: str) -> str | None:
-    """Return a markdown link's target found in ``report``, or ``None`` if it has none."""
-    match = _MARKDOWN_LINK.search(report)
-    return None if match is None else match.group(1).strip()
+def _linked_report_targets(report: str) -> list[str]:
+    """Return every markdown link target found in ``report``, in document order.
+
+    REVIEW-TASK-001-R2.md R2-F10, left open through two rounds: the previous
+    version took only the first link via ``.search()``, so
+    ``[placeholder](../TASK-PACKET-TEMPLATE.md) ... [here](https://example.com/none)``
+    resolved the harmless placeholder and never looked at the second link at
+    all. Returning every target, and rejecting more than one in
+    ``packet_problems``, matches the duplicate rule's own reasoning: refusing
+    to pick a winner among several is what closes a bypass that picking
+    either the first or the last one open again.
+    """
+    return [match.group(1).strip() for match in _MARKDOWN_LINK.finditer(report)]
 
 
 def _short(text: str, limit: int = 80) -> str:
@@ -231,6 +294,11 @@ def _report_target_problem(target: str) -> str | None:
     ``resolve()`` itself. Either raised exception, unhandled, would abort
     ``scan_task_packets`` the way F13's undecodable file used to: not a
     silent pass, but a scan that stops short and blames the wrong packet.
+
+    All three returned reasons truncate what they interpolate
+    (REVIEW-TASK-001-R3.md R3-F9): the exception branch already did, but the
+    other two interpolated ``resolved`` — itself as unbounded as ``target``,
+    since it is built from it — raw.
     """
     if _URL_SCHEME.match(target) or target.startswith(("mailto:", "#")):
         return "which is not a repository path"
@@ -246,9 +314,9 @@ def _report_target_problem(target: str) -> str | None:
         # is exactly as unbounded as ``target`` — truncate it too, not only ``target``.
         return f"whose target does not resolve to a path at all ({_short(str(error))})"
     if is_directory:
-        return f"but {resolved} is a directory, not a file"
+        return f"but {_short(str(resolved))} is a directory, not a file"
     if not already_exists:
-        return f"but {resolved} does not exist"
+        return f"but {_short(str(resolved))} does not exist"
     return None
 
 
@@ -284,15 +352,22 @@ def packet_problems(text: str, name: str) -> list[str]:
     elif not reports or not reports[0]:
         problems.append(f"{name}: Status is {ACCEPTED_STATUS} but Attack report: is empty")
     else:
-        target = _linked_report_target(reports[0])
-        if target is None:
+        targets = _linked_report_targets(reports[0])
+        if not targets:
             problems.append(
                 f"{name}: Status is {ACCEPTED_STATUS} but Attack report: has no markdown link"
             )
+        elif len(targets) > 1:
+            problems.append(
+                f"{name}: Attack report: {len(targets)} markdown links found; "
+                "exactly one is required"
+            )
         else:
-            reason = _report_target_problem(target)
+            reason = _report_target_problem(targets[0])
             if reason is not None:
-                problems.append(f"{name}: Attack report links to {_short(target)!r}, {reason}")
+                problems.append(
+                    f"{name}: Attack report links to {_short(targets[0])!r}, {reason}"
+                )
 
     results = _field_values(text, "Result")
     if len(results) > 1:
@@ -319,24 +394,48 @@ def scan_task_packets(directory: Path) -> list[str]:
     rather than left to raise and abort the scan before later packets are
     read (REVIEW-TASK-001.md F13).
 
+    Every filesystem-touching call is guarded the same way
+    (REVIEW-TASK-001-R3.md R3-F7): the sibling defect to R2-F4, in the
+    function F13 was originally about. ``read_text`` used to catch only
+    ``UnicodeDecodeError``; an unreadable file raises ``PermissionError`` (an
+    ``OSError``), and ``iterdir()`` and ``is_file()`` can raise the same way
+    on a directory this process cannot fully stat. Any of them, unguarded,
+    would abort the whole scan before a later, genuinely defective packet is
+    ever read — F13's own failure shape, reached through a different call.
+
     Parameterized on ``directory`` rather than closing over
-    :data:`TASK_PACKETS_DIR` so the tests below can reproduce both failure
-    modes against a throwaway ``tmp_path`` tree instead of the real one.
+    :data:`TASK_PACKETS_DIR` so the tests below can reproduce all three
+    failure modes against a throwaway ``tmp_path`` tree instead of the real
+    one.
     """
     if not directory.is_dir():
         return []
+    try:
+        entries = sorted(directory.iterdir())
+    except OSError as error:
+        return [f"{directory}: cannot list this directory ({_short(str(error))})"]
     problems: list[str] = []
-    for path in sorted(directory.iterdir()):
+    for path in entries:
         if path.name in NON_PACKET_FILES:
             continue
         label = path.relative_to(directory)
-        if not path.is_file():
+        try:
+            is_file = path.is_file()
+        except OSError as error:
+            problems.append(
+                f"{label}: cannot check what kind of entry this is ({_short(str(error))})"
+            )
+            continue
+        if not is_file:
             problems.append(f"{label}: task-packets holds one file per packet, not a directory")
             continue
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError as error:
             problems.append(f"{label}: not valid UTF-8 ({error})")
+            continue
+        except OSError as error:
+            problems.append(f"{label}: cannot read this file ({_short(str(error))})")
             continue
         problems.extend(packet_problems(text, str(label)))
     return problems
@@ -368,6 +467,48 @@ def test_status_values_match_the_template() -> None:
     assert match is not None, f"{TASK_PACKET_TEMPLATE}: no backticked Status: line found"
     documented = frozenset(part.strip() for part in match.group(1).split("|"))
     assert documented == STATUS_VALUES
+
+
+def test_short_truncates_long_text_and_leaves_short_text_alone() -> None:
+    """The mechanism R3-F9 asked applied to two more call sites; this is the unit test
+    those two call sites never had — they were only ever exercised as part of a
+    longer message, which would not catch _short itself regressing.
+    """
+    assert _short("short") == "short"
+    at_the_limit = "x" * 80
+    assert _short(at_the_limit) == at_the_limit
+    just_over_the_limit = "x" * 81
+    assert _short(just_over_the_limit) == "x" * 80 + "...(81 chars)"
+    # The "(N chars)" suffix can make a barely-over-limit input longer once
+    # truncated, not shorter — _short bounds the worst case, not every case.
+    # A genuinely long input is what the bound actually needs to hold for.
+    much_longer = "x" * 5000
+    truncated = _short(much_longer)
+    assert len(truncated) < len(much_longer)
+    assert truncated == "x" * 80 + "...(5000 chars)"
+
+
+def test_a_long_missing_target_message_is_truncated() -> None:
+    """R3-F9: ``resolved`` was interpolated raw in the "does not exist" and "is a
+    directory" branches, which ``_short`` never reached. Only the first is tested
+    directly here — constructing a genuinely long *existing* directory without
+    creating one on disk under the real ``task-packets/`` is not possible without
+    either a fixture this file is not allowed to leave behind or changing how
+    ``_report_target_problem`` resolves paths, which was not asked for. Both
+    branches call the identical ``_short(str(resolved))``, checked in isolation
+    above, so this is not a proof of the second branch — it is the honest edge
+    of what this file can check without either of those.
+    """
+    target = "/".join(["nonexistent-segment"] * 20)
+    text = (
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        f"- Attack report: [r]({target})\n"
+        "- Result: `PASS`\n"
+    )
+    problems = packet_problems(text, "packet")
+    assert len(problems) == 1, problems
+    assert "does not exist" in problems[0], problems
+    assert len(problems[0]) < 300, problems  # the raw, untruncated message exceeds 500
 
 
 def test_scanning_reports_a_non_utf8_file_and_keeps_going(tmp_path: Path) -> None:
@@ -407,6 +548,29 @@ def test_scanning_still_excludes_the_directory_index(tmp_path: Path) -> None:
     """The README exclusion survives the F13 rewrite, not just the pre-rewrite version."""
     (tmp_path / "README.md").write_text("# Active Task Packets\n", encoding="utf-8")
     assert scan_task_packets(tmp_path) == []
+
+
+def test_scanning_reports_an_unreadable_file_and_keeps_going(tmp_path: Path) -> None:
+    """R3-F7: the same class R2-F4 fixed in ``_report_target_problem``, in the
+    sibling function F13 was originally about. ``read_text`` caught only
+    ``UnicodeDecodeError``; a permission-denied file raises ``PermissionError``
+    (an ``OSError``), which was unguarded and would abort the scan the same way.
+    """
+    unreadable = tmp_path / "TASK-000-unreadable.md"
+    unreadable.write_text("- Status: `ACCEPTED`\n", encoding="utf-8")
+    unreadable.chmod(0o000)
+    try:
+        if os.access(unreadable, os.R_OK):
+            pytest.skip("this process can read a mode-000 file it owns (running as root?)")
+        (tmp_path / "TASK-999-defective.md").write_text(
+            "- Status: `ACCEPTED`\n\n## Review\n\n- Attack report:\n- Result: `PASS`\n",
+            encoding="utf-8",
+        )
+        problems = scan_task_packets(tmp_path)
+    finally:
+        unreadable.chmod(0o644)  # so tmp_path's own teardown can remove it
+    assert any("cannot read" in problem for problem in problems), problems
+    assert any("Attack report" in problem for problem in problems), problems
 
 
 REJECTED_CASES = [
@@ -566,6 +730,79 @@ REJECTED_CASES = [
         "- Result: `PASS`\n",
         "does not resolve to a path",
         id="a-link-target-with-an-embedded-null-byte-is-reported-not-raised",
+    ),
+    # --- R3-F1: every placement the reviewer demonstrated, not just indent and
+    # bullet character (REVIEW-TASK-001-R3.md). Each decoy states `Result` a
+    # second time in one of the seven forms the widened pattern must all count. ---
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "> - Result: `FAIL`\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS`\n",
+        "2 `Result:` lines",
+        id="a-blockquoted-decoy-result-line-is-no-longer-invisible",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "Result: `FAIL`\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS`\n",
+        "2 `Result:` lines",
+        id="a-bare-unbulleted-decoy-result-line-is-no-longer-invisible",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "1. Result: `FAIL`\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS`\n",
+        "2 `Result:` lines",
+        id="an-ordered-list-decoy-result-line-is-no-longer-invisible",
+    ),
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "| Result | FAIL |\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS`\n",
+        "2 `Result:` lines",
+        id="a-table-row-decoy-result-line-is-no-longer-invisible",
+    ),
+    pytest.param(
+        # The leading character on the decoy line is U+00A0 (non-breaking space),
+        # not a regular space — indistinguishable by eye, which is the point.
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "\u00a0- Result: `FAIL`\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS`\n",
+        "2 `Result:` lines",
+        id="a-non-breaking-space-indented-decoy-result-line-is-no-longer-invisible",
+    ),
+    pytest.param(
+        # U+FEFF (BOM) immediately before the bullet.
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "\ufeff- Result: `FAIL`\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS`\n",
+        "2 `Result:` lines",
+        id="a-bom-prefixed-decoy-result-line-is-no-longer-invisible",
+    ),
+    pytest.param(
+        # U+2022 (bullet) as the marker, not - / * / +.
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "\u2022 Result: `FAIL`\n\n"
+        "- Attack report: [r](../TASK-PACKET-TEMPLATE.md)\n"
+        "- Result: `PASS`\n",
+        "2 `Result:` lines",
+        id="a-unicode-bullet-decoy-result-line-is-no-longer-invisible",
+    ),
+    # --- R2-F10: an Attack report carrying two links is ambiguous the same way a
+    # duplicated field is (REVIEW-TASK-001-R2.md, left open through R2 and R3). ---
+    pytest.param(
+        "- Status: `ACCEPTED`\n\n## Review\n\n"
+        "- Attack report: [placeholder](../TASK-PACKET-TEMPLATE.md) "
+        "— the real one is [here](https://example.com/none)\n"
+        "- Result: `PASS`\n",
+        "markdown links found",
+        id="an-attack-report-with-two-links-is-rejected",
     ),
     # --- _unquoted: a value cannot be partially stripped into an accidental match ---
     pytest.param(

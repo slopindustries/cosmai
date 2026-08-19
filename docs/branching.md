@@ -98,7 +98,12 @@ dashboard/source-form
 프로젝트 운영 방식 자체를 바꾸는 문서 — 이 파일, `docs/agent-workflow/`,
 `docs/conventions/project-memory.md` — 는 다섯 영역 중 어디에도 들어가지 않는다.
 `agent/operating-model`이 그 예이고, 규칙의 위반이라기보다 규칙이 다루지 않는 범위다.
-`[추론]` 경계선은 **코드 디렉터리를 바꾸는가**다. 바꾼다면 영역이 있는 작업이다.
+
+`[확인 사실]` 이 예외의 **범위를 판정하는 기준은 정해지지 않았다.** 초안에 "코드 디렉터리를
+바꾸는가"라는 판정 기준이 들어 있었으나 [OQ-011](open-questions/OQ-011-agent-memory-and-area-boundary.md)이
+소유자에게 물은 것이 아니어서 2026-08-19에 제거했다
+([REVIEW-TASK-001-R3](agent-workflow/reviews/REVIEW-TASK-001-R3.md) F5). 경계가 모호한 작업이
+실제로 나타나면 그때 묻는다.
 
 한 브랜치는 한 영역 안에 머문다. 영역을 넘는 변경은 보통 두 개의 변경이고, 가끔은
 경계가 잘못됐다는 신호다 — 후자라면 기록할 증거이지 우회할 대상이 아니다.

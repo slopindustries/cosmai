@@ -14,10 +14,10 @@ later, and the summary is always written by the side that lost.
 This directory holds reports on work that has **no experiment record** — a convention, a
 template, a repository guard, a document that claims something is in force. Link the report
 from the reviewed packet in either case; `tests/environment/test_agent_packet_record.py`
-checks that an `ACCEPTED` packet has such a link, that the link resolves to a file inside this
-repository, and that the packet carries no duplicate `Status`, `Attack report`, or `Result`
-line. It does not read the file — whether what it points at is a real review is not something a
-path check can know.
+checks that an `ACCEPTED` packet's `Attack report:` carries exactly one such link and that it
+resolves to a file inside this repository. It does not read the file — whether what it points at
+is a real review is not something a path check can know, and
+[`REVIEW-TASK-001-R2`](REVIEW-TASK-001-R2.md) F8 records that `.git/config` would satisfy it.
 
 ## Who commits it
 

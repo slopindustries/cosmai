@@ -31,11 +31,17 @@ assumptions?
 
 ### What the repository already showed before this was merged
 
-- `[확인 사실]` `27f712b` and `c0a266d` ran this flow's back half on 2026-08-18 without
-  these documents: a reviewer with no write access attacked the work, returned ten findings,
+- `[추론]` `27f712b` and `c0a266d` ran this flow's back half on 2026-08-18 without
+  these documents: a reviewer returned ten findings,
   the report was committed beside the experiment rather than summarized into it, and the
   follow-up commit repaired nothing — it corrected only the claims that were false. The
   worker/attacker separation is therefore existing practice getting a name, not a new cost.
+  `[확인 사실]` The commits, the count, and the report's location are confirmed; the reviewer's
+  independence rests on that report's self-description ("no write access … **working from a
+  copy**"), and the copy is the half carrying the property. An earlier revision of this bullet
+  claimed "a reviewer with no write access" as `[확인 사실]` and dropped the copy —
+  [`REVIEW-TASK-001-R2`](../agent-workflow/reviews/REVIEW-TASK-001-R2.md) F6, corrected in
+  `README.md` but not here until `REVIEW-TASK-001-R3` F4 found it.
 - `[확인 사실]` That review's first blocking finding is the measurement behind the
   planner/worker split: an add-on fetching 12 times and emitting 600 items against
   `max_pages=2, max_records=3` succeeded, because `max_pages` and `max_records` are enforced
@@ -181,10 +187,13 @@ owner can reverse any of them:
 `b702c79` against the result rather than reading the intent, which is how the list should have
 been produced in the first place.
 
-10. `project-memory.md` gained a section, "What does not belong in an agent's private memory".
-    It is a `[결정]` that reaches outside this repository: a private memory store must not be
-    the only place holding a project constraint. **This is consequential and the owner has not
-    been shown it as a decision.**
+10. `project-memory.md` gained a section stating that a private memory store must not be the
+    only place holding a project constraint — a `[결정]` reaching outside this repository.
+    **Resolved:** put to the owner as [OQ-011](../open-questions/OQ-011-agent-memory-and-area-boundary.md)
+    R1 and narrowed by [DP-014](DP-014-agent-memory-scope-and-area-exception.md) to the
+    repository half; the section is now "What counts as project memory" and regulates no private
+    store. `[확인 사실]` This item asserted in bold that the owner had not been shown it, for two
+    commits after they had been — [`REVIEW-TASK-001-R3`](../agent-workflow/reviews/REVIEW-TASK-001-R3.md) F3.
 11. `project-memory.md` gained a required recording rule: "Where a control is claimed, record
     what it does not cover." F1 is the first thing it catches.
 12. `project-memory.md`'s routing table gained two rows, `docs/conventions/` and
@@ -195,11 +204,11 @@ been produced in the first place.
 14. `branching.md` gained an exception to the one-area rule for documents that change the
     project's operating method — **whose worked example is this branch.** A rule that
     legitimizes the change introducing it belongs on a disclosure list, not inferred from a
-    diff. `docs/areas/README.md` was not updated to match. It is now
-    [OQ-011](../open-questions/OQ-011-agent-memory-and-area-boundary.md) R2 and is marked
-    `[가설]` proposed where it lives; this item said `[확인 사실]` until
-    [`REVIEW-TASK-001-R2`](../agent-workflow/reviews/REVIEW-TASK-001-R2.md) F9 caught it
-    describing the state one commit earlier.
+    diff. **Resolved:** put to the owner as `OQ-011` R2 and accepted as an exception by
+    [DP-014](DP-014-agent-memory-scope-and-area-exception.md); `docs/areas/README.md` is
+    deliberately unchanged. The scope test the draft carried with it was removed, unasked.
+    `[확인 사실]` This item has now described a stale state twice — caught by
+    `REVIEW-TASK-001-R2` F9 and again by `REVIEW-TASK-001-R3` F3, one commit apart each time.
 15. **The threshold's exemption gained two bounding rules** (`README.md` §"When this flow is
     required"): the exemption is from the packet and never from the attacker, and "required"
     wins when both lists fire. Both were added by `297fbee` to repair

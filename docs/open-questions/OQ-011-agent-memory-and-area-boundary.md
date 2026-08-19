@@ -93,10 +93,11 @@ updated if R2 option 2 is chosen.
 ## Resolution
 
 - Outcome: **R1 — option 2, the repository half only.** The rule states where a project fact
-  belongs and no longer regulates what a private memory store may hold. Withdrawing that half is
-  conditional on the facts it targeted actually reaching the repository, so the subagent
-  concurrency limit and the verification-before-handoff rule are now recorded in
-  `project-state.md` §4.
+  belongs and no longer regulates what a private memory store may hold.
+- `[확인 사실]` `DP-014` first attached a condition to that narrowing — two operating facts moved
+  into `project-state.md` §4 — and the owner removed both on 2026-08-19. Neither appeared in the
+  §Alternatives above, so answering *where facts belong* had been recorded as accepting *what two
+  particular facts say*. See [`REVIEW-TASK-001-R3`](../agent-workflow/reviews/REVIEW-TASK-001-R3.md) F5.
 - Outcome: **R2 — option 1, recorded as an exception.** A sixth area was rejected because it
   would answer `docs/areas/README.md`'s open hypothesis by adding a boundary to it.
   `docs/areas/README.md` is unchanged.

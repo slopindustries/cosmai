@@ -4,7 +4,7 @@
 - Date: 2026-08-19
 - Owners: Project owner
 - Owner confirmation: `CONFIRMED (project owner, 2026-08-19 — answered as two separate questions, R1 and R2, with the options and tradeoffs presented)`
-- Amends: [DP-013](DP-013-agent-workflow-and-project-memory.md) D5, and its §"What changed from the proposal" items 10 and 14
+- Amends: [DP-013](DP-013-agent-workflow-and-project-memory.md) D5, and its §"What changed from the proposal" items 10 and 14 (the latter two on 2026-08-19, after this packet claimed them done without doing them)
 - Resolves: [OQ-011](../open-questions/OQ-011-agent-memory-and-area-boundary.md)
 - Affected contracts: none
 - Affected acceptance tests: none
@@ -51,10 +51,22 @@ repository is recorded whether or not a private copy also exists.
 Rejected: withdrawing the section entirely. The routing question is worth answering explicitly
 even though `DP-013` D1 already makes repository documents the durable record.
 
-**Consequence, and it is not optional.** Withdrawing the constraint is only honest if the facts
-it was aimed at actually reach the repository. The subagent concurrency limit and the
-verification-before-handoff rule are recorded in
-[`project-state.md`](../project-state.md) §4 by this decision.
+**A consequence this packet first got wrong.** As first written, this section required two
+operating facts — a subagent concurrency limit and a verification-before-handoff rule — to be
+recorded in `project-state.md` §4 as the condition of the withdrawal, and recorded them.
+
+`[결정]` **They were removed on 2026-08-19, by the owner, and the removal is the correct
+outcome.** [`REVIEW-TASK-001-R3`](../agent-workflow/reviews/REVIEW-TASK-001-R3.md) F5 found that
+neither appeared in any of `OQ-011`'s option lists: the owner was asked where facts belong and is
+recorded as having accepted two constraints whose *content* was never put to them. `[측정]`
+Their only provenance was one commit, and the "P0-A one-at-a-time rule" they referenced has no
+record anywhere in this repository.
+
+`[추론]` The removal is not a judgement that they are false — the owner had stated at least the
+first of them in conversation. It is that `project-state.md` §4 is the register `AGENTS.md` reads
+as constraints, and an entry there whose basis no reader can check is worse than an absent one.
+That is this packet's own argument for R1, applied to this packet. If either constraint should
+bind, it needs a decision with a basis, not a footnote to a different question.
 
 ### R2 — the development-area exception
 
@@ -76,15 +88,18 @@ what the naming rule does **not** cover rather than about the areas themselves.
 
 ## Tradeoffs and risks
 
-- Benefit: the private-memory constraint's removal costs nothing, because the facts it targeted
-  are now in `project-state.md` where they can be reviewed and contradicted.
 - Benefit: the area exception is one sentence and touches no accepted hypothesis.
 - Cost: nothing prevents a project fact from living only in a private store again. `[결정]` That
   is accepted. The convention says where facts belong; noticing when one has drifted is a
   reading problem, not a rule problem, and no rule here could have caught it either.
-- Risk: `[추론]` "operating method" is not sharply bounded, so the area exception could be
-  stretched to cover work that does belong to an area. The test is whether the work changes a
-  code directory; if it does, it has an area.
+- Cost, realised: `[확인 사실]` the two constraints this packet first moved into the repository
+  went back out the same day, so R1's narrowing currently leaves them recorded nowhere. That is
+  the honest state, not a gap to paper over — a fact worth binding is worth its own decision.
+- Risk, open: `[추론]` "operating method" is not sharply bounded, so the area exception could be
+  stretched to cover work that does belong to an area. A draft of this packet carried a scope
+  test for exactly that; it was removed because `OQ-011` never put it to the owner
+  ([`REVIEW-TASK-001-R3`](../agent-workflow/reviews/REVIEW-TASK-001-R3.md) F5). The risk is
+  therefore recorded and unmitigated, and the first ambiguous case is the one to ask about.
 
 ## Remaining uncertainty
 
@@ -99,7 +114,15 @@ what the naming rule does **not** cover rather than about the areas themselves.
 - `docs/conventions/project-memory.md`: narrow the section to the repository half, drop the
   proposed marker. **Done.**
 - `docs/branching.md`: drop the proposed marker, record the exception as accepted. **Done.**
-- `docs/project-state.md`: record both decisions in §4, record the two operating facts R1's
-  narrowing requires be moved into the repository, and move `OQ-011` to `RESOLVED`. **Done.**
-- `DP-013`: mark D5's private-memory clause amended, and items 10 and 14 resolved. **Done.**
+- `docs/project-state.md`: record both decisions in §4 and move `OQ-011` to `RESOLVED`.
+  **Done.** The two operating facts recorded alongside them were removed the same day — see the
+  R1 section above.
+- `DP-013`: mark D5's private-memory clause amended. **Done.**
+- `DP-013`: resolve §"What changed from the proposal" items 10 and 14. `[확인 사실]` This was
+  marked **Done.** on 2026-08-19 and was not done — the commit touched D5 only, and
+  [`REVIEW-TASK-001-R3`](../agent-workflow/reviews/REVIEW-TASK-001-R3.md) F3 found item 10 still
+  asserting in bold that the owner had not been shown the rule, in the commit that showed it.
+  **Done** now, and the false checklist entry is left visible rather than silently corrected: a
+  checklist marked done by the session doing the work is an absence assertion with no positive
+  control, and that is the second time this branch has produced one.
 - `OQ-011`: `RESOLVED`, linking this packet. **Done.**

@@ -7,7 +7,7 @@
 - Attacker: `adversarial-reviewer`
 - Orchestrator: main session. `ORCHESTRATOR.md` says the role is the session that spawns the others; an earlier revision of this line named the project owner, which collapses the one action the role is defined by — REVIEW-TASK-001 F8
 - Created: 2026-08-19
-- Updated: 2026-08-19 (reworked after REVIEW-TASK-001 returned `FAIL`)
+- Updated: 2026-08-19, after three independent reviews, all `FAIL`. Reviewing stopped here by owner decision; this packet is not accepted.
 
 ## How this packet came to exist
 
@@ -75,7 +75,11 @@ adapt it so that every claim it makes about this project is true of this project
 - `docs/project-state.md`, `docs/branching.md`
 - `tests/environment/test_agent_packet_record.py`
 - added 2026-08-19 during rework, on REVIEW-TASK-001 F7 and F4: `docs/p0-execution-plan.md`,
-  `docs/open-questions/OQ-011-agent-memory-and-area-boundary.md`. `[확인 사실]` The first was
+  `docs/open-questions/OQ-011-agent-memory-and-area-boundary.md`; and
+  `docs/decisions/DP-014-agent-memory-scope-and-area-exception.md`, which `65191d8` created
+  **without** extending this list — [`REVIEW-TASK-001-R3`](../reviews/REVIEW-TASK-001-R3.md) F6.
+  The allowed-file list is the only scope control a reviewer can check mechanically, and it
+  stops being checkable the first time a file is added silently. `[확인 사실]` The first was
   missing because this list was fitted to the diff rather than written before it — the concrete
   cost of the planner separation this packet records as not having happened.
 
@@ -159,12 +163,59 @@ ls docs/decisions/                                     # one DP-006, one DP-013
 
 ## Review
 
-- Attack report: [REVIEW-TASK-001-R2](../reviews/REVIEW-TASK-001-R2.md), the latest; the first round is [REVIEW-TASK-001](../reviews/REVIEW-TASK-001.md). `[확인 사실]` Both links share one line on purpose — a second `- Attack report:` line would trip the guard's own duplicate rule.
+- Attack report: [REVIEW-TASK-001-R3](../reviews/REVIEW-TASK-001-R3.md)
 - Result: `FAIL`
-- Orchestrator disposition: **reworked, not accepted.** Two blocking and four major findings.
-  The claims that were false in the present tense are corrected in the commit that records the
-  report, repairing nothing — the `c0a266d` pattern. The defects themselves (the guard's path
-  check and its section scoping, the threshold's overlap, `docs/p0-execution-plan.md`'s stale
-  rows, the criteria that cannot fail) are repaired in the commit after it. This packet stays
-  `REWORK` rather than `ACCEPTED`: no second independent review has run, and marking it
-  `ACCEPTED` on a `FAIL` report would be the acceptance control failing in its first use.
+- Orchestrator disposition: **not accepted, and reviewing stopped by owner decision on
+  2026-08-19.**
+
+  Three independent reviews, each attacking the repair of the one before it:
+  [`REVIEW-TASK-001`](../reviews/REVIEW-TASK-001.md) — 2 blocking, 4 major, 5 moderate, 4 minor;
+  [`REVIEW-TASK-001-R2`](../reviews/REVIEW-TASK-001-R2.md) — 1 blocking, 1 major, 2 moderate,
+  6 minor; [`REVIEW-TASK-001-R3`](../reviews/REVIEW-TASK-001-R3.md) — 3 blocking, 2 major,
+  2 moderate, 3 minor.
+
+  `[확인 사실]` The `Attack report:` field above names only the latest, because the guard now
+  requires **exactly one** markdown link there. An earlier revision carried all three on that
+  line, with a note explaining that one line avoided the duplicate-*line* rule — which it did,
+  while breaking the multi-*link* rule the same round added. It was dormant only because this
+  packet is not `ACCEPTED`. The earlier reports are linked here instead, where prose belongs. Severity fell across rounds — R1's blocking findings were "the
+  guard accepts `/etc/hosts` as an independent review"; R3's are a markdown-quotation bypass and
+  two stale records.
+
+  `[확인 사실]` **Criterion 9 failed all three rounds**, and R3 measured why in one sentence:
+  *every round repaired what the previous report demonstrated and left what it characterised.*
+  R2-F1 demonstrated an indent and a `*` bullet and characterised the class as "a form the
+  pattern cannot see"; six more forms were open at R3. R2-F4 demonstrated one function and
+  characterised the class; its sibling was untouched. R2-F6 named three sites and two were fixed.
+  `[추론]` That is a property of the session closing the findings, not of the findings — which is
+  the argument for the planner/worker separation this packet records as never having happened.
+
+  **Repaired after R3:** the guard's field detection rewritten at the class level rather than per
+  demonstrated form (R3-F1); `scan_task_packets`'s exception handling widened to match its
+  sibling (R3-F7); message truncation applied on all branches (R3-F9); the first-link-wins
+  behaviour R2-F10 left open twice; the three documents that stated the duplicate rule as a
+  file-wide invariant it did not have; this disposition paragraph, which said "no second
+  independent review has run" one line below the field linking it (R3-F2); `DP-014`'s two
+  checklist entries marked **Done.** without being done (R3-F3); `DP-013`'s items 10 and 14 and
+  its `[확인 사실]` label at line 34 (R3-F3, R3-F4); this allowed-file list (R3-F6).
+
+  **Accepted and not repaired**, recorded here because criterion 9 asks for it and because two
+  rounds left them nowhere:
+
+  - **R2-F8** — any existing file inside the repository passes as the attack report, including
+    `.git/config`. The guard proves a path resolves; it never opens the file, and both the
+    docstring and `README.md` say so. Narrowing the bar to `reviews/` or a `*REVIEW*` name is a
+    decision, not a repair, and no one has asked for it.
+  - **R2-F9 sub-items 3 and 4** — three `AGENTS.md` bullets and one `WORKER.md` section absent
+    from `DP-013`'s deviation list. Each echoes a disclosed item; listing them would be
+    near-redundant. Recorded rather than added.
+  - **R3-F5's three rules** — removed rather than repaired. The owner's instruction on
+    2026-08-19 was to take all three out of force because their provenance could not be checked.
+    [`DP-014`](../../decisions/DP-014-agent-memory-scope-and-area-exception.md) R1 records what
+    that leaves: two operating constraints now bind nowhere, and a fact worth binding needs its
+    own decision.
+
+  `[결정]` This packet stays `REWORK`. No fourth review attacked the repairs above, so
+  `ACCEPTED` would rest on the session that made them — which is the one thing the acceptance
+  criteria exist to prevent. The branch is not merged to `dev`; that is a separate decision the
+  owner has deferred.
