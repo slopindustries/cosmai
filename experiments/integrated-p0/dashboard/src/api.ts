@@ -246,6 +246,18 @@ export interface OutboundProfile {
 }
 
 /** `source_view`. */
+/**
+ * `input_profile_view`: the operator's approved input grant. DP-024.
+ *
+ * `root` is a directory the operator chose and `inputs` maps each declared input name to
+ * one member inside it. An add-on names; this decides. No credential and no host appear
+ * because an importer receives neither.
+ */
+export interface InputProfile {
+  root: string;
+  inputs: Record<string, string>;
+}
+
 export interface Source {
   source_id: string;
   addon_id: string;
@@ -255,6 +267,7 @@ export interface Source {
   config_schema_version: string;
   credential_ref: string | null;
   outbound_profile: OutboundProfile | null;
+  input_profile: InputProfile | null;
   data_class: string;
   enabled: boolean;
   created_at: string;
@@ -379,6 +392,11 @@ async function post(path: string, body?: unknown): Promise<DomainOutcome> {
 
 export function startCollection(sourceId: string): Promise<DomainOutcome> {
   return post(`/sources/${encodeURIComponent(sourceId)}/collect`);
+}
+
+/** Enqueue one import job. The dataset half of `startCollection`. */
+export function startImport(sourceId: string): Promise<DomainOutcome> {
+  return post(`/sources/${encodeURIComponent(sourceId)}/import`);
 }
 
 export function sealSnapshot(sourceId: string): Promise<DomainOutcome> {

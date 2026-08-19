@@ -92,14 +92,20 @@ def _register(app: FastAPI, config: PlatformConfig, logger: StructuredLogger) ->
             raise HTTPException(status_code=404, detail=f"no source named {source_id!r}")
         return row
 
-    def require_kind(source: dict[str, Any], kind: str) -> dict[str, Any]:
-        """Refuse with the kind it *is*, because "wrong kind" is not actionable."""
-        if source["kind"] != kind:
+    def require_kind(source: dict[str, Any], *kinds: str) -> dict[str, Any]:
+        """Refuse with the kind it *is*, because "wrong kind" is not actionable.
+
+        Takes several kinds because sealing a snapshot is the one action two kinds share:
+        a collector and an importer both produce `raw_item`, and a snapshot is over Raw
+        rather than over how it was acquired. Every other action still names exactly one.
+        """
+        if source["kind"] not in kinds:
+            wanted = " or a ".join(kinds)
             raise HTTPException(
                 status_code=409,
                 detail=(
                     f"source {source['source_id']!r} is a {source['kind']} and this action "
-                    f"needs a {kind}"
+                    f"needs a {wanted}"
                 ),
             )
         if not source["enabled"]:
@@ -160,6 +166,29 @@ def _register(app: FastAPI, config: PlatformConfig, logger: StructuredLogger) ->
             )
         return JSONResponse({"job_id": str(job_id), "source_id": source_id}, status_code=201)
 
+    @app.post("/sources/{source_id}/import", status_code=201)
+    def start_import(source_id: str) -> JSONResponse:
+        """Enqueue one import job for this source.
+
+        The dataset half of `/collect`, and the same shape for the same reason: no body,
+        and nothing here that could become a path. DP-024 puts the root and the member list
+        on the operator-approved `input_profile`, so this identifier selects a grant rather
+        than naming a file — `domain.inputs.resolve_input` is what turns the add-on's input
+        name into an approved path, and it never sees one from here.
+
+        `[확인 사실]` Added 2026-08-20. Before it, no route created an importer job, so
+        `DP-024`, migration `0004`, and `importer.local.jsonl` were reachable only from
+        tests and the charter's required flow item 12 held for collectors alone.
+        """
+        source = require_kind(source_or_404(source_id), "importer")
+        with connected(config, autocommit=True) as handle:
+            job_id = JobStore(handle, config, logger=logger).create_job(
+                f"{HANDLER_PREFIX}{source['addon_id']}",
+                {SOURCE_ID_FIELD: source_id},
+                max_attempts=MAX_ATTEMPTS,
+            )
+        return JSONResponse({"job_id": str(job_id), "source_id": source_id}, status_code=201)
+
     # -------------------------------------------------------------- snapshots
 
     @app.post("/sources/{source_id}/snapshots", status_code=201)
@@ -172,7 +201,7 @@ def _register(app: FastAPI, config: PlatformConfig, logger: StructuredLogger) ->
         endpoint returns its id instead; the shape of that change is why the response
         already names an identifier rather than a body.
         """
-        require_kind(source_or_404(source_id), "collector")
+        require_kind(source_or_404(source_id), "collector", "importer")
         with connected(config, autocommit=True) as handle:
             store = DomainStore(handle)
             with handle.transaction():
@@ -267,6 +296,7 @@ def source_view(row: dict[str, Any]) -> dict[str, Any]:
     by some path that did not.
     """
     profile = row["outbound_profile"] or {}
+    inputs = row["input_profile"] or {}
     return {
         "source_id": row["source_id"],
         "addon_id": row["addon_id"],
@@ -276,6 +306,7 @@ def source_view(row: dict[str, Any]) -> dict[str, Any]:
         "config_schema_version": row["config_schema_version"],
         "credential_ref": row["credential_ref"],
         "outbound_profile": None if not profile else profile_view(profile),
+        "input_profile": None if not inputs else input_profile_view(inputs),
         "data_class": row["data_class"],
         "enabled": row["enabled"],
         "created_at": _instant(row["created_at"]),
@@ -309,6 +340,24 @@ def profile_view(profile: dict[str, Any]) -> dict[str, Any]:
             {"header": str(part.get("header", "")), "ref": str(part.get("ref", ""))}
             for part in (profile.get("credentials") or ())
         ],
+    }
+
+
+def input_profile_view(profile: dict[str, Any]) -> dict[str, Any]:
+    """The approved input grant, field by named field. DP-024.
+
+    The importer half of `profile_view`, and built the same way for the same reason: named
+    fields rather than the stored blob, so a future key nobody decided to publish does not
+    leave the boundary by inheriting a `dict`.
+
+    Both fields are the operator's own writing — a root they chose and members they named —
+    so neither is redacted. There is no credential here: an importer receives no network
+    capability, and `addon_api.manifest` refuses one that declares hosts or a credential.
+    """
+    inputs = profile.get("inputs") or {}
+    return {
+        "root": str(profile.get("root", "")),
+        "inputs": {str(name): str(member) for name, member in inputs.items()},
     }
 
 

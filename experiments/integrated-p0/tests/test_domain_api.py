@@ -41,6 +41,7 @@ pytestmark = pytest.mark.usefixtures("database")
 
 COLLECT_SOURCE = "probe-blog"
 NORMALIZE_SOURCE = "probe-blog-normalized"
+IMPORT_SOURCE = "probe-rows"
 
 
 @pytest.fixture
@@ -75,6 +76,17 @@ def registered(domain: DomainStore) -> None:
                     }
                 ],
             },
+        )
+    )
+    domain.register_source(
+        SourceRow(
+            source_id=IMPORT_SOURCE,
+            addon_id="importer.local.jsonl",
+            addon_version="0.1.0",
+            kind="importer",
+            config={"key_field": "id"},
+            config_schema_version="1",
+            input_profile={"root": "/tmp/approved", "inputs": {"rows": "rows.jsonl"}},
         )
     )
     domain.register_source(
@@ -129,6 +141,7 @@ class TestListingSources:
         assert {row["source_id"] for row in response.json()["sources"]} == {
             COLLECT_SOURCE,
             NORMALIZE_SOURCE,
+            IMPORT_SOURCE,
         }
 
     def test_a_source_reports_its_add_on_kind_and_whether_it_is_enabled(
@@ -448,3 +461,116 @@ def _row(key: str, body: dict[str, Any]) -> Any:
     from domain.store import NormalizedResultRow
 
     return NormalizedResultRow(source_item_key=key, body=body)
+
+
+class TestStartingAnImport:
+    """The dataset half of the charter's required flow item 12.
+
+    `[확인 사실]` Until this existed, no route created an importer job. `DP-024`, the input
+    registry, migration `0004`, and `importer.local.jsonl` were reachable only from tests —
+    so the charter's *"operate, inspect, diagnose, and safely retry the domain flow through
+    the dashboard"* held for the REST half and not for the dataset half.
+    """
+
+    def test_it_creates_a_job_for_the_source_s_importer(
+        self, client: TestClient, registered: None, store: JobStore
+    ) -> None:
+        response = client.post(f"/sources/{IMPORT_SOURCE}/import")
+
+        assert response.status_code == 201
+        job = store.read_job(UUID(response.json()["job_id"]))
+        assert job is not None
+        assert job["handler"] == "addon:importer.local.jsonl"
+        assert job["payload"] == {"source_id": IMPORT_SOURCE}
+        assert job["state"] == JobState.PENDING.value
+
+    def test_a_collector_source_cannot_be_told_to_import(
+        self, client: TestClient, registered: None
+    ) -> None:
+        response = client.post(f"/sources/{COLLECT_SOURCE}/import")
+
+        assert response.status_code == 409
+        assert "collector" in response.json()["detail"]
+
+    def test_an_importer_source_still_cannot_be_told_to_collect(
+        self, client: TestClient, registered: None
+    ) -> None:
+        """The control. Adding a second verb must not make the first one permissive."""
+        response = client.post(f"/sources/{IMPORT_SOURCE}/collect")
+
+        assert response.status_code == 409
+        assert "importer" in response.json()["detail"]
+
+    def test_a_disabled_importer_is_refused(
+        self, client: TestClient, registered: None, connection: psycopg.Connection[Any]
+    ) -> None:
+        connection.execute(
+            "update source set enabled = false where source_id = %s", (IMPORT_SOURCE,)
+        )
+
+        assert client.post(f"/sources/{IMPORT_SOURCE}/import").status_code == 409
+
+    def test_an_unregistered_source_cannot_be_imported(
+        self, client: TestClient, registered: None
+    ) -> None:
+        assert client.post("/sources/nope/import").status_code == 404
+
+
+class TestAnImporterCanSealASnapshot:
+    """A dataset that cannot be sealed cannot be normalized, so it cannot finish the flow."""
+
+    def test_an_importer_s_raw_can_be_sealed(
+        self,
+        client: TestClient,
+        registered: None,
+        domain: DomainStore,
+        connection: psycopg.Connection[Any],
+    ) -> None:
+        put_raw(domain, connection, "row-1", "row-2")
+        connection.execute(
+            "update raw_envelope set source_id = %s where source_id = %s",
+            (IMPORT_SOURCE, COLLECT_SOURCE),
+        )
+        connection.execute(
+            "update raw_item set source_id = %s where source_id = %s",
+            (IMPORT_SOURCE, COLLECT_SOURCE),
+        )
+
+        response = client.post(f"/sources/{IMPORT_SOURCE}/snapshots")
+
+        assert response.status_code == 201, response.text
+        assert response.json()["item_count"] == 2
+
+    def test_a_normalizer_source_still_cannot_seal(
+        self, client: TestClient, registered: None
+    ) -> None:
+        """The control: widening to two kinds must not widen to all of them."""
+        response = client.post(f"/sources/{NORMALIZE_SOURCE}/snapshots")
+
+        assert response.status_code == 409
+        assert "normalizer" in response.json()["detail"]
+
+
+class TestTheOperatorReadsBackTheInputGrantTheyApproved:
+    """`profile_view`'s docstring claims *"Everything here is the operator's own grant read
+    back to them"*. `input_profile` reached no response at all, so for an importer the
+    sentence was false: an operator could approve a root and a member list and then have no
+    way to see what they had approved.
+    """
+
+    def test_an_importer_s_input_profile_is_returned(
+        self, client: TestClient, registered: None
+    ) -> None:
+        body = client.get(f"/sources/{IMPORT_SOURCE}").json()
+
+        assert body["input_profile"] == {
+            "root": "/tmp/approved",
+            "inputs": {"rows": "rows.jsonl"},
+        }
+
+    def test_a_collector_has_no_input_profile_rather_than_an_empty_one(
+        self, client: TestClient, registered: None
+    ) -> None:
+        """`None` says this source reads no files; `{}` would read as an approved-nothing
+        grant, and migration `0004` refuses the column on a non-importer for that reason."""
+        assert client.get(f"/sources/{COLLECT_SOURCE}").json()["input_profile"] is None

@@ -19,6 +19,7 @@
 import type { JSX } from "react";
 import type {
   CredentialPart,
+  InputProfile,
   NormalizedResult,
   OutboundProfile,
   RawSummary,
@@ -36,6 +37,7 @@ export function SourceTable({
   selectedId,
   onSelect,
   onCollect,
+  onImport,
   onSeal,
 }: {
   sources: Source[];
@@ -43,6 +45,7 @@ export function SourceTable({
   selectedId: string | null;
   onSelect: (sourceId: string) => void;
   onCollect: (sourceId: string) => void;
+  onImport: (sourceId: string) => void;
   onSeal: (sourceId: string) => void;
 }): JSX.Element {
   if (sources.length === 0) {
@@ -71,6 +74,11 @@ export function SourceTable({
         {sources.map((source) => {
           const collected = raw[source.source_id];
           const isCollector = source.kind === "collector";
+          // An importer acquires too — from an approved file rather than a socket — so it
+          // seals what it acquired by the same act. A normalizer acquires nothing and
+          // still runs on a snapshot someone else sealed.
+          const isImporter = source.kind === "importer";
+          const acquires = isCollector || isImporter;
           return (
             <tr
               key={source.source_id}
@@ -88,14 +96,16 @@ export function SourceTable({
               <td>{collected === undefined ? ABSENT : collected.envelope_count}</td>
               <td>{collected === undefined ? ABSENT : collected.item_count}</td>
               <td>
-                {isCollector ? (
+                {acquires ? (
                   <>
                     <button
                       type="button"
                       disabled={!source.enabled}
-                      onClick={() => onCollect(source.source_id)}
+                      onClick={() =>
+                        isCollector ? onCollect(source.source_id) : onImport(source.source_id)
+                      }
                     >
-                      collect
+                      {isCollector ? "collect" : "import"}
                     </button>{" "}
                     <button
                       type="button"
@@ -144,9 +154,47 @@ export function SourceDetail({ source }: { source: Source }): JSX.Element {
       ) : (
         <ProfileDetail profile={source.outbound_profile} />
       )}
+      {source.input_profile === null ? null : <InputProfileDetail profile={source.input_profile} />}
     </div>
   );
 }
+
+/**
+ * The approved input grant, read back to the operator who wrote it. DP-024.
+ *
+ * The importer half of `ProfileDetail`. There is no credential row and no host row
+ * because an importer receives neither — `manifest.py` refuses one that declares either,
+ * and migration `0004` refuses the row in the database. What is left is what the operator
+ * actually decided: one root, and which file each declared input name resolves to.
+ */
+function InputProfileDetail({ profile }: { profile: InputProfile }): JSX.Element {
+  const inputs = Object.entries(profile.inputs);
+  return (
+    <div className="profile">
+      <h4>approved input grant</h4>
+      <dl className="fields">
+        <Field label="root" value={profile.root} />
+      </dl>
+      <table className="table">
+        <thead>
+          <tr>
+            <th scope="col">input</th>
+            <th scope="col">member</th>
+          </tr>
+        </thead>
+        <tbody>
+          {inputs.map(([name, member]) => (
+            <tr key={name} className="row">
+              <td>{name}</td>
+              <td>{member}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 
 function ProfileDetail({ profile }: { profile: OutboundProfile }): JSX.Element {
   const endpoints = Object.entries(profile.endpoints);

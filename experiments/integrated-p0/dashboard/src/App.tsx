@@ -35,6 +35,7 @@ import {
   requestRetry,
   sealSnapshot,
   startCollection,
+  startImport,
   startNormalization,
   wasRefused,
 } from "./api";
@@ -186,6 +187,7 @@ function DomainScreen(): JSX.Element {
         selectedId={openSource}
         onSelect={(sourceId) => setOpenSource(sourceId === openSource ? null : sourceId)}
         onCollect={(sourceId) => act(startCollection(sourceId), `collection of ${sourceId}`)}
+        onImport={(sourceId) => act(startImport(sourceId), `import of ${sourceId}`)}
         onSeal={(sourceId) => act(sealSnapshot(sourceId), `snapshot of ${sourceId}`)}
       />
       {open === null ? null : <SourceDetail source={open} />}

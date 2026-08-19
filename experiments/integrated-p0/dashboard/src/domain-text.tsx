@@ -60,6 +60,7 @@ function screen(input: Input): JSX.Element {
         selectedId={openSource}
         onSelect={nothing}
         onCollect={nothing}
+        onImport={nothing}
         onSeal={nothing}
       />
       {open === null ? null : <SourceDetail source={open} />}

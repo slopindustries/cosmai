@@ -660,3 +660,74 @@ def _unused_guard() -> None:
     """`os` and `time` are imported for the process fixtures' benefit under some
     platforms; naming them here keeps the linter honest about why they are present."""
     assert os is not None and time is not None
+
+
+class TestTheImporterHasAnOperatorControlToo:
+    """charter required flow 12, for the dataset half.
+
+    `[확인 사실]` Until 2026-08-20 the screen offered `collect` and `seal snapshot` to a
+    collector and the words *"runs on a snapshot"* to everything else — so an importer,
+    which runs on neither a snapshot nor a socket, was told it runs on a snapshot and
+    given no control at all. The API had no route to give it one.
+    """
+
+    def _screen_with_an_importer(self, loop: dict[str, Any]) -> tuple[str, str]:
+        sources = json.loads(json.dumps(loop["sources"]))
+        sources["sources"].append(
+            {
+                "source_id": "probe-rows",
+                "addon_id": "importer.local.jsonl",
+                "addon_version": "0.1.0",
+                "kind": "importer",
+                "config": {"key_field": "id"},
+                "config_schema_version": "1",
+                "credential_ref": None,
+                "outbound_profile": None,
+                "input_profile": {"root": "/approved", "inputs": {"rows": "rows.jsonl"}},
+                "data_class": "local",
+                "enabled": True,
+                "created_at": "2026-08-20T00:00:00+00:00",
+                "updated_at": "2026-08-20T00:00:00+00:00",
+            }
+        )
+        return render_screen(
+            {
+                "sources": sources,
+                "raw": loop["raw"],
+                "snapshots": loop["snapshots"],
+                "results": {"results": []},
+                "open_source": "probe-rows",
+                "open_snapshot": None,
+            }
+        )
+
+    def test_an_importer_row_offers_import_and_seal(self, loop: dict[str, Any]) -> None:
+        _, markup = self._screen_with_an_importer(loop)
+
+        row = next(row for row in markup.split("<tr") if "probe-rows" in row)
+        assert "import</button>" in row
+        assert "seal snapshot</button>" in row
+
+    def test_an_importer_row_offers_no_collect(self, loop: dict[str, Any]) -> None:
+        """It opens no socket. `manifest.py` refuses an importer that declares a host."""
+        _, markup = self._screen_with_an_importer(loop)
+
+        row = next(row for row in markup.split("<tr") if "probe-rows" in row)
+        assert "collect</button>" not in row
+
+    def test_a_collector_row_still_offers_no_import(self, loop: dict[str, Any]) -> None:
+        """The control. Adding a verb to one kind must not add it to the others."""
+        _, markup = self._screen_with_an_importer(loop)
+
+        row = next(row for row in markup.split("<tr") if COLLECT_SOURCE in row)
+        assert "collect</button>" in row
+        assert "import</button>" not in row
+
+    def test_the_approved_input_grant_is_read_back_on_the_screen(
+        self, loop: dict[str, Any]
+    ) -> None:
+        """An operator approved a root and a member list; they have to be able to see it."""
+        visible, _ = self._screen_with_an_importer(loop)
+
+        assert "/approved" in visible
+        assert "rows.jsonl" in visible
