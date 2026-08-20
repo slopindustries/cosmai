@@ -1,0 +1,32 @@
+# normalizer.obf.product — Open Beauty Facts product rows into `Normalized Schema 0.3`
+# `product` records (DP-028).
+#
+# The first add-on to emit `record_type = "product"`. DP-028 D3 fixes the five fields this
+# add-on may carry and D5 forbids deciding what the product *is* — no category, no
+# ingredient parsing, no brand identity. `output_contract_version = "0.3"` is additive over
+# `0.2` (DP-028 D2): no existing normalizer bumps its own version because of this add-on.
+#
+# `[declares]` is empty of hosts, endpoints, credentials, and streams — DP-008 D4 gives a
+# normalizer a sealed input and nothing else, and `addon_api`'s manifest parser refuses a
+# normalizer that asks for any of them.
+
+[addon]
+id = "normalizer.obf.product"
+version = "0.1.0"
+kind = "normalizer"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+output_contract_version = "0.3"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "language"
+type = "string"
+required = false
+label = "Product language"
+help = "BCP-47 tag written into every record. Stated, never detected (DP-019 D2): a detected language is a guess in the same field as facts. Defaults to en — DP-028 records that 0 of 36 sampled South Korea rows carried product_name_ko and no Hangul appeared in any sampled product_name."
+
+[declares]
+streams = []
