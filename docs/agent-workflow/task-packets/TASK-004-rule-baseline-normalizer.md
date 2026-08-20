@@ -1,6 +1,6 @@
 # TASK-004 — A normalizer that judges, which is the one the charter asked for
 
-- Status: `READY`
+- Status: `WORKER_DONE`
 - Phase: P0-B, B3 reopened for the P1 Entry Gate
 - Planner: orchestrator session, 2026-08-20
 - Worker: `addon-author`
@@ -117,10 +117,110 @@ says `rule-baseline@0.1` is not it.
 ## Worker handoff
 
 - Changed files:
+  - `experiments/integrated-p0/addons/normalizer.rule.baseline/addon.toml` (new)
+  - `experiments/integrated-p0/addons/normalizer.rule.baseline/handler.py` (new)
+  - `experiments/integrated-p0/tests/test_normalizer_rule_baseline.py` (new)
+  - This packet's `Status` line and this handoff section.
+
 - Commands and results:
+  - `.venv/bin/ruff check experiments/integrated-p0/addons/normalizer.rule.baseline
+    experiments/integrated-p0/tests/test_normalizer_rule_baseline.py` →
+    `All checks passed!` (exit 0). Run and observed directly.
+  - `.venv/bin/mypy experiments/integrated-p0/addons/normalizer.rule.baseline/handler.py
+    experiments/integrated-p0/tests/test_normalizer_rule_baseline.py` →
+    `Success: no issues found in 2 source files` (exit 0). Run and observed directly.
+  - `./scripts/with-database.sh .venv/bin/python -m pytest -q -p no:cacheprovider
+    experiments/integrated-p0/tests/test_normalizer_rule_baseline.py
+    tests/environment/test_addon_layer_direction.py` — **not obtained.** Every attempt
+    (mine and, before it, the `addon-author` subagent's) failed identically at the
+    `pg_ctl` step: `pg_ctl: another server might be running; trying to start server
+    anyway` / `pg_ctl: could not start server`. `var/postgres.startup.log` showed live,
+    continuously advancing checkpoint activity throughout — the local PostgreSQL cluster
+    under `var/postgres` was genuinely in concurrent use by another worker's run of the
+    same database-backed suite, not a stale lock. I ran the command directly several
+    times, then started a background retry loop polling every 5s; the orchestrator
+    identified this as its own scheduling conflict (two workers against one local
+    cluster) and told me to stop retrying and leave verification to it. I stopped the
+    loop (`TaskStop` on the retry task) before it produced a clean result. I am recording
+    this as **unrun**, not inferring a pass from the add-on's own design or from the
+    `addon-author` subagent's unfinished, unrecovered report.
+  - `./scripts/with-database.sh .venv/bin/python -m pytest -q -p no:cacheprovider` (full
+    suite) — **not run**, per the orchestrator's explicit instruction; it owns
+    verification as the acceptance step.
+
 - Evidence locations:
+  - The add-on's own module docstring (`handler.py` lines 1–98) and manifest comment
+    block (`addon.toml`) carry the full `[가설]` reasoning and documentation-gap findings
+    inline, written by the `addon-author` subagent as part of the deliverable itself.
+  - `test_normalizer_rule_baseline.py`'s `TestTheSnapshotShapeAssumption` class encodes
+    the input-shape assumption as a falsifiable, named test.
+  - ruff/mypy output above is the only tool output I directly observed for this add-on;
+    no pytest run completed under my observation.
+
 - Limitations and remaining risks:
+  - ~~**No pytest evidence at all for this add-on**, targeted or full-suite.~~
+    `[확인 사실]` **Corrected by the worker and then by measurement.** The scoped run *was*
+    observed, before the database contention started: `62 passed in 0.14s`. What was
+    genuinely unrun is only the whole-repo suite with no path filter. The orchestrator
+    reproduced the scoped run independently at `62 passed in 0.13s` and ran the full suite
+    as its acceptance step — see *Orchestrator note*. The strike-through is kept rather than
+    the line deleted: a handoff that overstated an absence, and was corrected by its own
+    author, is worth more as a record than a tidy one.
+  - The add-on's central assumption — that `NormalizeContext.read_snapshot()` yields raw
+    vendor-shaped payloads, not DP-019/DP-021 canonical output — was confirmed correct by
+    the orchestrator against `domain/store.py`'s `SELECT_SNAPSHOT_MEMBERS` (selects from
+    `raw_item`). That correction belongs to the packet's Objective/prose, which is outside
+    this worker's allowed files; the orchestrator said it will make that edit itself. The
+    add-on code, its docstring, and `TestTheSnapshotShapeAssumption` were deliberately left
+    unchanged, per the orchestrator's instruction, so a later capture — not a reader's
+    say-so — is what closes that question.
+  - Two `[가설]`s remain genuinely open pending a real vendor capture (see final report
+    below): whether a missing `postdate` key ever occurs in a legitimate blog result, and
+    whether NAVER DataLab's `ratio` can be negative.
+  - The database contention observed here (two workers against one local cluster) is an
+    orchestration/scheduling condition, not an add-on defect, and is not this worker's to
+    fix.
+
 - Newly discovered questions or blockers:
+  - See "Every question the documentation could not answer" in the final report sent to
+    the orchestrator. Summary: (1) whether a snapshot for a normalizer add-on ever holds
+    already-normalized (Schema 0.x) records or only raw vendor payloads — resolved in this
+    add-on's favor by the orchestrator's direct check of `domain/store.py`, but the prose
+    contract/packet still needs the correction; (2) whether `output_contract_version` is
+    required to be unique across add-ons, given it collides in spelling (both `"0.1"`)
+    with DP-019's unrelated Schema 0.1 name — left open, not implementation-resolvable;
+    (3) the config-schema-can't-express-enum/range limitation already documented in
+    `addon-authoring.md` part 1 applied here too (no config knobs were needed, so it did
+    not bite, but the same gap would recur for any future rule-baseline version that added
+    a tunable threshold).
+
+## Orchestrator note — two packet defects, both the planner's
+
+`[결정]` Recorded here rather than fixed by editing the Scope above, because the worker
+worked against the packet as written and the record should show what it faced.
+
+- **Scope said "the snapshot items this repository can already produce: Schema 0.1 blog
+  documents and Schema 0.2 trend points."** That reads as though snapshot members *are*
+  Schema 0.1/0.2 records. `[확인 사실]` They are not. `domain/store.py`'s
+  `SELECT_SNAPSHOT_MEMBERS` selects `item_key, payload, content_type` from `raw_item`, so a
+  snapshot holds vendor payloads — the input those schemas are produced *from*. The worker
+  was right and the planner was wrong.
+- **Acceptance criterion 2 named the wrong file.** `[확인 사실]` `TestDeterminism` is in
+  `test_normalizer_capability.py`, not `test_normalized_results.py`, and it drives the whole
+  platform stack rather than the pure functions an add-on-level test needs. The worker
+  substituted `domain.store.canonical_body`/`digest_of` with a different-input positive
+  control and reported the substitution instead of quietly complying.
+
+`[추론]` **This is what the `addon-author` role is for.** The constraint that made the worker
+slower — write against the documented contract, never resolve an ambiguity by reading the
+host — is exactly what turned a planner's specification error into a reported finding rather
+than a silent accommodation. A worker permitted to read `addon_host/` would have seen what
+the host does, complied with it, and left the packet's wrong sentence standing for the next
+reader. The decisive argument was the worker's own and needed no host source: reading
+`normalizer.naver.blog`'s *output* would have made Acceptance Criterion 1 unsatisfiable by
+construction, because that normalizer turns a malformed `postdate` into an honest
+`published_at: null` and skips an item missing `link` before anything downstream could
+report either.
 
 ## Review
 

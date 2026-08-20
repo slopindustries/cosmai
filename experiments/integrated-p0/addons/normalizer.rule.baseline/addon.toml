@@ -1,0 +1,31 @@
+# normalizer.rule.baseline — deterministic data-quality rules over a sealed snapshot.
+#
+# Judges, does not reshape: for each snapshot item it reports which named rule fired,
+# against which field, what was expected, and what was there. It produces no document, no
+# trend point, and no score — see handler.py's module docstring for TASK-004's full
+# reasoning and its list of open documentation questions.
+#
+# No operator-tunable knob exists because every rule here is a fixed structural or
+# cross-field check; nothing in this add-on's judgment depends on a value an operator
+# would sensibly set per source.
+
+[addon]
+id = "normalizer.rule.baseline"
+version = "0.1.0"
+kind = "normalizer"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+# This add-on's own report shape, versioned independently of DP-019's `0.1` and DP-021's
+# `0.2` — the string collision with DP-019's Schema 0.1 is coincidental (both happen to be
+# an add-on's *first* version) and not a claim of compatibility. See handler.py's docstring,
+# "Question: output_contract_version collides in spelling with an unrelated schema".
+output_contract_version = "0.1"
+
+[config]
+schema_version = "1"
+
+# `[declares]` is empty, and that is not an omission: DP-008 D4 gives a normalizer a sealed
+# input and nothing else, and `addon_api`'s manifest parser refuses a normalizer that asks
+# for a host, an endpoint, a credential, or a cursor stream.
+[declares]
+streams = []
