@@ -123,9 +123,14 @@ unescaped `|` is a literal character to `grep`'s basic regular expressions rathe
 alternation — it matches nothing and exits 1 on this tree, so it proved nothing about the
 route handlers even though its stated conclusion happened to be true. The working form,
 `grep -rlnE 'secret|credential' experiments/integrated-p0/platform_core/api/`, returns
-`app.py` and `__main__.py`; every match in both files is inside a comment or docstring
-referencing `secret-setup.md`'s guard (`__main__.py:8,181`; `app.py:91`) — no route handler
-accepts a credential value. DP-008 D6's mechanism was proposed but never built in P0.
+`app.py` and `__main__.py` against a clean checkout; every match in both files is inside a
+comment or docstring referencing `secret-setup.md`'s guard (`__main__.py:8,181`; `app.py:91`) —
+no route handler accepts a credential value. `[확인 사실]` Re-run 2026-08-21 (fix-wave round 3):
+against a working tree where `pytest` has already run, the same command also matches a
+gitignored `__pycache__/__main__.cpython-313.pyc` build artifact (`.gitignore:19`, untracked) —
+not a source file and not part of any checkout that has not executed Python first; the two
+`.py` files remain the only tracked matches. DP-008 D6's mechanism was proposed but never built
+in P0.
 
 `[확인 사실]` [DP-018](DP-018-credential-parts-and-attachment.md) D3: every credential header must
 be a member of `PROTECTED_HEADERS`, refused otherwise, so that attachment and stripping are the
@@ -196,8 +201,9 @@ Phase 0.3's "or record a P1-scoped decision that is not a waiver" clause.
 - **D1 Candidate 1, no dashboard entry.** Rejected: `plan.md` §5 and §7.1 ask for it explicitly,
   and DP-008 D6 already found the alternative — hand-editing `~/.config/cosmai/env` once per
   source, per collector, with no dashboard visibility into what is or is not set — worse for an
-  operator managing five add-ons across six screens (DP-033 D1) than one write endpoint per
-  source.
+  operator managing eight or nine add-ons across six screens (DP-033 D1) than one write endpoint
+  per source (`[확인 사실]` corrected 2026-08-21, fix-wave round 3, D3 — M4 builds four or five
+  collectors, one importer, and three normalizers; see `P1-RECONSTRUCTION-PLAN.md`'s M4 row).
 - **D1 Candidate 3, read/write with re-display.** Rejected: it reopens exactly the leak channel
   invariant 3 forbids — a value appearing on a screen — for a convenience (viewing the current
   value) that DP-008 D6's design already avoids needing (`[확인 사실]` corrected 2026-08-21 —

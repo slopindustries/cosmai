@@ -288,7 +288,9 @@ was.
   against stale upstream data... are cases where re-executing succeeded work is the operator's
   actual intent"); M6 should record whether that case actually arises once scheduling is real,
   rather than this packet asserting it does not.
-- Whether six screens remain sufficient once M4's five add-ons and the source track are fully
+- Whether six screens remain sufficient once M4's eight or nine add-ons (`[확인 사실]` corrected
+  2026-08-21, fix-wave round 3, D3 — M4 builds four or five collectors, one importer, and three
+  normalizers; see `P1-RECONSTRUCTION-PLAN.md`'s M4 row) and the source track are fully
   connected — OQ-005 H1's own falsification condition — is untested until M5.
 - Whether streaming, `item_key`-prefix-scoped export is adequate at the volumes trend-radar and
   tubedepth will actually produce is unmeasured; `plan.md` goal 3 itself states the owner does not
