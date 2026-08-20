@@ -30,11 +30,14 @@ from __future__ import annotations
 
 import json
 import os
+import signal
+import socket
 import subprocess
 import sys
 import time
 from collections.abc import Callable, Iterator
-from dataclasses import replace
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from io import StringIO
 from pathlib import Path
 from typing import Any, Final
@@ -44,7 +47,7 @@ import psycopg
 import pytest
 from psycopg.rows import dict_row
 
-from platform_core.config import PlatformConfig, load_config
+from platform_core.config import DEFAULT_API_HOST, PlatformConfig, load_config
 from platform_core.db.connection import connect
 from platform_core.db.migrate import SCHEMA, apply_migrations
 from platform_core.jobs.store import Backoff, JobStore
@@ -234,19 +237,16 @@ def job_store(
 
 
 # --------------------------------------------------------------------------- #
-# Process helpers for worker/API integration tests (Task 7)
+# Process helpers for worker/API integration tests (Tasks 7-8)
 #
 # Copy-adapted from ``experiments/integrated-p0/tests/conftest.py``'s process
-# half. P0 spawned a worker against a database cloned fresh for the test
-# (``shared_database``); DP-032 gives P1 exactly one shared `cosmai_test`
+# half. P0 spawned a worker or the API against a database cloned fresh for the
+# test (``shared_database``); DP-032 gives P1 exactly one shared `cosmai_test`
 # database (see the module docstring above), so every helper here points a
 # spawned process at ``platform_config`` and leaves table-level isolation to
 # whichever fixture the test itself uses to touch the job tables — ordinarily
 # `job_store`'s `_reset_job_tables`. A test that needs an empty queue and does
 # not otherwise request `job_store` depends on `_reset_job_tables` directly.
-#
-# Task 8 adds the API-process half (``api_command``, ``running_api``, and
-# their supporting helpers) alongside this section.
 # --------------------------------------------------------------------------- #
 
 #: The directory a spawned process needs on its import path. `platform_core`
@@ -260,6 +260,12 @@ APPS_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 #: enough that a loaded machine does not fail the run, short enough that a
 #: stuck process is reported as one rather than as a hung session.
 PROCESS_TIMEOUT_SECONDS: Final = 30.0
+
+#: The identity and lease a test claims under when it drives the store directly
+#: rather than through a spawned process (`test_sec_004_protected_does_not_mean_unredacted`).
+WORKER: Final = "worker-under-test"
+
+LEASE_SECONDS: Final = 5.0
 
 
 def worker_environment(config: PlatformConfig, **overrides: str) -> dict[str, str]:
@@ -293,6 +299,11 @@ def worker_environment(config: PlatformConfig, **overrides: str) -> dict[str, st
 def worker_command(*arguments: str) -> list[str]:
     """The command line DP-006 D1 fixes for the worker process."""
     return [sys.executable, "-m", "platform_core.worker", *arguments]
+
+
+def api_command(*arguments: str) -> list[str]:
+    """The command line DP-006 D1 fixes for the operator API process."""
+    return [sys.executable, "-m", "platform_core.api", *arguments]
 
 
 def start_worker(
@@ -340,6 +351,27 @@ def run_worker(
 ) -> subprocess.CompletedProcess[str]:
     """Run a worker process to completion. The common case in a scenario."""
     return wait_for_worker(start_worker(config, *arguments, **overrides), timeout=timeout)
+
+
+def free_port(host: str) -> int:
+    """A port nothing is listening on, for an API a test is about to start.
+
+    Bound, read back, and released, which leaves a window in which something
+    else could take it. A collision here shows up as a bind failure the test
+    reports.
+    """
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as probe:
+        probe.bind((host, 0))
+        return int(probe.getsockname()[1])
+
+
+def accepts_connections(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
 
 
 def wait_until(
@@ -396,3 +428,64 @@ def effects_of(connection: psycopg.Connection[Any], job_id: UUID) -> list[dict[s
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(f"select * from {SCHEMA}.platform_effect where job_id = %s", (job_id,))
         return cursor.fetchall()
+
+
+@dataclass
+class RunningApi:
+    """An API process a test started, where to reach it, and what it left behind."""
+
+    process: subprocess.Popen[str]
+    host: str
+    port: int
+    finished: subprocess.CompletedProcess[str] | None = None
+
+    @property
+    def base_url(self) -> str:
+        # A literal IPv6 address needs brackets in a URL; IPv4 must not have them.
+        located = f"[{self.host}]" if ":" in self.host else self.host
+        return f"http://{located}:{self.port}"
+
+    def collected(self) -> subprocess.CompletedProcess[str]:
+        """The exit status and both streams. Available once the block has ended."""
+        assert self.finished is not None, "the API has not been stopped yet"
+        return self.finished
+
+
+@contextmanager
+def running_api(
+    config: PlatformConfig,
+    host: str = DEFAULT_API_HOST,
+    **overrides: str,
+) -> Iterator[RunningApi]:
+    """Start the API entrypoint, wait until it accepts a connection, then stop it.
+
+    Stopped with ``SIGTERM`` rather than killed, because the entrypoint shuts
+    down cleanly on it and both ``api.started`` and ``api.stopped`` are part of
+    what SEC-002 reads. The process is always reaped on the way out — including
+    when the body raised — and its streams are left on ``RunningApi.collected()``.
+    """
+    port = free_port(host)
+    process = subprocess.Popen(
+        api_command(),
+        env=worker_environment(
+            config, COSMA_API_HOST=host, COSMA_API_PORT=str(port), **overrides
+        ),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    api = RunningApi(process=process, host=host, port=port)
+    try:
+        wait_until(
+            lambda: accepts_connections(host, port) or process.poll() is not None,
+            f"the API accepts a connection on {host}:{port}",
+        )
+        assert process.poll() is None, (
+            "the API exited before it accepted a connection:\n"
+            f"{wait_for_worker(process).stderr}"
+        )
+        yield api
+    finally:
+        if process.poll() is None:
+            process.send_signal(signal.SIGTERM)
+        api.finished = wait_for_worker(process)
