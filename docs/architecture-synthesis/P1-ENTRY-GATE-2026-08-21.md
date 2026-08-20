@@ -1,6 +1,6 @@
 # P0-B P1 Entry Gate
 
-- Status: `DRAFT`
+- Status: `GO`
 - Governing decisions: [DP-001](../decisions/DP-001-p0-lifecycle.md), [DP-005](../decisions/DP-005-two-part-pre-p1-execution.md)
 - P0-B experiment: [EXP-003](../../experiments/integrated-p0/EXP-003-capability-layer.md)
 - Reviewed P0 revision: `9547f3b8c7a3e135f4084d70282aa9243f67c93f` — the revision this gate's
@@ -80,11 +80,17 @@ Has P0-B produced enough accepted evidence, contract, and disposition informatio
 
 ## Decision
 
-- Outcome: `GO | CONDITIONAL GO | NO-GO`
-- `[결정]`:
-- Accepted conditions:
-- Blocking failures:
-- Failure classification:
-- P0-B work package to reopen:
+- Outcome: `GO`
+- `[결정]`: Accepted by the project owner on 2026-08-21 (Asia/Seoul), in session, with the
+  parent row's summary of what a `GO` knowingly accepts — rows 4, 8, 10, 12's non-plain-met
+  statuses and rows 1, 5, 7, 9's named limitations — presented verbatim before the answer.
+  The owner also approved the `p0-archive` tag at `00fdd0e` in the same answer.
+- Accepted conditions: none — this is a plain `GO`, not a `CONDITIONAL GO`. The carried
+  limitations above are recorded facts routed to named milestones, not conditions on this
+  acceptance.
+- Blocking failures: none open. The adversarial review's six blocking findings were repaired
+  and independently re-verified before this decision — see the Reviewers line.
+- Failure classification: not applicable.
+- P0-B work package to reopen: none.
 
 `GO` permits P1 reconstruction. `CONDITIONAL GO` may carry only explicit, bounded conditions that do not require P1 to infer a missing contract. `NO-GO` returns work to a named P0-B work package or records an external blocker.

@@ -2,9 +2,11 @@
 
 - Project: Cosmai
 - Version: 0.9
-- Updated: 2026-08-19
-- Phase: P0-B — Domain Integration, Evidence Synthesis, and Disposition
-- Next gate: P1 Entry Gate (inside P0-B)
+- Updated: 2026-08-21
+- Phase: P1 — Clean Reconstruction
+- Next gate: P1 charter gate (charter not yet written; until it exists, the accepted
+  [P1 reconstruction plan](architecture-synthesis/P1-RECONSTRUCTION-PLAN.md)'s M1–M7
+  milestones govern)
 
 ## Delivery lifecycle
 
@@ -73,6 +75,16 @@ accepted itself would not be a gate.
 
 `[확인 사실]` 2026-08-21: the gate record is being prepared on `p1/entry-gate` from the
 owner's recorded selection criteria; acceptance remains the owner's act.
+
+`[결정]` **Both acts happened on 2026-08-21.** The P1 Entry Gate was held and accepted
+`GO` by the project owner — the record, its adversarial review (`FAIL`, then four repair
+rounds each independently re-verified), and what a `GO` knowingly accepts are in
+[`P1-ENTRY-GATE-2026-08-21.md`](architecture-synthesis/P1-ENTRY-GATE-2026-08-21.md). The
+`p0-archive` tag was approved at `00fdd0e`, the last pure-P0 commit, and created at merge.
+Consequences: `apps/` is open for P1 reconstruction, and `SEC-006`'s waiver
+([DP-023](decisions/DP-023-sec-006-waived-for-p0.md)) has expired — replaced not by
+satisfaction but by [DP-034](decisions/DP-034-p1-credential-entry.md) D3's explicit,
+still-unimplemented deferral (`SR-005`).
 
 `[결정]` Until that gate is held, P0-B is **complete as work against the charter, not
 started against DP-011's added product scope, and unaccepted as a stage**. The distinction
