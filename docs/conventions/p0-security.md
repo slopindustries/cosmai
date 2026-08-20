@@ -4,6 +4,8 @@
 - 적용 범위: P0-A platform core와 P0-B source probe 및 domain integration
 - 최종 수정일: 2026-08-17
 
+P1 scope amendment: dashboard write-only credential entry and the security disposition are decided in [DP-034](../decisions/DP-034-p1-credential-entry.md).
+
 ## 목적과 경계
 
 P0가 폐기형 prototype이라는 사실은 실제 credential, 외부 네트워크, dataset과 debug data를 안전하지 않게 다룰 이유가 되지 않는다. 이 문서는 production IAM 또는 secret-management 제품을 선택하지 않고도 지켜야 하는 최소 불변조건을 정의한다.
