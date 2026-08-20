@@ -141,6 +141,13 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
 - `[결정]` [DP-025](decisions/DP-025-two-branch-record-reconciliation.md) reconciles the two decision records that grew from `c0a266d` without seeing each other: the published numbers stand, the P0-B packets moved to DP-018–DP-024 and OQ-013–OQ-014, OQ-014 closes into DP-012 carrying its measurement as falsification input, and the P0-B completion claim states the plan it is measured against.
 - `[결정]` [DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) closes P0 against `p0-charter.md` rather than DP-011, moving DP-011's product scope to P1's first milestone; keeps the three NAVER collectors calling their source directly as `ARCHIVE_REFERENCE_ONLY`, which is the P0 disposition DP-012 was waiting for; and binds DP-012's independent-service-plus-adapter topology to collectors added from here. The result is a hybrid, and P1 carries both seams.
 - `[결정]` [DP-027](decisions/DP-027-dataset-standard-and-share-alike.md) reads the charter's "one dataset" as category-independent — sunscreen and toner entered through DP-011, which DP-026 moved to P1 — and selects Open Beauty Facts as P0's dataset source at `CONDITIONAL GO`. `[측정]` Zero Korean sunscreen and zero Korean toner rows, so **P0 gains no product-relevant dataset evidence**, and ODbL's share-alike attaches on first publication as an obligation P1 inherits.
+- `[결정]` [DP-028](decisions/DP-028-schema-0-3-product-records.md) adds `product` to the schema's
+  discriminated union as `Normalized Schema 0.3`, because DP-027's selected dataset produces rows
+  that fit neither contracted type — the case [DP-021](decisions/DP-021-schema-0-2-trend-points.md)'s
+  own falsification table named. Additive: 0.2 records stay valid, no existing normalizer bumps, no
+  migration. The body carries identity, name, brand tags, an observation time, and whether ingredient
+  text was supplied; it decides nothing about the product, which stays P1's under DP-026.
+  `[확인 사실]` Decided and **not yet implemented** — no add-on emits a `product` record.
 
 ### Technology constraints
 

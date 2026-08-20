@@ -122,6 +122,14 @@ after a snapshot was sealed. The design makes it plausible; nothing measured it.
 - Output is `Normalized Schema 0.2`: a common **envelope** (`schema_version`,
   `record_type`, `external_id`, provenance) and a **per-type body**, as a discriminated
   union. `record_type` ∈ {`document`, `trend_point`}.
+- `[결정]` **`Normalized Schema 0.3` adds a third member, `product`**
+  ([DP-028](../../docs/decisions/DP-028-schema-0-3-product-records.md)), for the dataset
+  source DP-027 selected. It is additive: a 0.2 record is a valid 0.3 record, no existing
+  normalizer bumps its `output_contract_version`, and no migration is required.
+  `[확인 사실]` **No installed add-on emits a `product` record yet.** The decision is
+  recorded; the implementation is TASK-008. Until that packet is accepted, this line states
+  a contracted shape with no producer, and a reader should not take it as evidence that the
+  dataset half of §1 has run.
 - `[측정]` **The strong form of the schema hypothesis is refuted.** Across a blog document
   and a DataLab trend point the only overlap is identity, time, and provenance. Any P1 design
   assuming a common flat normalized table across heterogeneous sources is designing against
