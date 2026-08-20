@@ -102,10 +102,30 @@ as `clean: true` with an empty `findings` list — a claim about *coverage* that
 established. `clean` now means **every rule applicable to this record kind ran, and none
 fired**. A record with no findings but an unread rule is not clean; it is not judged wrong
 either, and the two are distinguished by `findings` being empty while `rules_not_evaluated`
-is not. `rules_evaluated` and `rules_not_evaluated` together always cover
-`RULES_BY_KIND[record_kind]` exactly, and `_coverage` below raises `AddonOutputInvalid`
-rather than emit a body where they do not — because the only way `clean` quietly starts
-meaning less again is a rule added without its abstention branch.
+is not.
+
+**What `_coverage` actually checks, and the gap it does not close (TASK-009, correcting
+TASK-006's F2 text).** `[확인 사실]` `rules_evaluated` is computed by *subtraction* —
+`RULES_BY_KIND[record_kind]` minus the rules named in `rules_not_evaluated` — not by
+observing that a rule ran. `_coverage` raises `AddonOutputInvalid` when a rule name outside
+this kind's set fired or abstained (a rule was added and the set was not updated), or when
+one rule both fired and abstained (a checker gave the same rule a verdict and an abstention
+at once). It does **not** raise, and cannot by construction, when a rule declared in
+`RULES_BY_KIND` reaches no verdict and appends nothing to either list: subtracting an empty
+`not_evaluated` entry for it leaves it in `rules_evaluated`, and the record can be emitted
+`clean: true` without that rule having run. `[추론]` Today's ten rules are each *decided* on
+every input this module classifies — not measured against every input, but structural:
+`_check_blog` and `_check_trend` are straight-line functions with no early return, so every
+checker's **condition is evaluated** on every record they see. A rule whose condition does
+not hold is decided as passing, and a decision of "passing" is what records nothing in
+either list — not an unevaluated rule skipping the append, but an evaluated one with nothing
+to report. A rule whose condition does hold either appends a finding or an abstention. So a
+name sitting in `rules_evaluated` because it passed and a name sitting there because it
+never ran are byte-identical in the emitted body; that is a property of the ten checkers as
+written, not something `_coverage` enforces. The only thing standing between a future rule
+missing its abstention
+branch and a wrong `clean: true` is review — the same distinction `AGENTS.md` draws between
+a convention and a control.
 
 `[결정]` The report shape changed while `rule_report_version` and
 `[addon].output_contract_version` both stayed `"0.1"`. No run has ever written a
@@ -161,9 +181,11 @@ RULE_TREND_RATIO_OUT_OF_RANGE = "trend.ratio_out_of_range"
 RULE_TREND_PERIOD_OUTSIDE_WINDOW = "trend.period_outside_window"
 
 #: Every rule that applies to a record of each kind — the set `clean: true` claims ran.
-#: `_coverage` refuses to emit a body whose evaluated and abstained rules do not add up to
-#: exactly this, so a rule added without an abstention branch fails the run instead of
-#: quietly shrinking what `clean` means.
+#: `_coverage` refuses to emit a body whose fired-or-abstained rules name something outside
+#: this set, or name one rule in both lists. `[측정]` It does not refuse a body where a rule
+#: in this set reaches neither list — that rule is subtracted into `rules_evaluated` as if
+#: it had run. See the module docstring's "What `_coverage` actually checks" for what is and
+#: is not caught (TASK-009).
 BLOG_RULES = (
     RULE_BLOG_MISSING_LINK,
     RULE_BLOG_MISSING_CONTENT,
@@ -207,8 +229,11 @@ FOUND_MAX_DEPTH = 2
 FOUND_MAX_BYTES = 4096
 
 #: The one key under which a bounded stand-in appears. It replaces the whole value rather
-#: than being added beside it, so an untrusted key spelled the same way cannot be mistaken
-#: for this marker or shadow it.
+#: than being added beside it, so it shadows an untrusted key spelled the same way rather
+#: than sitting beside it. `[측정]` It does not distinguish the two: a source value that is
+#: itself `{BOUNDED: "..."}` with the exact marker text produces a `found` byte-identical to
+#: a genuine bound (TASK-009, F2). This field is a diagnostic for a human reader, not a
+#: parseable channel a caller should trust to mean "the rule baseline truncated this."
 BOUNDED = "<bounded by the rule baseline>"
 
 #: DP-021 D2's three names. A fourth is that decision's own falsification condition, so an
@@ -358,15 +383,18 @@ def _abstention(rule: str, field: str, reason: str) -> dict[str, Any]:
 def _coverage(
     kind: str, findings: list[dict[str, Any]], not_evaluated: list[dict[str, Any]]
 ) -> list[str]:
-    """Which of this kind's rules reached a verdict, refusing anything that does not add up.
+    """The kind's declared rules minus the ones this record's checkers abstained on.
 
-    `clean: true` is a claim that `RULES_BY_KIND[kind]` ran in full. That claim is only worth
-    the bookkeeping behind it, so the two ways the bookkeeping can lie are refused here
-    rather than emitted: a rule name outside this kind's set (a rule was added and its set
-    was not), and a rule that both fired and abstained (a rule was given a verdict and an
-    abstention at once). Neither is reachable from today's ten rules, which is why
+    `[확인 사실]` This refuses two of the ways the bookkeeping can lie, not every way — see the
+    module docstring's "What `_coverage` actually checks" for the third. The two refused
+    here: a rule name outside this kind's set (a rule was added and its set was not), and a
+    rule that both fired and abstained (a rule was given a verdict and an abstention at
+    once). Neither is reachable from today's ten rules, which is why
     `tests/test_normalizer_rule_baseline.py` drives this branch through `RULES_BY_KIND`
-    rather than leaving a guard nothing can fail.
+    rather than leaving a guard nothing can fail. What this function does **not** refuse: a
+    rule declared in `RULES_BY_KIND[kind]` that reaches no verdict at all — it is computed by
+    subtraction, so such a rule is simply left in the returned list, indistinguishable from
+    one that actually ran.
     """
     applicable = RULES_BY_KIND[kind]
     unevaluated = {entry["rule"] for entry in not_evaluated}
