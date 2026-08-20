@@ -179,6 +179,11 @@ def test_the_error_never_prints_the_secret_value(store: Path) -> None:
         resolve_credential("COSMA_DB_NONEXISTENT")
     error = raised.value
     text = " ".join(
-        [str(error), repr(error), str(error.operator_view()), str(error.for_protected_debug())]
+        [
+            str(error),
+            repr(error),
+            str(error.operator_view()),
+            str(error.detail.for_protected_debug()),
+        ]
     )
     assert SECRET_MARKER not in text

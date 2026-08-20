@@ -25,6 +25,20 @@ The password exists only as ``psycopg.connect``'s own keyword argument —
 ``resolve_credential(...).reveal()`` is passed inline and never assigned to a
 local name, so there is nothing here for a traceback or a debugger to hold past
 the one call that needs it.
+
+**Classification.** Copy-adapted from
+``experiments/integrated-p0/platform_core/db/connection.py``'s ``classify``:
+P0-A's design puts driver-error classification at the connection boundary
+rather than propagating a raw ``psycopg.Error`` into code that would then have
+to guess. CONTRACT-JOB@0.1's error-table rule is reproduced verbatim — SQLSTATE
+classes ``08`` (connection), ``53`` (insufficient resources), and ``57``
+(operator intervention) are ``PLATFORM_TRANSIENT``; everything else, including
+no SQLSTATE at all (a failure to connect at startup, which psycopg reports with
+``sqlstate = None``), is ``CONFIGURATION_INVALID``. Deferred by T4 because
+``platform_core.errors`` did not exist yet; wired now that it does. `[확인 사실]`
+The contract records the transient branch as unexercised in P0-A — no scenario
+here kills a connection mid-statement either, so this carries the same
+unmeasured status forward rather than claiming new coverage.
 """
 
 from __future__ import annotations
@@ -34,6 +48,7 @@ from typing import Any, Final
 import psycopg
 
 from platform_core.config import PlatformConfig
+from platform_core.errors import ConfigurationInvalidError, PlatformError, PlatformTransientError
 from platform_core.secrets import resolve_credential
 
 #: DP-032 D1: the migrator's identity is fixed, not read from ``PlatformConfig``.
@@ -48,6 +63,29 @@ OWNER_ROLE: Final = "cosmai_owner"
 
 _ROLES: Final[frozenset[str]] = frozenset({"runtime", "migrator"})
 
+#: SQLSTATE classes where waiting is a sensible response: connection exceptions
+#: (08), insufficient resources such as too many connections (53), and operator
+#: intervention such as a cluster still starting up or shutting down (57).
+#: Everything else at connect time — a database that does not exist, a role that
+#: does not, a password that is wrong — is a statement about how the process
+#: was configured, and the contract's answer to that is to refuse to start.
+TRANSIENT_SQLSTATE_CLASSES: Final[frozenset[str]] = frozenset({"08", "53", "57"})
+
+
+def describe(config: PlatformConfig, role: str) -> str:
+    """A short, non-secret description of what a connection was aiming at."""
+    return f"database {config.db_name!r} on {config.db_host}:{config.db_port} as role {role!r}"
+
+
+def classify(error: psycopg.Error, target: str) -> PlatformError:
+    """Map a driver failure onto the CONTRACT-JOB@0.1 error table."""
+    sqlstate = error.sqlstate or ""
+    summary = f"cannot reach the platform {target}: {error}"
+    detail: dict[str, Any] = {"sqlstate": sqlstate or None, "target": target}
+    if sqlstate[:2] in TRANSIENT_SQLSTATE_CLASSES:
+        return PlatformTransientError(summary, detail)
+    return ConfigurationInvalidError(summary, detail)
+
 
 def connect(
     config: PlatformConfig,
@@ -55,7 +93,7 @@ def connect(
     role: str = "runtime",
     autocommit: bool = False,
 ) -> psycopg.Connection[Any]:
-    """Open one connection over loopback TCP, or let the driver's own error propagate.
+    """Open one connection over loopback TCP, or raise the classified platform error.
 
     ``role="migrator"`` is always autocommit regardless of the ``autocommit``
     argument: ``SET ROLE`` (without ``LOCAL``) is transactional, so a role that
@@ -77,14 +115,17 @@ def connect(
         password_ref = config.db_password_ref
         effective_autocommit = autocommit
 
-    connection = psycopg.connect(
-        host=config.db_host,
-        port=config.db_port,
-        dbname=config.db_name,
-        user=user,
-        password=resolve_credential(password_ref).reveal(),
-        autocommit=effective_autocommit,
-    )
-    if role == "migrator":
-        connection.execute(f"set role {OWNER_ROLE}")
+    try:
+        connection = psycopg.connect(
+            host=config.db_host,
+            port=config.db_port,
+            dbname=config.db_name,
+            user=user,
+            password=resolve_credential(password_ref).reveal(),
+            autocommit=effective_autocommit,
+        )
+        if role == "migrator":
+            connection.execute(f"set role {OWNER_ROLE}")
+    except psycopg.Error as error:
+        raise classify(error, describe(config, role)) from error
     return connection

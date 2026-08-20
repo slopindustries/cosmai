@@ -54,12 +54,25 @@ type checks, carried forward unchanged from P0-A:
   records; the test-session half lives in ``tests/conftest.py`` and calls this
   same function, so the two cannot drift.
 
-This module carries a minimal, self-contained stand-in for P0's
-``platform_core.errors``/``platform_core.obs`` modules — ``ConfigurationInvalidError``,
-log-level validation, and the secret-aware redaction check this stage needs —
-rather than reconstructing P0's full five-class error taxonomy and structured
-logger, which belong to the job/worker layer this milestone (M1 Tasks 3-4) does
-not build. See the task-3-4 report's "deviations" section.
+**Reconciliation (M1 Tasks 5-6).** Until now this module carried a minimal,
+self-contained stand-in for P0's ``platform_core.errors``/``platform_core.obs``
+modules — an inlined ``ConfigurationInvalidError``, log-level validation, and
+the secret-aware redaction check this stage needs — because Tasks 3-4 built
+configuration, secrets, connection, and migration only, with no error taxonomy
+or structured logger yet to import from. Task 6 built the real
+``platform_core.errors`` (the full five-class CONTRACT-JOB@0.1 table) and
+Task 5 built the real ``platform_core.obs`` (structured logging, redaction,
+correlation, metrics); this module now imports ``ConfigurationInvalidError``
+from ``platform_core.errors`` and the log-level/redaction helpers from
+``platform_core.obs.logging``/``platform_core.obs.redaction`` rather than
+carrying its own copies. Behavior is unchanged except that the imported
+``ConfigurationInvalidError`` also redacts its own summary text
+(``PlatformError.__init__`` applies ``redact_text``) and its detail through
+``ProtectedDetail`` (reachable at ``error.detail.for_protected_debug()`` rather
+than the old ``error.for_protected_debug()``) — both strictly safer than the
+stand-in's "store as given" behavior, and neither changes what any of this
+module's own summaries or details expose (no setting name or reason text here
+contains a ``key=value`` pattern for the text-masking rule to catch).
 
 Nothing in this module opens a connection, and nothing in it opens the secret
 store. SEC-003 requires cases a-e to fail before the database is touched, and the
@@ -78,6 +91,10 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
+
+from platform_core.errors import ConfigurationInvalidError as ConfigurationInvalidError
+from platform_core.obs.logging import DEFAULT_LEVEL, LOG_SUFFIX, require_known_level
+from platform_core.obs.redaction import REDACTION_MARKER, is_redacted_key
 
 PREFIX: Final = "COSMA_"
 
@@ -113,122 +130,20 @@ CREDENTIAL_REF_PATTERN: Final = re.compile(r"^COSMA_(SRC|DB)_[A-Z0-9_]+$")
 #: ref of its own rather than this default.
 DEFAULT_DB_PASSWORD_REF: Final = "COSMA_DB_RUNTIME"
 
-# --- a minimal, self-contained error type -----------------------------------
-#
-# P0's ``platform_core.errors`` encodes the full CONTRACT-JOB@0.1 error table
-# (five classes, protected debug detail, retryability by class) for the
-# job/worker layer. M1 Tasks 3-4 build only configuration, secrets, connection,
-# and migration — no job store, no worker — so reconstructing that whole
-# taxonomy here would be an abstraction with nothing yet to serve. What SEC-001
-# through SEC-003 actually need from an error type is: a class name, a summary
-# that is safe to show an operator, protected detail, and "not retryable". That
-# is what this class provides; a later task that builds the job/worker layer is
-# where the full taxonomy belongs, once there is more than one error class to
-# taxonomize.
-
 #: ``EX_CONFIG`` from ``sysexits.h`` (also ``os.EX_CONFIG`` on POSIX). No
 #: entrypoint exists yet in this milestone to exit with it, but the status is
 #: fixed here so a future one does not have to invent it.
 EX_CONFIG: Final = 78
 
-
-class ConfigurationInvalidError(Exception):
-    """Invalid platform configuration, or a credential that cannot be resolved.
-
-    Not retryable by design: SEC-003 requires a supervisor restart to fail
-    identically rather than eventually succeed.
-    """
-
-    error_class: Final = "CONFIGURATION_INVALID"
-    retryable: Final = False
-
-    def __init__(self, summary: str, detail: Mapping[str, Any] | None = None) -> None:
-        self.summary = summary
-        self._detail: dict[str, Any] = dict(detail) if detail else {}
-        super().__init__(self.summary)
-
-    def for_protected_debug(self) -> dict[str, Any]:
-        """The captured detail. Never shown to an operator by default.
-
-        Nothing this module or ``platform_core.secrets`` puts into ``detail`` is
-        a secret *value* — only setting names and credential refs, which are
-        names, not values — so this returns the detail as given rather than
-        redacting it again; the redaction already happened at the point the
-        summary and detail were built (``_reason_for`` below).
-        """
-        return dict(self._detail)
-
-    def operator_view(self) -> dict[str, Any]:
-        """The default, operator-visible representation. Carries no detail."""
-        return {
-            "error_class": self.error_class,
-            "error_summary": self.summary,
-            "retryable": self.retryable,
-        }
-
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}(error_class={self.error_class!r}, summary={self.summary!r})"
-
-
-# --- log level and redaction, inlined from P0's platform_core.obs -----------
-#
-# P0's ``obs.logging``/``obs.redaction`` are substantial modules (a JSON Lines
-# structured logger, a recursive mapping/text redaction walker) built for a
-# running worker/API process that writes events. Nothing in Tasks 3-4 writes a
-# log event; what ``config.py`` actually needs from either module is a level
-# name validator and the single-key "does this name read as a secret" test.
-# Those are reproduced here at the size this stage uses them.
-
-LEVELS: Final[Mapping[str, int]] = {
-    "DEBUG": 10,
-    "INFO": 20,
-    "WARNING": 30,
-    "ERROR": 40,
-    "CRITICAL": 50,
-}
-
-DEFAULT_LEVEL: Final = "INFO"
-
-#: A structured log must be named ``.jsonl``. ``.gitignore`` excludes ``*.log``,
-#: so the repository would silently drop any evidence written under that suffix.
-LOG_SUFFIX: Final = ".jsonl"
-
-
-def require_known_level(level: str) -> str:
-    """Return ``level`` casefolded to its canonical name, or refuse it outright."""
-    candidate = level.strip().upper()
-    if candidate not in LEVELS:
-        raise ConfigurationInvalidError(
-            f"unknown log level {level!r}; permitted levels are {', '.join(LEVELS)}"
-        )
-    return candidate
-
-
-REDACTION_MARKER: Final = "[REDACTED]"
-
-#: The key terms CONTRACT-JOB@0.1 fixes for masking, matched by containment
-#: after casefolding — same rule P0's ``obs.redaction.is_redacted_key`` applies.
-_REDACTED_TERMS: Final = frozenset(
-    {"password", "token", "secret", "authorization", "cookie", "apikey", "credential"}
-)
-
-_NON_ALNUM: Final = re.compile(r"[^a-z0-9]+")
-
-
-def _casefold_key(key: str) -> str:
-    return _NON_ALNUM.sub("", key.lower())
-
-
-_CASEFOLDED_TERMS: Final[frozenset[str]] = frozenset(
-    _casefold_key(term) for term in _REDACTED_TERMS
-)
-
-
-def is_redacted_key(key: str) -> bool:
-    """Return whether a mapping key's value must be masked (SEC-004's key test)."""
-    folded = _casefold_key(key)
-    return any(term in folded for term in _CASEFOLDED_TERMS)
-
+# ``ConfigurationInvalidError``, ``require_known_level``/``LOG_SUFFIX``, and
+# ``is_redacted_key``/``REDACTION_MARKER`` are imported above from
+# ``platform_core.errors``/``platform_core.obs`` — see the reconciliation note
+# in the module docstring. What SEC-001 through SEC-003 need from the error
+# type (a class name, an operator-safe summary, protected detail, "not
+# retryable") and from the level/redaction helpers (a canonical level name, the
+# ``.jsonl`` suffix rule, the "does this name read as a secret" test) is now
+# the real thing rather than a stand-in sized for a stage with nothing else to
+# import from.
 
 # --- settings machinery, unchanged in shape from P0 --------------------------
 

@@ -65,7 +65,12 @@ def rejection(environment: dict[str, str]) -> ConfigurationInvalidError:
 
 def reported_text(error: ConfigurationInvalidError) -> str:
     return " ".join(
-        [str(error), repr(error), str(error.operator_view()), str(error.for_protected_debug())]
+        [
+            str(error),
+            repr(error),
+            str(error.operator_view()),
+            str(error.detail.for_protected_debug()),
+        ]
     )
 
 
@@ -199,7 +204,7 @@ def test_every_problem_is_named_in_one_report(baseline: dict[str, str]) -> None:
     error = rejection({**baseline, "COSMA_LEASE_SECONDS": "0", "COSMA_API_PORT": "0"})
     for name in ("COSMA_DB_NAME", "COSMA_LEASE_SECONDS", "COSMA_API_PORT"):
         assert name in error.summary
-    rejected = error.for_protected_debug()["rejected"]
+    rejected = error.detail.for_protected_debug()["rejected"]
     assert {item["setting"] for item in rejected} == {
         "COSMA_DB_NAME",
         "COSMA_LEASE_SECONDS",
