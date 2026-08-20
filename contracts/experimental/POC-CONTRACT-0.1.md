@@ -243,12 +243,25 @@ reason about in any failure path this contract defines.
 
 ## Known limitations and unresolved semantics
 
+`[확인 사실]` **Two of the seven are struck through and still binding, which is a shape worth
+naming rather than leaving to be inferred.** A struck heading means *the limitation as first
+written no longer holds*; the text beneath it is not commentary but the constraint that
+replaced it, and it binds. Items 3 and 5 are both in that form as of 2026-08-20. `[결정]` They
+are struck rather than deleted because a reader comparing this contract to the gate record
+needs to see that each limitation existed and when it stopped applying — but the form is a
+compromise, and a `0.2` of this contract should carry them as ordinary items with dated
+history instead. Raised as F5 by
+[`ADVERSARIAL-REVIEW-2026-08-20-CONSOLIDATION.md`](../../experiments/integrated-p0/ADVERSARIAL-REVIEW-2026-08-20-CONSOLIDATION.md).
+
 1. **The acquisition seam may move.** [OQ-014](../../docs/open-questions/OQ-014-externalized-acquisition.md)
    proposes that acquisition leave the service entirely. That would rewrite §1.
 2. **Judgments only an add-on can make are unchecked** ([OQ-013](../../docs/open-questions/OQ-013-addon-responsibility-boundary.md)).
-3. **No real dataset source exists.** §1's importer half is proved as a mechanism only.
+3. ~~**No real dataset source exists.** §1's importer half is proved as a mechanism only.~~
+   `[측정]` **Closed 2026-08-20.** Open Beauty Facts delta exports pass through the installed importer into Raw, a sealed snapshot, and `normalizer.obf.product@0.1` at contract `0.3`, over the host path. Struck rather than deleted: a reader comparing this contract to the gate record needs to see that the limitation existed and when it stopped applying.
+   `[결정]` **What replaces it is narrower and still binding.** The source holds zero Korean sunscreen and zero Korean toner rows ([DP-027](../../docs/decisions/DP-027-dataset-standard-and-share-alike.md) D2), so P0 has a working dataset path and **no product-relevant dataset evidence**. ODbL's share-alike attaches on first publication, which P1 inherits (D3).
 4. **Multi-stream cursors are refused, not answered** ([OQ-010](../../docs/open-questions/OQ-010-cursor-stream-read-back.md)).
-5. **Snapshot replay across Raw-store evolution is unproved** (§4).
+5. ~~**Snapshot replay across Raw-store evolution is unproved** (§4).~~
+   `[측정]` **Exercised 2026-08-20 and true in a narrower form than this line assumed.** A sealed snapshot replays byte-identically across an additive migration, a superseding collection, and a purge of every Raw row. `[측정]` But against the reference design [OQ-004](../../docs/open-questions/OQ-004-snapshot-boundary.md) names — references fixed at seal — **only the purge separates the two designs**. `[결정]` Two gaps replace it and both bind: member selection under an `emitted_at` tie falls to a `uuid4`, and `emitted_at` is a *transaction* timestamp; and D5's ordering fixes no collation, so two clusters differing only in locale seal different manifests from identical Raw. `[확인 사실]` Struck 2026-08-20 together with limitation 3; an earlier revision of this list struck 3 alone and left this one contradicting it.
 6. **Rate limiting, deep pagination, redirects, and drift are unobserved against a real
    source** (§6).
 7. **`200`-with-an-error-body has no real subject** (§1).
