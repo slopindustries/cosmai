@@ -117,8 +117,15 @@ one, and D6 narrowed only the latter.
 `[측정]` 2026-08-21, `grep -rln credential_ref experiments/integrated-p0/dashboard/src/`
 returns `domain-view.tsx` and `api.ts`, both of which only read and render `credential_ref` and a
 `CredentialTable` of header/ref-name pairs (`domain-view.tsx:133,147,227`); no write field exists.
-`grep -rln secret\|credential experiments/integrated-p0/platform_core/api/` returns no route
-handler. DP-008 D6's mechanism was proposed but never built in P0.
+`[확인 사실]` Corrected 2026-08-21: an earlier revision of this line recorded
+`grep -rln secret\|credential experiments/integrated-p0/platform_core/api/`, a command whose
+unescaped `|` is a literal character to `grep`'s basic regular expressions rather than
+alternation — it matches nothing and exits 1 on this tree, so it proved nothing about the
+route handlers even though its stated conclusion happened to be true. The working form,
+`grep -rlnE 'secret|credential' experiments/integrated-p0/platform_core/api/`, returns
+`app.py` and `__main__.py`; every match in both files is inside a comment or docstring
+referencing `secret-setup.md`'s guard (`__main__.py:8,181`; `app.py:91`) — no route handler
+accepts a credential value. DP-008 D6's mechanism was proposed but never built in P0.
 
 `[확인 사실]` [DP-018](DP-018-credential-parts-and-attachment.md) D3: every credential header must
 be a member of `PROTECTED_HEADERS`, refused otherwise, so that attachment and stripping are the
@@ -193,7 +200,10 @@ Phase 0.3's "or record a P1-scoped decision that is not a waiver" clause.
   source.
 - **D1 Candidate 3, read/write with re-display.** Rejected: it reopens exactly the leak channel
   invariant 3 forbids — a value appearing on a screen — for a convenience (viewing the current
-  value) that DP-018 D6's design already avoids needing: editing is done by submitting a new value,
+  value) that DP-008 D6's design already avoids needing (`[확인 사실]` corrected 2026-08-21 — an
+  earlier revision of this line cited "DP-018 D6," a packet that has no D6; this proposal is
+  DP-008 D6's, quoted correctly elsewhere in this packet at line 104): editing is done by
+  submitting a new value,
   never by reading the old one back.
 - **D2 Candidate 1, no specific scoping.** Rejected: `AGENTS.md`'s rule that a claimed control must
   record what it does not cover applies here in reverse — a *relaxed* control must record what

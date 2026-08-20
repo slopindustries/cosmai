@@ -54,11 +54,13 @@ above, which stays as the original record of why each item was first:
   recorded — "Judgments only an add-on can make are checked by nothing" — and P1 reconstructs
   that text as written. This item is reopened only if a falsification condition in OQ-013's own
   hypothesis table is met during M3/M4 implementation, not on a schedule.
-- **0.3** — `SEC-006` is satisfied, but not by narrowing the agent sandbox.
-  [DP-034](../decisions/DP-034-p1-credential-entry.md) D3 moves it, off DP-023's expiring
+- **0.3** — Phase 0.3 is closed by its second branch: a P1-scoped decision that is not a waiver.
+  [DP-034](../decisions/DP-034-p1-credential-entry.md) D3 moves `SEC-006`, off DP-023's expiring
   waiver, into [`security-recommendations.md`](../conventions/security-recommendations.md)
   `SR-005` as an independent, P1-scoped decision that the waiver does not extend — exactly the
-  "record a P1-scoped decision that is not a waiver" branch this row named.
+  "record a P1-scoped decision that is not a waiver" branch this row named. `[확인 사실]`
+  `SEC-006` itself remains unimplemented and registered as `SR-005`, not satisfied; an earlier
+  revision of this row said "`SEC-006` is satisfied," which this correction repairs.
 - **0.4** — unchanged from the 2026-08-19 record in the table above: done.
 
 ### M1–M7 — 2026-08-21, replacing Phases 1–4 below
@@ -73,12 +75,14 @@ landed.
 | Milestone | Work | Parallelization |
 |---|---|---|
 | M1 | `platform_core`, plus DB provisioning and migration on the shared PostgreSQL server ([DP-032](../decisions/DP-032-p1-database-placement.md)) | — |
-| M2 | `domain`, including DP-029's three changes: materialized snapshots (D1), the `raw_item.seq` tie-break (D2), and bytewise manifest ordering (D3) | after M1 |
-| M3 | `addon_api`, `addon_host`, `addon_kit`, plus the conformance suite | partial parallel with M2 |
-| M4 | five add-ons — `collector.naver.blog`, one or two NAVER DataLab collectors, `collector.trendradar.rest`, `collector.tubedepth.rest`, `importer.local.jsonl` ([DP-031](../decisions/DP-031-p1-collector-topology.md)) | worktree-parallel, one per add-on |
+| M2 | `domain`, including DP-029's three changes: materialized snapshots (D1), the `raw_item.seq` tie-break (D2), and bytewise manifest ordering (D3); and [DP-030](../decisions/DP-030-p1-normalization-scope.md)'s schema/envelope carry-forward (D4) and per-record fault-tolerance error contract (D2 — the `notes`/`normalize_error` shape), which land in `domain`'s data model here even though each normalizer's own fallback is M4 work | after M1 |
+| M3 | `addon_api`, `addon_host`, `addon_kit`, plus the conformance suite, against [`CONTRACT-ADDON-1.3.md`](../../contracts/experimental/CONTRACT-ADDON-1.3.md) and [DP-008](../decisions/DP-008-addon-architecture.md); [OQ-013](../open-questions/OQ-013-addon-responsibility-boundary.md) clause C is carried open here, not resolved | partial parallel with M2 |
+| M4 | four collector add-ons — `collector.naver.blog`, one or two NAVER DataLab collectors (`[확인 사실]` count honestly stated as one or two — [DP-031](../decisions/DP-031-p1-collector-topology.md) D2 leaves it to the implementer), `collector.trendradar.rest`, and `collector.tubedepth.rest` (the latter two are the thin REST adapters DP-031 D3 fixes under DP-012's read contract) — plus one importer (`importer.local.jsonl`) plus three normalizers rebuilt at Schema 0.3 (`document`, `trend_point`, `product`), each implementing [DP-030](../decisions/DP-030-p1-normalization-scope.md) D2's per-record fallback | worktree-parallel, one per add-on |
 | M5 | dashboard: six screens, on MUI, React Router, and TanStack Query ([DP-033](../decisions/DP-033-p1-operator-surface.md) D1, D4) | parallel with backend from M2 |
 | M6 | scheduler and streaming downloads ([DP-033](../decisions/DP-033-p1-operator-surface.md) D3, D5) | parallel with M4 and M5 |
-| M7 | integrated demonstration, an issue/PR consistency check, merge to `main`, `v0.1.0` tag | serial |
+| M7 | integrated demonstration, an issue/PR consistency check, merge to `main`, `v0.1.0` tag, against [the reconstruction spec](../superpowers/specs/2026-08-21-p1-reconstruction-design.md) §9, this gate's own record, and [DP-026](../decisions/DP-026-p0-closure-scope-and-collector-topology.md)'s closure scope | serial |
+
+`[확인 사실]` An earlier revision of the M4 row said "five add-ons," which was internally inconsistent with the one-or-two NAVER DataLab count it also named ("five *or six*"), and no milestone row named a normalizer at all despite the spec requiring three rebuilt (`spec:199-201`) and DP-030:216 assigning its central contract requirement to "M4's normalizer add-ons." This repair names the normalizer count explicitly and gives M2, M3, and M7 the contract or Decision Packet references isolation check 2 below requires.
 
 `[결정]` Correspondence to the phases this replaces: **Phase 1 → M1, M2**. **Phase 2 → M3,
 M4.** **Phase 3 → M5, M6.** **Phase 4 is absorbed into M4** — the two adapters and the

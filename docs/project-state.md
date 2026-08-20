@@ -177,14 +177,23 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
   the shared-server operating rules at the database-ownership level (D1); drafts a
   16-connection budget (D2); keeps psycopg3 direct plus a copied-and-adapted SQL-file migrator
   over an ORM (D3); and moves DB credentials into the secret file as `COSMA_DB_*` keys (D4),
-  closing the authenticated-access gap [DP-006](decisions/DP-006-p0a-platform-foundation.md)
-  D2 recorded for P0-B/P1 to challenge.
+  recording the decision that addresses the authenticated-access gap
+  [DP-006](decisions/DP-006-p0a-platform-foundation.md) D2 named for P0-B/P1 to challenge —
+  the evidence itself (a working authenticated connection, negative tests) is M1 provisioning
+  and testing work, not produced by this packet. (`[확인 사실]` corrected 2026-08-21 — an
+  earlier revision of this line said "closing," which claimed evidence this packet does not
+  produce.) `COSMA_DB_*` is a second key family outside `secret-setup.md`'s
+  `COSMA_SRC_<SOURCE_ID>_<PURPOSE>` naming rule, held for a connection pool's lifetime rather
+  than a single request's — see DP-032 D4 for the recorded analysis of what that does and does
+  not satisfy of `secret-setup.md` invariant 2.
 - `[결정]` [DP-033](decisions/DP-033-p1-operator-surface.md) widens the P1 operator surface to
   six dashboard screens (D1); reverses P0-B's Raw-payload refusal for the local operator on
   the data-browser screen (D2); fixes scope-filtered, streaming Raw and normalized-result
   downloads (D3); adopts MUI, React Router, and TanStack Query, declined for P0-A by DP-006 D6
-  (D4); and puts collection, not normalization, on a schedule (D5) — the same
-  scheduler-creates-`collect`-job mechanism
+  (D4); and puts collection on a schedule while normalization stays operator-triggered, with an
+  optional schedule (D5) (`[확인 사실]` corrected 2026-08-21 — an earlier revision of this line
+  said "not normalization," which read as an outright exclusion the decision does not make) — the
+  same scheduler-creates-`collect`-job mechanism
   [DP-031](decisions/DP-031-p1-collector-topology.md) D4 already fixes for the two adapters.
   Partially answers
   [OQ-005](open-questions/OQ-005-operations-contract.md) (screen set, export shape) and leaves

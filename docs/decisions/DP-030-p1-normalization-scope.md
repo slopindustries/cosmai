@@ -64,7 +64,7 @@ those five, what P1's normalization contract requires and what it explicitly doe
 
 - Scope: this packet decides from P0-B evidence already recorded against `normalizer.rule.baseline@0.1`, `normalizer.obf.product@0.1`, the host's `_NormalizeRun.execute`, and three schema decisions (DP-019, DP-021, DP-028); it runs no new experiment.
 - Environment and versions: as recorded in the cited attack reports and `project-state.md` §5.
-- Input and fixture identity: `normalizer.rule.baseline@0.1`'s fixture-based mutation and differential runs; `normalizer.obf.product@0.1`'s real Open Beauty Facts rows; the surrogate-payload case (`{"code":"a\ud800"}`) that raised inside `domain.store.canonical_body`; a member-order reversal against `_NormalizeRun.execute`.
+- Input and fixture identity: `normalizer.rule.baseline@0.1`'s fixture-based mutation and differential runs; `normalizer.obf.product@0.1`'s real Open Beauty Facts rows; the surrogate-payload case (`{"code":"a\ud800"}`) that raised inside `domain.store.canonical_body`; a member-order reversal against `_NormalizeRun.execute`; `plan.md` §3.1, §3.4–§3.5, §4.4 (owner's raw notes, repository root, untracked); [the reconstruction spec](../superpowers/specs/2026-08-21-p1-reconstruction-design.md) §2.3.
 - Procedure: as recorded in `P1-INHERITED-DEFECTS.md` §§1–2, §7, `project-state.md` §5's rule-baseline and schema hypotheses, and DP-019/DP-021/DP-028.
 - Known limitations: all cited measurements are about P0's normalizers and host. This packet decides what P1's contract requires; it does not claim P1's rebuilt `addons`/`addon_host` have reproduced any of it yet.
 
@@ -117,10 +117,28 @@ register existed.
 Normalization-time metadata (add-on id and version, execution time, snapshot id) is
 preserved in `normalized_result` to support a reader instead. `[확인 사실]` P0 measured the
 strong form to hold — for the deterministic, rule-based normalizers it built, and only for
-those. The owner declined to promote it to a P1 contract requirement, considering future
-LLM- or ML-based normalizers (`plan.md` §3.1): a contract that requires byte-identical
-determinism forecloses a normalizer whose output is not reproducible by construction, before
-one is ever written.
+those.
+
+`[확인 사실]` **Correction, 2026-08-21 (fix-wave repair of `REVIEW-GATE-M0` F15).** The owner's
+own words at `plan.md` §3.1 are, in full: *"결정적 정규화: 불가능. 단지 정규화 당시의 메타데이터
+정보로 보조하도록."* ("Deterministic normalization: not possible. Only have it assisted by
+normalization-time metadata.") That sentence does not itself mention LLM- or ML-based
+normalizers; an earlier revision of this paragraph attributed that rationale to the owner at
+`plan.md` §3.1, which the source does not say. The LLM/ML rationale is the design session's own
+gloss, recorded in [the reconstruction spec](../superpowers/specs/2026-08-21-p1-reconstruction-design.md)
+§2.3's P1-처리 column for item 3.1: *"정규화 시점 메타데이터(애드온 버전, 실행 시각, snapshot
+id)로 보조. 향후 LLM/ML 정규화기 고려."* ("Assisted by normalization-time metadata... future
+LLM/ML normalizers considered.")
+
+`[측정]` P0 measured deterministic, rule-based normalization holding in a **strong** form —
+byte-identical across interpreters and hash seeds, structurally enforced by `NormalizeContext`
+exposing no clock and no random source (see Evidence above). `[확인 사실]` The owner's "불가능"
+is recorded here as the owner's own assessment, not as a measurement this project made; this
+packet does not reconcile the two statements, because the decision below does not depend on
+which one is more accurate — a contract that required byte-identical determinism would foreclose
+a normalizer whose output is not reproducible by construction, whether or not the one normalizer
+P0 actually measured needed to be that kind. `[결정]` The owner declined to promote determinism
+to a P1 contract requirement; that decision stands either way this tension is read.
 
 `[결정]` **D2 — Record-level fault tolerance is a P1 requirement.** On a record's
 normalization failure, the run substitutes missing values for that record's fields, writes

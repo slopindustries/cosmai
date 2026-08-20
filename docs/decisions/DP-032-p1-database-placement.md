@@ -5,9 +5,9 @@
 - Owners: Project owner
 - Owner confirmation: `CONFIRMED (project owner, 2026-08-21, brainstorming session — docs/superpowers/specs/2026-08-21-p1-reconstruction-design.md)`
 - Carries forward: [DP-002](DP-002-project-identity-and-stack.md)'s `Primary database: PostgreSQL` (unchanged) and [DP-006](DP-006-p0a-platform-foundation.md) D4/D5 (numbered-SQL migrations, psycopg3 directly — reused, not re-adopted from scratch)
-- Closes: [DP-006](DP-006-p0a-platform-foundation.md) D2's own recorded limitation — "D2's passwordless cluster produces no evidence about authenticated database access... carried into the gate's 'Platform assumptions P0-B must challenge'"
+- Addresses: [DP-006](DP-006-p0a-platform-foundation.md) D2's own recorded limitation — "D2's passwordless cluster produces no evidence about authenticated database access... carried into the gate's 'Platform assumptions P0-B must challenge'" — `[확인 사실]` corrected 2026-08-21: this packet records the decision; the evidence DP-006 D2 asked for (a working authenticated connection, negative tests refusing a bad or missing password) is deferred to M1's provisioning and negative tests, not produced here. An earlier revision of this line said "Closes," which overstated what a document-only packet can close.
 - Related Open Questions: none opened or closed by this packet
-- Affected contracts: none in `PoC Contract 0.1` directly — no section names a database technology or deployment target; new M1 artifacts: `service-db.json` manifest, provisioning SQL
+- Affected contracts: none in `PoC Contract 0.1` directly — no section names a database technology or deployment target; new M1 artifacts: `service-db.json` manifest, provisioning SQL. [`secret-setup.md`](../conventions/secret-setup.md) gains a forward-link line to this packet (Required changes), and D4 below records a short analysis of where `COSMA_DB_*` sits relative to that document's naming rule and invariant 2.
 - Affected acceptance tests: none yet — implementation is M1 (provisioning and migrator)
 
 ## Decision question
@@ -48,7 +48,8 @@ a database-scoped tenant?
   level-shift to apply.
 - Environment and versions: as recorded in the cited sources, dated 2026-08-21.
 - Input and fixture identity: the operating-rules document's numbered rules 0–14 and its
-  "신규 서비스 도입 체크리스트"; spec §4.2's concrete values; DP-006's own text.
+  "신규 서비스 도입 체크리스트"; spec §4.2's concrete values; DP-006's own text; `plan.md`'s
+  addendum (owner's raw notes, repository root, untracked).
 - Procedure: for each rule the brief names as binding, quote its regulatory content, state
   whether it applies unchanged, needs restating one level up (schema owner → database owner),
   or is structurally moot under P1's placement, and record which.
@@ -167,7 +168,28 @@ re-validating that logic rather than reusing it.
 `~/.config/cosmai/env`), not as DP-006 D2's passwordless local Unix socket. This is a stated
 departure from P0-A, not an oversight: a shared server requires a password, and DP-006 D2 itself
 named "no evidence about authenticated database access" as a limitation for P0-B/P1 to
-challenge — this packet is where that challenge is answered.
+challenge. `[확인 사실]` Corrected 2026-08-21: this packet is where that challenge is
+**recorded as a decision** — the evidence itself (a working authenticated connection, a
+negative test refusing a bad or missing password) is M1 provisioning and testing work, not
+produced by this packet; an earlier revision said "this packet is where that challenge is
+answered," which claimed evidence not yet produced.
+
+`[확인 사실]` **Recorded analysis: `COSMA_DB_*` sits outside two of `secret-setup.md`'s existing
+shapes, not one.** First, naming: `secret-setup.md`'s only named key convention is
+`COSMA_SRC_<SOURCE_ID>_<PURPOSE>` for a *source* credential (`secret-setup.md:55`); `COSMA_DB_*`
+is a second, disjoint key family this packet adds, not an instance of that rule. Second,
+lifetime: `secret-setup.md` invariant 2 requires a credential value to be "resolved at the point
+of use and held only for the lifetime of that use" — read, as that document's own P0-B Worker
+rules read it, at the granularity of one outbound request. A database credential, once used to
+open a pooled connection, is held by that connection for the **pool's** lifetime — many requests,
+not one — because reopening a connection per query is not how the psycopg3-direct approach D3
+fixes actually works, and this packet does not propose changing that. `[결정]` This is recorded as a named,
+P1-scoped **extension** of invariant 2's granularity — a second point of use (the connection
+pool, not only the outbound request) and a second holding lifetime (pool lifetime, not request
+lifetime) — not as a silent violation, and not as a change to invariant 2's own text, which
+stands in `secret-setup.md` exactly as written. Whether the pool holds the value in a
+`repr`-redacted wrapper for that lifetime, consistent with DP-018 D4's pattern for the worker
+side, is M1 implementation work, not decided here.
 
 ## Rejected alternatives
 
@@ -241,6 +263,8 @@ challenge — this packet is where that challenge is answered.
 - Migration or compatibility: none — no migration exists yet; the P0 DDL table set plus DP-029's
   three changes and the new `schedule` table are what M1's first migration set builds, not this
   packet.
+- Forward links: [`secret-setup.md`](../conventions/secret-setup.md) gains one line pointing to
+  this packet, added in this same commit.
 - Implementation handoff: M1 provisions `cosmai_owner`/`cosmai_migrator`/`cosmai_runtime`, writes
   `service-db.json`, adapts P0's SQL-file applier with a schema-qualified version table, and
   confirms the connection-budget draft against the real server before fixing it with

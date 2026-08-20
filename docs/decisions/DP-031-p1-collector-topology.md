@@ -47,7 +47,8 @@ hold, and if so, precisely what does it leave standing from DP-026 D2 and DP-012
   dated 2026-08-21 against the live trend-radar (1.0.0, `:8000`) and tubedepth (release
   surface, `:8080`) instances.
 - Input and fixture identity: DP-026's decision text; DP-012's candidate table and minimum
-  service response contract; spec §5.1–§5.3 for the two adapter targets and NAVER.
+  service response contract; spec §5.1–§5.3 for the two adapter targets and NAVER; `plan.md`
+  §1.1 (owner's raw notes, repository root, untracked).
 - Procedure: compare `plan.md` §1.1's owner selection against DP-026 D2's unconditional text,
   identify exactly what changes and what stays, and record the two adapter targets' fixed
   points from the spec's own `[측정]`/`[확인 사실]` lines rather than re-deriving them.

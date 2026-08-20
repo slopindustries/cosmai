@@ -25,10 +25,10 @@ Open Question이 막고 있는지를 다룬다. `[결정]` 이 문서는 그 역
 
 | id | 항목 | 출처 | 비고 |
 |---|---|---|---|
-| `RC-001` | 카드·트렌드 화면 | 능력 지도 §5.3, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §5.3, [DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) D1 | DP-026 D1이 DP-011의 product scope를 P1 첫 마일스톤으로 옮긴 결정의 착지점. |
-| `RC-002` | 선크림·토너 기회 카드 | 능력 지도 §6.1, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §6.1 | plan.md: 기능 후보로 등록, 필수 구현요구사항 아님. |
-| `RC-003` | 결정적 트렌드 분류 | 능력 지도 §6.3, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §6.3 | 가능한 서비스 기능으로 마일스톤에 기록. |
-| `RC-004` | 성분 완전성 판단 | 능력 지도 §6.4, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §6.4 | 서비스 구현에서 판단할 내용으로 마일스톤에 기록. |
+| `RC-001` | 카드·트렌드 화면 | 능력 지도 §5.3, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §2.5 표의 5.3행, [DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) D1 | DP-026 D1이 DP-011의 product scope를 P1 첫 마일스톤으로 옮긴 결정의 착지점. |
+| `RC-002` | 선크림·토너 기회 카드 | 능력 지도 §6.1, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §2.6 표의 6.1행 | plan.md: 기능 후보로 등록, 필수 구현요구사항 아님. |
+| `RC-003` | 결정적 트렌드 분류 | 능력 지도 §6.3, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §2.6 표의 6.3행 | 가능한 서비스 기능으로 마일스톤에 기록. |
+| `RC-004` | 성분 완전성 판단 | 능력 지도 §6.4, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §2.6 표의 6.4행 | 서비스 구현에서 판단할 내용으로 마일스톤에 기록. |
 | `RC-005` | 새 `record_type` 설계: trend-radar rank/review 계열, youtube video 계열 | [DP-030](decisions/DP-030-p1-normalization-scope.md) D4 | DP-030 D4가 Schema 0.3(봉투 + `record_type` 유니온)은 승계하되 새 `record_type`은 이 등록부에 올리도록 정한 결정의 착지점. |
 | `RC-006` | tubedepth 잡 생성 트리거 (수집이 읽기 전용을 넘어 수집 요청까지) | [DP-012](decisions/DP-012-independent-scraper-services.md), [DP-031](decisions/DP-031-p1-collector-topology.md) D4 | DP-012의 읽기 경계를 넓히는 후보 — 지금은 COSMAI가 tubedepth의 기존 export를 읽기만 한다. |
 | `RC-007` | 대시보드 인증 | [`p0-security.md`](conventions/p0-security.md) Local execution boundary | loopback 밖 노출을 만들기 전 반드시 있어야 하는 전제조건. |
@@ -69,8 +69,12 @@ in this repository to judge that against"를 조건으로 남겼다. `RC-004`가
 
 ### `RC-005` — 새 `record_type` 설계
 
-`[확인 사실]` DP-030 D4는 "Schema 0.3(봉투 + `record_type` 유니온) 승계. 새 record_type은
-마일스톤 등록 (Task 9)"이라고 정한다 — Task 9가 바로 이 문서다. `[확인 사실]` DP-031 D3가
+`[확인 사실]` **정정, 2026-08-21 (`REVIEW-GATE-M0` F10 수리).** DP-030 D4는 영어로 다음과 같이
+기록한다 — "New `record_type`s are registered as roadmap candidates (`RC-005`, covering the
+trend-radar rank/review family and the YouTube video family) rather than committed as contract
+work in this packet." `RC-005`가 그 등록 지점이며, 이 문서가 그 등록부다. `[확인 사실]` 이전
+버전은 이 문장을 한국어 인용부호 안에 "(Task 9)"를 포함해 옮겼는데, DP-030 원문(영어)에는
+"Task 9"라는 표현이 없다 — 발명된 인용이었다. `[확인 사실]` DP-031 D3가
 확정한 어댑터 대상은 trend-radar 1.0.0과 tubedepth 두 종이며, `RC-005`의 두 계열(rank/review,
 youtube video)은 이 두 어댑터가 실제로 수집을 시작할 때 필요해질 레코드 모양이다. `[추론]`
 유니온 멤버 수 증가의 반증 조건(멤버 수가 소스 수에 근접)은 DP-030이 유지한 채이므로,
@@ -78,10 +82,14 @@ youtube video)은 이 두 어댑터가 실제로 수집을 시작할 때 필요�
 
 ### `RC-006` — tubedepth 잡 생성 트리거
 
-`[확인 사실]` DP-012는 어댑터 경계를 "스크래퍼 코드·스케줄·1차 저장소는 외부 서비스가
-소유한다. 어댑터는 서비스 DB를 읽거나 스크래퍼 모듈을 import하지 않는다"로 정한다.
-`[확인 사실]` DP-031 D4는 "데이터 교환은 REST API로만... 수집 스케줄은 COSMAI의 스케줄러가
-collect 잡 생성으로 수행"이라고 정하는데, 이것은 COSMAI가 **자기 쪽** 수집 잡을 스케줄대로
+`[추론]` **정정, 2026-08-21 (`REVIEW-GATE-M0` F10 수리).** DP-012는 영어 문서이므로 아래는
+직접 인용이 아니라 D1의 요약이다: 어댑터 경계는 스크래퍼 코드·스케줄·1차 저장소를 외부
+서비스가 소유하고, 어댑터는 서비스 DB를 읽거나 스크래퍼 모듈을 import하지 않는 것으로 정해져
+있다. `[확인 사실]` DP-031 D4는 "Data exchange with either adapter target is REST-API-only...
+Collection scheduling is COSMAI's own: the P1 scheduler... creates a collect job on its own
+interval, and that job reads whatever the external service's REST export currently holds"라고
+정하는데(이전 버전은 이 부분을 한국어 인용부호와 말줄임표로 옮겼으나 DP-031 원문에는 그
+한국어 문자열이 없었다), 이것은 COSMAI가 **자기 쪽** 수집 잡을 스케줄대로
 생성해 tubedepth의 기존 export를 **읽는** 일이다. `[추론]` tubedepth 자신에게 "지금 새로
 수집하라"는 요청을 보내는 것은 다른 방향의 쓰기이며, DP-012의 읽기 경계를 넓히는 결정이 별도로
 필요하다. `RC-006`은 그 넓힘을 아직 채택하지 않은 채 후보로만 적어 둔다.
@@ -99,7 +107,11 @@ loopback interface에만 bind한다... 별도 Decision Packet 없이 public ingr
 
 각 항목에 다음을 적는다.
 
-- 어떤 능력 지도 절, `plan.md` 절, 또는 결정에서 나왔는가
+- 어떤 능력 지도 절, `plan.md` 절, 또는 결정에서 나왔는가 — `[확인 사실]` `plan.md`는
+  저장소에 커밋되지 않은 오너의 원본 메모다. 그 내용은 [재구축 설계
+  스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §2에 재현되어 있고, 커밋된
+  권위 있는 출처는 스펙 쪽이다. `plan.md` 절을 인용할 때는 가능하면 스펙의 대응 표·행도 함께
+  적는다.
 - 이 후보를 막고 있는 것이 있는가 (데이터 공백, 임계값 부재, 다른 결정의 선행 등)
 - `docs/service-register.md`로 옮겨야 할 만큼 애드온 kind나 계약 변경이 필요해졌는가
 - M7 정합성 점검에서 GitHub issue로 옮길 때 필요한 최소 정보(제목, 근거 링크)가 이미

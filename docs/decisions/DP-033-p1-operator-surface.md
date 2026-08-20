@@ -60,7 +60,7 @@ dashboard is built on, and whether collection runs unattended?
 | Hypothesis | Falsification condition |
 |---|---|
 | H1: Six domain-oriented screens are sufficient for the P1 operator scenarios named in `plan.md`'s six goals, without inventing an unbounded set. | M5 finds a required operator scenario that needs a seventh first-class navigation object, which is exactly OQ-005 H1's own falsification condition, now applied to the six-screen answer. |
-| H2: Paging the already-persisted, already-redacted Raw payload on the data-browser screen needs no new redaction mechanism beyond what P0-B already applies before persistence. | A Raw payload page in M5 renders a value that `p0-security.md`'s protected-header list requires stripped, or any other value `secret-setup.md` invariant 3 forbids from appearing on a screen. |
+| H2: Paging the already-persisted Raw payload on the data-browser screen is acceptable without a body-level redaction mechanism, resting instead on the loopback operator boundary, plain-text-only rendering, and export data-classing (`[결정]` corrected 2026-08-21 — no body-level redaction mechanism exists to rest on, and the original H2 wrongly implied one). | A Raw payload page in M5 renders a body as interpreted markup rather than plain text, or a payload page is rendered where the boundary assumptions do not hold (the dashboard reachable by other than the single local operator, or a protected-header value appearing in a body rather than the already-stripped headers). |
 | H3: Streaming, scope-filtered export (source, period, `item_key` prefix) satisfies `plan.md` goal 3 without buffering a full result set in memory. | M6's download implementation cannot complete a full-source export without holding the entire result set in process memory at once. |
 | H4: The move from three P0-A screens to six P1 screens is, by itself, the "recorded reason" DP-006's adoption-vs-replacement rule requires before adopting a declined default — no contrary evidence is needed because nothing is being replaced. | A reviewer finds that these libraries are already "in use" in the DP-006 D6 sense, which would make this an unevidenced replacement rather than an adoption. |
 | H5: A `schedule` table plus scheduler-created `collect` jobs satisfies `plan.md` goal 1 without changing the job or effect-key model `CONTRACT-JOB@0.1` already fixes. | A scheduled run collides with an in-flight or already-succeeded job for the same source and period in a way `effect_key` idempotency does not already resolve, forcing a job-model change. |
@@ -128,10 +128,23 @@ sentence that justified declining the stack at three screens is what now support
 six.
 
 `[확인 사실]` [DP-018](DP-018-credential-parts-and-attachment.md) D3 ties every credential header
-to `PROTECTED_HEADERS`, and `strip_protected_headers` removes them from `raw_envelope` before it
-is ever persisted. A Raw payload page therefore renders content that has already passed through
-that stripping step at collection time; D2 below does not add, remove, or bypass that step — it
-only exposes what is already stored.
+to `PROTECTED_HEADERS`, and `strip_protected_headers` removes them from a response's *headers*
+before `raw_envelope` ever persists them. A Raw payload page therefore renders a payload whose
+*headers* have already passed through that stripping step at collection time; D2 below does not
+add, remove, or bypass that header-stripping step — it only exposes what is already stored.
+
+`[확인 사실]` **Correction, 2026-08-21 (fix-wave repair of `REVIEW-GATE-M0` F4).** The paragraph
+above, and D2's original wording below, called the *payload* "already-redacted." That is false:
+`strip_protected_headers` (`experiments/integrated-p0/domain/outbound.py:698`) takes and returns
+only a header mapping — its signature is `Mapping[str, str] -> dict[str, str]`. Its one production
+call site (`domain/transport.py:269`) applies it solely to `dict(response.getheaders())` for the
+`headers` field of `TransportResponse`; the same call passes `body` straight through, unexamined,
+into the same object. No function anywhere in P0 redacts, strips, or inspects a response *body*
+before it becomes `raw_item.payload`, and D2 below does not add one. `raw_summary`'s own
+docstring, already quoted in this packet's Decision question, is the accurate description: *"A
+page of Raw bodies on an operator screen is a page of unreviewed external text."* The corrected
+D2 and its new third paragraph, below, state what actually makes reversing the refusal acceptable
+without inventing a redaction mechanism that does not exist.
 
 ## Decision
 
@@ -145,21 +158,37 @@ management (§6 of the spec — a management frame, not new normalization logic)
 health and metrics (P0's screen carried forward, plus scheduler status).
 
 `[결정]` **D2 — The operator may read Raw payloads on the data-browser screen, reversing P0-B's
-refusal.** The refusal's own rationale — "nothing in P0-B needs one to answer 'did the collection
+refusal, on the basis of a boundary and rendering control rather than a body-level redaction
+control.** The refusal's own rationale — "nothing in P0-B needs one to answer 'did the collection
 do anything'" — was true of P0-B's synthetic-adjacent scope; `plan.md` goal 2 now names a P1
-scenario the refusal structurally blocks: browsing everything a domain collected. The boundary
-that makes this safe to reverse is the same one `p0-security.md`'s Local execution boundary and
-DP-023 already rely on: a single local operator inside the loopback boundary, not an untrusted or
-external viewer. The existing redaction path is unchanged — `strip_protected_headers` still runs
-before persistence, and this decision only makes the already-redacted, already-persisted payload
-readable; it adds no new stripping step and removes none.
+scenario the refusal structurally blocks: browsing everything a domain collected. `[결정]`
+**Correction, 2026-08-21:** this packet does not invent a body-redaction mechanism to answer that
+scenario, because none exists to invent one from. What actually makes reversing the refusal
+acceptable is three things, none of them a change to what the payload contains: (a) the loopback
+operator boundary `p0-security.md`'s `SEC-005` and DP-023 already rely on — the dashboard binds
+to loopback only, so the viewer is the single local operator, never an untrusted or external one;
+(b) a new M5 implementation requirement this decision creates: the data-browser screen renders a
+Raw payload as **plain text only** — never interpreted or rendered as HTML, Markdown, or any
+other markup, so a payload cannot execute or link out of the page that shows it; and (c) a
+screenshot or export taken from a payload page carries the payload's own data class under
+[`data-handling.md`](../conventions/data-handling.md) (for example, Open Beauty Facts stays
+`local` under [DP-027](DP-027-dataset-standard-and-share-alike.md) D4) — showing the bytes on a
+screen does not reclassify them to a more permissive class. The existing header-stripping path is
+unchanged — `strip_protected_headers` still runs on headers before persistence, and this decision
+adds no new stripping step and removes none; it also adds no body-level control, because it does
+not have one to add.
 
-`[결정]` **What D2 does not cover:** the data-class determination that applies once a payload
-leaves the local operator boundary — through an export shared externally, or if the dashboard is
-ever exposed beyond loopback under [RC-007](../roadmap-candidates.md) — is not re-decided here.
-Each source keeps whatever class `data-handling.md` and its own registration already assigned
-(for example, Open Beauty Facts stays `local` under [DP-027](DP-027-dataset-standard-and-share-alike.md)
-D4); any future external-exposure decision must examine that separately.
+`[결정]` **What D2 does not cover, stated rather than smoothed over:** no body-level redaction
+exists anywhere in P0 or in this decision. `strip_protected_headers` never receives a body and is
+not extended to one by this packet. A Raw payload page is, as `raw_summary`'s own docstring
+already said, a page of unreviewed external text; D2 does not change that sentence — it decides
+that sentence describes an acceptable local-operator-only, plain-text-rendered exposure, not a
+reason to keep refusing. Separately, and unchanged from the original text: the data-class
+determination that applies once a payload leaves the local operator boundary — through an export
+shared externally, or if the dashboard is ever exposed beyond loopback under
+[RC-007](../roadmap-candidates.md) — is not re-decided here. Each source keeps whatever class
+`data-handling.md` and its own registration already assigned; any future external-exposure
+decision must examine that separately.
 
 `[결정]` **D3 — Downloads are scope-filtered and streamed.** Scope conditions are source, a date
 period, and an `item_key` prefix. Raw exports default to JSONL (payload lossless, directly
@@ -175,7 +204,10 @@ filter-driven screens exist. Under DP-006's adoption-vs-replacement rule this is
 (nothing built on the declined stack is being replaced), so a recorded reason is the bar, not
 contrary evidence — and this paragraph is that record.
 
-`[결정]` **D5 — Collection runs on a schedule; normalization does not.** A `schedule` table holds
+`[결정]` **D5 — Collection runs on a schedule; normalization stays operator-triggered, with an
+optional schedule.** (`[확인 사실]` corrected 2026-08-21 — an earlier headline read "normalization
+does not," which contradicted this same decision's own body below and the spec's "수동 시작 유지
++ 선택적 스케줄.") A `schedule` table holds
 one row per source with an interval and a `next_run_at`; a scheduler process creates a `collect`
 job when a schedule is due. The dashboard exposes per-source interval configuration and an
 enable/disable toggle. Normalization keeps its existing operator-triggered pattern (select
@@ -239,8 +271,10 @@ was.
   could take D5 to mean normalization is now scheduled by default — D5 states plainly that it is
   not.
 - Reversibility: D1, D3, D4 are additive (new screens, new libraries) and reversible by removal.
-  D2 is a read path over data already persisted and already redacted; reversible by removing the
-  view without touching what is stored. D5 adds one table and one process; reversible by disabling
+  D2 is a read path over data already persisted, rendered as plain text under the loopback
+  boundary rather than through any body-level redaction (`[결정]` corrected 2026-08-21 — no such
+  redaction exists); reversible by removing the view without touching what is stored. D5 adds one
+  table and one process; reversible by disabling
   all schedules, which returns every source to the manual-trigger model P0-A and P0-B already
   used.
 
