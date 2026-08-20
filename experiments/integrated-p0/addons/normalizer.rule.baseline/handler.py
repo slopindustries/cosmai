@@ -95,17 +95,52 @@ output_contract_version, source_item_key)`, and `addon_id` alone already disambi
 unrelated shapes together, and no contract text warns about that. Recorded as a question
 rather than resolved, since resolving it (bumping to some other string, or requiring
 per-add-on namespacing) is a documentation or contract decision, not an implementation one.
+
+**Why `clean` is narrower than "no rule fired" (TASK-006, F2).** A rule whose input it
+cannot read reaches no verdict, and the first version of this module reported such a record
+as `clean: true` with an empty `findings` list — a claim about *coverage* that nothing had
+established. `clean` now means **every rule applicable to this record kind ran, and none
+fired**. A record with no findings but an unread rule is not clean; it is not judged wrong
+either, and the two are distinguished by `findings` being empty while `rules_not_evaluated`
+is not. `rules_evaluated` and `rules_not_evaluated` together always cover
+`RULES_BY_KIND[record_kind]` exactly, and `_coverage` below raises `AddonOutputInvalid`
+rather than emit a body where they do not — because the only way `clean` quietly starts
+meaning less again is a rule added without its abstention branch.
+
+`[결정]` The report shape changed while `rule_report_version` and
+`[addon].output_contract_version` both stayed `"0.1"`. No run has ever written a
+`normalized_result` row for this add-on, so nothing exists to be misread; and whether a
+report-shape change owes a version bump is exactly the question TASK-004's review left open
+about `output_contract_version` having no defining artefact and no validator. Bumping the
+string here would answer that question by implementation, which is not this task's to do.
+
+**Five of these ten rules cannot fire on anything either NAVER collector produces, and that
+is the first line working rather than a defect (TASK-006, F4).** `[확인 사실]`
+`collector.naver.blog` raises `AddonPermanent` on an absent or empty `link`; both trend
+collectors set `dimension` from a module constant or a validated mode, and refuse a
+non-numeric `ratio` and an empty `title`. So `blog.missing_link`,
+`trend.missing_field` (for `dimension` and `title`), `trend.unknown_dimension`, and
+`trend.ratio_invalid` are unreachable from those collectors *by construction*.
+`[추론]` That is what a second line looks like: each of those five names a condition the
+collector currently refuses to pass on, so their silence on real data is evidence the
+collector's own guard held — and if a collector were relaxed, retired, or replaced by an
+importer feeding the same source (`importer.local.jsonl` already can), these rules are what
+would notice. `[결정]` The owner decided on 2026-08-20 that hypothesis 6 closes on fixture
+evidence with this reason recorded, and that no rule is added so that something fires on
+real data: a rule chosen for its firing rate optimises for the appearance of evidence.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Mapping
 from datetime import date
 from typing import Any
 
 from addon_api.context import NormalizeContext
+from addon_api.errors import AddonOutputInvalid
 from addon_api.results import NormalizedResult, NormalizeOutcome
 
 #: This add-on's own report schema version. Independent of DP-019's `0.1` and DP-021's
@@ -124,6 +159,57 @@ RULE_TREND_UNKNOWN_TIME_UNIT = "trend.unknown_time_unit"
 RULE_TREND_RATIO_INVALID = "trend.ratio_invalid"
 RULE_TREND_RATIO_OUT_OF_RANGE = "trend.ratio_out_of_range"
 RULE_TREND_PERIOD_OUTSIDE_WINDOW = "trend.period_outside_window"
+
+#: Every rule that applies to a record of each kind — the set `clean: true` claims ran.
+#: `_coverage` refuses to emit a body whose evaluated and abstained rules do not add up to
+#: exactly this, so a rule added without an abstention branch fails the run instead of
+#: quietly shrinking what `clean` means.
+BLOG_RULES = (
+    RULE_BLOG_MISSING_LINK,
+    RULE_BLOG_MISSING_CONTENT,
+    RULE_BLOG_INVALID_POSTDATE,
+    RULE_BLOG_LINK_EQUALS_BLOGGERLINK,
+)
+TREND_RULES = (
+    RULE_TREND_MISSING_FIELD,
+    RULE_TREND_UNKNOWN_DIMENSION,
+    RULE_TREND_UNKNOWN_TIME_UNIT,
+    RULE_TREND_RATIO_INVALID,
+    RULE_TREND_RATIO_OUT_OF_RANGE,
+    RULE_TREND_PERIOD_OUTSIDE_WINDOW,
+)
+RULES_BY_KIND = {"document": BLOG_RULES, "trend_point": TREND_RULES}
+
+#: Why a rule reached no verdict. Fixed prose, never the offending value: an abstention is
+#: a statement about this rule's own reach, and the value is already the finding's job.
+ABSTAIN_LINK_PAIR_INCOMPLETE = (
+    "one of link or bloggerlink is absent, blank, or not a string, so the two cannot be "
+    "compared"
+)
+ABSTAIN_NO_NAME_TO_ADMIT = (
+    "the field is absent, blank, or not a string, so there is no value to check against the "
+    "admitted names"
+)
+ABSTAIN_RATIO_NOT_A_NUMBER = "ratio is not a number, so it cannot be placed in a range"
+ABSTAIN_WINDOW_UNPARSEABLE = (
+    "period, startDate, or endDate is not a parseable calendar date, so the window cannot "
+    "be applied — neither startDate nor endDate is required by DP-021 D2, so their absence "
+    "is not itself a violation this rule set names"
+)
+
+#: How much of an offending value a finding may echo. A finding exists to name what was
+#: there, not to copy it: `found` is persisted into `normalized_result.body`, and the value
+#: it echoes is untrusted Raw that nothing upstream bounded — a 200 KB field otherwise
+#: becomes a 200 KB row (TASK-006, F11).
+FOUND_MAX_TEXT = 200
+FOUND_MAX_ITEMS = 8
+FOUND_MAX_DEPTH = 2
+FOUND_MAX_BYTES = 4096
+
+#: The one key under which a bounded stand-in appears. It replaces the whole value rather
+#: than being added beside it, so an untrusted key spelled the same way cannot be mistaken
+#: for this marker or shadow it.
+BOUNDED = "<bounded by the rule baseline>"
 
 #: DP-021 D2's three names. A fourth is that decision's own falsification condition, so an
 #: unrecognised `dimension` is a finding here rather than silently accepted.
@@ -154,6 +240,11 @@ def run(context: NormalizeContext) -> NormalizeOutcome:
     "checked and clean" and "checked and wrong" are both judgments; only "could not be
     checked at all" is an abstention. That third case is `skipped`, named in `notes`, and
     never silently dropped (Acceptance Criterion 4).
+
+    Abstention has two granularities and both are named. An **item** nothing can classify
+    is `skipped`. A **rule** whose input it cannot read is listed in the body's
+    `rules_not_evaluated` with the reason, and the record is not reported `clean` — see the
+    module docstring's note on F2 for why an unread rule is not a passed rule.
     """
     results: list[NormalizedResult] = []
     skipped = 0
@@ -164,6 +255,7 @@ def run(context: NormalizeContext) -> NormalizeOutcome:
     kind_counts = {"document": 0, "trend_point": 0}
     clean_count = 0
     dirty_count = 0
+    incomplete_count = 0
 
     for item in context.read_snapshot():
         record = _parse(item.payload)
@@ -178,12 +270,16 @@ def run(context: NormalizeContext) -> NormalizeOutcome:
             skip_reasons["unclassifiable_record_kind"] += 1
             continue
 
-        findings = _check_blog(record) if kind == "document" else _check_trend(record)
-        clean = not findings
-        if clean:
-            clean_count += 1
-        else:
+        checker = _check_blog if kind == "document" else _check_trend
+        findings, not_evaluated = checker(record)
+        evaluated = _coverage(kind, findings, not_evaluated)
+        clean = not findings and not not_evaluated
+        if findings:
             dirty_count += 1
+        elif not_evaluated:
+            incomplete_count += 1
+        else:
+            clean_count += 1
         kind_counts[kind] += 1
 
         results.append(
@@ -194,8 +290,13 @@ def run(context: NormalizeContext) -> NormalizeOutcome:
                     "record_kind": kind,
                     "clean": clean,
                     "findings": findings,
+                    "rules_evaluated": evaluated,
+                    "rules_not_evaluated": not_evaluated,
                 },
-                notes={"rules_fired": [finding["rule"] for finding in findings]},
+                notes={
+                    "rules_fired": [finding["rule"] for finding in findings],
+                    "rules_not_evaluated": [entry["rule"] for entry in not_evaluated],
+                },
             )
         )
 
@@ -206,6 +307,7 @@ def run(context: NormalizeContext) -> NormalizeOutcome:
         "trend_points_checked": kind_counts["trend_point"],
         "clean": clean_count,
         "with_findings": dirty_count,
+        "not_fully_checked": incomplete_count,
         "skip_reasons": skip_reasons,
     }
     context.log(
@@ -240,11 +342,109 @@ def _classify(record: Mapping[str, Any]) -> str | None:
 
 
 def _finding(rule: str, field: str, expected: str, found: Any) -> dict[str, Any]:
-    return {"rule": rule, "field": field, "expected": expected, "found": found}
+    """One judgment: which rule, which field, what was expected, what was there.
+
+    `found` passes through `_bound_found` because it is the only place in this module where
+    untrusted Raw flows into a stored body.
+    """
+    return {"rule": rule, "field": field, "expected": expected, "found": _bound_found(found)}
 
 
-def _check_blog(record: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Four rules, each decidable from this one record.
+def _abstention(rule: str, field: str, reason: str) -> dict[str, Any]:
+    """One rule that reached no verdict, and why. Not a finding, and not a pass."""
+    return {"rule": rule, "field": field, "reason": reason}
+
+
+def _coverage(
+    kind: str, findings: list[dict[str, Any]], not_evaluated: list[dict[str, Any]]
+) -> list[str]:
+    """Which of this kind's rules reached a verdict, refusing anything that does not add up.
+
+    `clean: true` is a claim that `RULES_BY_KIND[kind]` ran in full. That claim is only worth
+    the bookkeeping behind it, so the two ways the bookkeeping can lie are refused here
+    rather than emitted: a rule name outside this kind's set (a rule was added and its set
+    was not), and a rule that both fired and abstained (a rule was given a verdict and an
+    abstention at once). Neither is reachable from today's ten rules, which is why
+    `tests/test_normalizer_rule_baseline.py` drives this branch through `RULES_BY_KIND`
+    rather than leaving a guard nothing can fail.
+    """
+    applicable = RULES_BY_KIND[kind]
+    unevaluated = {entry["rule"] for entry in not_evaluated}
+    fired = {finding["rule"] for finding in findings}
+    stray = sorted((fired | unevaluated) - set(applicable))
+    contradictory = sorted(fired & unevaluated)
+    if stray or contradictory:
+        raise AddonOutputInvalid(
+            "a record's rule coverage does not match its kind's rule set, so `clean` would "
+            "not mean that every applicable rule ran",
+            {
+                "record_kind": kind,
+                "outside_the_rule_set": stray,
+                "both_fired_and_abstained": contradictory,
+            },
+        )
+    return [rule for rule in applicable if rule not in unevaluated]
+
+
+def _bound_found(value: Any) -> Any:
+    """A stand-in for `value` that is small, strict JSON, and the same every run.
+
+    Two separate defects sit behind this (TASK-006, F11). Size: `found` echoed the offending
+    value verbatim, so a 200 KB field produced a 200 KB `normalized_result` row. Strictness:
+    `json.loads` accepts the bare `NaN` and `Infinity` literals that both NAVER collectors'
+    `json.dumps` defaults write, and `domain.store.canonical_body` writes them straight back
+    out — PostgreSQL's `jsonb` rejects them, which would fail the transaction that stores
+    *every* result in the run, not just this one.
+
+    The serialization round-trip is the actual guarantee: whatever comes back from here is
+    something `json.dumps(..., allow_nan=False)` has already accepted at a bounded size.
+    """
+    bounded = _bounded(value)
+    try:
+        encoded = json.dumps(bounded, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError):
+        return {BOUNDED: f"a {type(value).__name__} this report cannot serialize"}
+    if len(encoded.encode("utf-8")) <= FOUND_MAX_BYTES:
+        return bounded
+    return {BOUNDED: f"a {type(value).__name__} too large to echo, bounded away in full"}
+
+
+def _bounded(value: Any, depth: int = 0) -> Any:
+    """Recursively shrink one parsed-JSON value. Deterministic: keys are visited sorted."""
+    if isinstance(value, str):
+        return _bounded_text(value)
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else f"<not a finite number: {value!r}>"
+    if isinstance(value, int):
+        return value if len(str(value)) <= FOUND_MAX_TEXT else _bounded_text(str(value))
+    if depth >= FOUND_MAX_DEPTH:
+        return f"<{type(value).__name__} omitted below depth {FOUND_MAX_DEPTH}>"
+    if isinstance(value, Mapping):
+        keys = sorted(value, key=str)
+        kept = {str(key): _bounded(value[key], depth + 1) for key in keys[:FOUND_MAX_ITEMS]}
+        if len(keys) <= FOUND_MAX_ITEMS:
+            return kept
+        return {BOUNDED: {"kept": kept, "keys_omitted": len(keys) - FOUND_MAX_ITEMS}}
+    if isinstance(value, list | tuple):
+        items = [_bounded(item, depth + 1) for item in value[:FOUND_MAX_ITEMS]]
+        if len(value) <= FOUND_MAX_ITEMS:
+            return items
+        return {BOUNDED: {"kept": items, "items_omitted": len(value) - FOUND_MAX_ITEMS}}
+    return _bounded_text(str(value))
+
+
+def _bounded_text(text: str) -> str:
+    if len(text) <= FOUND_MAX_TEXT:
+        return text
+    return f"{text[:FOUND_MAX_TEXT]}… ({len(text) - FOUND_MAX_TEXT} more characters omitted)"
+
+
+def _check_blog(
+    record: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Four rules, each decidable from this one record. Returns findings and abstentions.
 
     - **missing_link** — a required field absent (Acceptance Criterion 1's first
       category). `link` is the identity and the lineage key `normalizer.naver.blog` itself
@@ -261,13 +461,17 @@ def _check_blog(record: Mapping[str, Any]) -> list[dict[str, Any]]:
       it shares.
     - **link_equals_bloggerlink** — a cross-field inconsistency. A specific post's URL
       cannot legitimately equal the blog's home page URL; if the source ever reported that,
-      one of the two fields is wrong, and no single-field check would notice.
+      one of the two fields is wrong, and no single-field check would notice. This is the
+      one blog rule that can abstain: with either side missing there is nothing to compare,
+      and `collector.naver.blog` requires only `link`, so a vendor omission of
+      `bloggerlink` is a live input rather than a hypothetical one.
     """
     findings: list[dict[str, Any]] = []
+    not_evaluated: list[dict[str, Any]] = []
 
     link = record.get("link")
-    link_ok = isinstance(link, str) and bool(link.strip())
-    if not link_ok:
+    link_text = link.strip() if isinstance(link, str) else ""
+    if not link_text:
         findings.append(
             _finding(
                 RULE_BLOG_MISSING_LINK,
@@ -303,8 +507,14 @@ def _check_blog(record: Mapping[str, Any]) -> list[dict[str, Any]]:
         )
 
     bloggerlink = record.get("bloggerlink")
-    bloggerlink_ok = isinstance(bloggerlink, str) and bool(bloggerlink.strip())
-    if link_ok and bloggerlink_ok and link.strip() == bloggerlink.strip():  # type: ignore[union-attr]
+    bloggerlink_text = bloggerlink.strip() if isinstance(bloggerlink, str) else ""
+    if not link_text or not bloggerlink_text:
+        not_evaluated.append(
+            _abstention(
+                RULE_BLOG_LINK_EQUALS_BLOGGERLINK, "bloggerlink", ABSTAIN_LINK_PAIR_INCOMPLETE
+            )
+        )
+    elif link_text == bloggerlink_text:
         findings.append(
             _finding(
                 RULE_BLOG_LINK_EQUALS_BLOGGERLINK,
@@ -314,11 +524,13 @@ def _check_blog(record: Mapping[str, Any]) -> list[dict[str, Any]]:
             )
         )
 
-    return findings
+    return findings, not_evaluated
 
 
-def _check_trend(record: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Six rules, each decidable from this one record.
+def _check_trend(
+    record: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Six rules, each decidable from this one record. Returns findings and abstentions.
 
     - **missing_field** — `dimension`, `title` (the series name), `period`, and `timeUnit`
       are never absent per DP-021 D2; `terms` is excluded because DP-021 D2 states it "may
@@ -326,21 +538,24 @@ def _check_trend(record: Mapping[str, Any]) -> list[dict[str, Any]]:
       optional by design (null when the request asked for no filter).
     - **unknown_dimension** / **unknown_time_unit** — an enum violation: the value is
       present but is not one of DP-021 D2's fixed names. Fires only when the field is
-      present at all, so it never doubles up with `missing_field` on the same defect.
+      present at all, so it never doubles up with `missing_field` on the same defect —
+      and *abstains* when it is not, because "no name to admit" is not "an admitted name".
     - **ratio_invalid** — present but not a number (or is a `bool`, which Python's `int`
       would otherwise accept).
     - **ratio_out_of_range** — numeric but outside `[0, 100]`. DP-021 D3 quotes the vendor's
       own documentation that the window's maximum is fixed at 100; see this module's
-      `[가설]` on the lower bound.
+      `[가설]` on the lower bound. Abstains exactly when `ratio_invalid` fires.
     - **period_outside_window** — a cross-field consistency check across three fields:
       `period` must fall within `[startDate, endDate]`, the window `notes.start_date`/
       `notes.end_date` in `normalizer.naver.trend` already carries. It fires only when all
       three parse as valid calendar dates, so it never contradicts `missing_field` (which
       already covers an absent `period`) — a malformed or absent `startDate`/`endDate` alone
       is not itself a violation this rule set names, since neither field is in DP-021 D2's
-      required set.
+      required set. It is the rule TASK-006's F2 was reported against: it abstains far more
+      often than it fires, and until F2 that abstention was invisible.
     """
     findings: list[dict[str, Any]] = []
+    not_evaluated: list[dict[str, Any]] = []
 
     for field_name in ("dimension", "title", "period", "timeUnit"):
         value = record.get(field_name)
@@ -350,7 +565,11 @@ def _check_trend(record: Mapping[str, Any]) -> list[dict[str, Any]]:
             )
 
     dimension = record.get("dimension")
-    if isinstance(dimension, str) and dimension.strip() and dimension not in TREND_DIMENSIONS:
+    if not isinstance(dimension, str) or not dimension.strip():
+        not_evaluated.append(
+            _abstention(RULE_TREND_UNKNOWN_DIMENSION, "dimension", ABSTAIN_NO_NAME_TO_ADMIT)
+        )
+    elif dimension not in TREND_DIMENSIONS:
         findings.append(
             _finding(
                 RULE_TREND_UNKNOWN_DIMENSION,
@@ -361,7 +580,11 @@ def _check_trend(record: Mapping[str, Any]) -> list[dict[str, Any]]:
         )
 
     time_unit = record.get("timeUnit")
-    if isinstance(time_unit, str) and time_unit.strip() and time_unit not in TREND_TIME_UNITS:
+    if not isinstance(time_unit, str) or not time_unit.strip():
+        not_evaluated.append(
+            _abstention(RULE_TREND_UNKNOWN_TIME_UNIT, "timeUnit", ABSTAIN_NO_NAME_TO_ADMIT)
+        )
+    elif time_unit not in TREND_TIME_UNITS:
         findings.append(
             _finding(
                 RULE_TREND_UNKNOWN_TIME_UNIT,
@@ -374,6 +597,9 @@ def _check_trend(record: Mapping[str, Any]) -> list[dict[str, Any]]:
     ratio = record.get("ratio")
     if isinstance(ratio, bool) or not isinstance(ratio, int | float):
         findings.append(_finding(RULE_TREND_RATIO_INVALID, "ratio", "a number", ratio))
+        not_evaluated.append(
+            _abstention(RULE_TREND_RATIO_OUT_OF_RANGE, "ratio", ABSTAIN_RATIO_NOT_A_NUMBER)
+        )
     elif not (0 <= ratio <= 100):
         findings.append(
             _finding(
@@ -387,8 +613,11 @@ def _check_trend(record: Mapping[str, Any]) -> list[dict[str, Any]]:
     period = _parse_iso_date(record.get("period"))
     start = _parse_iso_date(record.get("startDate"))
     end = _parse_iso_date(record.get("endDate"))
-    all_parsed = period is not None and start is not None and end is not None
-    if all_parsed and not (start <= period <= end):  # type: ignore[operator]
+    if period is None or start is None or end is None:
+        not_evaluated.append(
+            _abstention(RULE_TREND_PERIOD_OUTSIDE_WINDOW, "period", ABSTAIN_WINDOW_UNPARSEABLE)
+        )
+    elif not (start <= period <= end):
         findings.append(
             _finding(
                 RULE_TREND_PERIOD_OUTSIDE_WINDOW,
@@ -402,7 +631,7 @@ def _check_trend(record: Mapping[str, Any]) -> list[dict[str, Any]]:
             )
         )
 
-    return findings
+    return findings, not_evaluated
 
 
 def _is_valid_yyyymmdd(value: object) -> bool:
