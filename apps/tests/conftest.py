@@ -28,13 +28,21 @@ once it exists) use `runtime_connection`, which — per DP-032's role separation
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import json
+import os
+import subprocess
+import sys
+import time
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from io import StringIO
-from typing import Any
+from pathlib import Path
+from typing import Any, Final
+from uuid import UUID
 
 import psycopg
 import pytest
+from psycopg.rows import dict_row
 
 from platform_core.config import PlatformConfig, load_config
 from platform_core.db.connection import connect
@@ -223,3 +231,168 @@ def job_store(
             platform_config.retry_base_ms, platform_config.retry_max_ms, jitter=lambda: 0.0
         ),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Process helpers for worker/API integration tests (Task 7)
+#
+# Copy-adapted from ``experiments/integrated-p0/tests/conftest.py``'s process
+# half. P0 spawned a worker against a database cloned fresh for the test
+# (``shared_database``); DP-032 gives P1 exactly one shared `cosmai_test`
+# database (see the module docstring above), so every helper here points a
+# spawned process at ``platform_config`` and leaves table-level isolation to
+# whichever fixture the test itself uses to touch the job tables — ordinarily
+# `job_store`'s `_reset_job_tables`. A test that needs an empty queue and does
+# not otherwise request `job_store` depends on `_reset_job_tables` directly.
+#
+# Task 8 adds the API-process half (``api_command``, ``running_api``, and
+# their supporting helpers) alongside this section.
+# --------------------------------------------------------------------------- #
+
+#: The directory a spawned process needs on its import path. `platform_core`
+#: lives directly under it, one level above this file — the analogue of P0's
+#: `EXPERIMENT_ROOT`, needed for a different reason (there, an unimportable
+#: hyphenated directory name; here, simply that a child process does not
+#: inherit pytest's own `pythonpath` setting).
+APPS_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
+
+#: How long a test waits for a worker or API process it started. Generous
+#: enough that a loaded machine does not fail the run, short enough that a
+#: stuck process is reported as one rather than as a hung session.
+PROCESS_TIMEOUT_SECONDS: Final = 30.0
+
+
+def worker_environment(config: PlatformConfig, **overrides: str) -> dict[str, str]:
+    """Environment for a process a test starts, pointing it at ``config``.
+
+    Used for the API entrypoint too, and named after the worker only because
+    that was the first process a test started. Returning a fresh mapping rather
+    than mutating ``os.environ`` keeps one test's overrides out of the next
+    process; ``overrides`` states any further ``COSMA_`` settings a test wants
+    (a short lease, a fast poll, a deliberately broken variable), and a caller
+    that wants a setting *removed* can still delete a key from the mapping this
+    returns.
+    """
+    values = dict(os.environ)
+    values.update(
+        {
+            "COSMA_DB_HOST": str(config.db_host),
+            "COSMA_DB_PORT": str(config.db_port),
+            "COSMA_DB_NAME": config.db_name,
+            "COSMA_DB_USER": config.db_user,
+            "COSMA_DB_PASSWORD_REF": config.db_password_ref,
+            "PYTHONPATH": os.pathsep.join(
+                [str(APPS_ROOT), *([p] if (p := os.environ.get("PYTHONPATH")) else [])]
+            ),
+        }
+    )
+    values.update(overrides)
+    return values
+
+
+def worker_command(*arguments: str) -> list[str]:
+    """The command line DP-006 D1 fixes for the worker process."""
+    return [sys.executable, "-m", "platform_core.worker", *arguments]
+
+
+def start_worker(
+    config: PlatformConfig, *arguments: str, **overrides: str
+) -> subprocess.Popen[str]:
+    """Start a worker process against ``config`` and return it still running.
+
+    Both streams are captured: the structured log is written to standard error
+    and the shutdown report to standard output, and a test that started the
+    process is the only reader either has.
+    """
+    return subprocess.Popen(
+        worker_command(*arguments),
+        env=worker_environment(config, **overrides),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def wait_for_worker(
+    process: subprocess.Popen[str], timeout: float = PROCESS_TIMEOUT_SECONDS
+) -> subprocess.CompletedProcess[str]:
+    """Collect a process's exit status and both of its streams.
+
+    On a timeout the process is killed and its streams are still collected, so a
+    test that hangs reports what the process was saying rather than nothing.
+    """
+    try:
+        out, err = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        out, err = process.communicate()
+        raise AssertionError(
+            f"the process did not exit within {timeout}s\nstdout:\n{out}\nstderr:\n{err}"
+        ) from None
+    return subprocess.CompletedProcess(process.args, process.returncode, out, err)
+
+
+def run_worker(
+    config: PlatformConfig,
+    *arguments: str,
+    timeout: float = PROCESS_TIMEOUT_SECONDS,
+    **overrides: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run a worker process to completion. The common case in a scenario."""
+    return wait_for_worker(start_worker(config, *arguments, **overrides), timeout=timeout)
+
+
+def wait_until(
+    predicate: Callable[[], bool],
+    description: str,
+    timeout: float = PROCESS_TIMEOUT_SECONDS,
+    interval: float = 0.02,
+) -> None:
+    """Wait for something a separate process is expected to do, or say what it was.
+
+    Used instead of a fixed sleep so that a test states the condition it depends
+    on. The timeout is a failure report, not a duration anything is timed against.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(interval)
+    raise AssertionError(f"timed out after {timeout}s waiting until {description}")
+
+
+def log_events(text: str) -> list[dict[str, Any]]:
+    """The structured events a process wrote, in order.
+
+    The log is JSON Lines on standard error; anything else on that stream — a
+    traceback from a process that died badly, for instance — is skipped rather
+    than allowed to fail the parse, because a test asserting on events should
+    fail on the missing event and not on the noise beside it.
+    """
+    events: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        try:
+            record = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict):
+            events.append(record)
+    return events
+
+
+def attempts_of(connection: psycopg.Connection[Any], job_id: UUID) -> list[dict[str, Any]]:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            f"select * from {SCHEMA}.job_attempt where job_id = %s order by attempt_no",
+            (job_id,),
+        )
+        return cursor.fetchall()
+
+
+def effects_of(connection: psycopg.Connection[Any], job_id: UUID) -> list[dict[str, Any]]:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(f"select * from {SCHEMA}.platform_effect where job_id = %s", (job_id,))
+        return cursor.fetchall()
