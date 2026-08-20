@@ -25,11 +25,11 @@
 
 | id | 항목 | 출처 | 부재가 의미하는 것 |
 |---|---|---|---|
-| `SR-001` | 미승인 URL 강제 차단 수위 | 능력 지도 §1.4, [plan.md](../../plan.md) §1.4 | outbound 프로파일의 **구조**(엔드포인트 명명, credential 부착에 필요한 골격)는 P1 계약에 그대로 남는다. 이 항목이 이관하는 것은 그 구조가 아니라 강제 **수위** — 전체 주소 범위 검사, `loopback` 플래그 등 P0가 쌓았던 강화 수준을 P1이 처음부터 같은 정도로 재구현할지 여부다. |
-| `SR-002` | DNS 실패·재바인딩 대응 | 능력 지도 §1.5, [plan.md](../../plan.md) §1.5 | P0에서도 검증된 적이 없다(`NOT EXERCISED`). 이 항목의 부재는 P0에서 P1로 넘어가며 새로 생긴 공백이 아니라, 한 번도 닫힌 적 없는 공백이 계속 열려 있다는 뜻이다 — 아래 상세 참조. |
-| `SR-003` | 삭제 의무 이행 경로 | 능력 지도 §2.6, [plan.md](../../plan.md) §2.6, DP-029 D4 | `raw_item` 행을 삭제해도 `snapshot_item`과 `raw_envelope`에 사본이 각각 하나씩, 도합 두 벌 남는다. 이 항목이 부재하는 동안에는 "삭제했다"는 문장이 성립하지 않는다 — 아래 상세 참조. |
-| `SR-004` | 리다이렉트·주소 범위 방어 재구현 | 능력 지도 §7.2, [plan.md](../../plan.md) §7.2 | 등록된 source profile에서만 host·port·path를 구성하고 HTTPS만 허용하는 outbound guard의 최소선은 P1 계약과 보안 baseline에 그대로 남는다. 이 항목이 이관하는 것은 P0가 다섯 차례의 반증·수리를 거쳐 쌓은 강화 수준 전체(모든 redirect의 전면 재검증, 모든 주소 범위의 전면 차단)를 P1이 처음부터 같은 강도로 재구현하는 일이며, 이것이 게이트 통과의 필수조건이 아니라는 결정이다. 승인된 개별 어댑터(DP-031 D3)가 필요로 하는 좁은 예외는 이 항목이 아니라 DP-031이 직접 정한다. |
-| `SR-005` | SEC-006 | 능력 지도 §7.3, [plan.md](../../plan.md) §7.3, DP-023 | 이 항목이 여기 있다는 것은 [DP-023](../decisions/DP-023-sec-006-waived-for-p0.md)의 P0 waiver가 P1로 **승계**된다는 뜻이 **아니다**. DP-023의 waiver는 "P1 Entry Gate must not accept a plan that carries this forward"라고 스스로 못박았고 게이트에서 만료된다. SEC-006이 이 등록부에 있다는 사실은 DP-034가 P1 범위를 새로 결정한 것이며, 그 결정은 waiver의 연장이 아니라 독립된 판단이다. |
+| `SR-001` | 미승인 URL 강제 차단 수위 | 능력 지도 §1.4, [재구축 설계 스펙](../superpowers/specs/2026-08-21-p1-reconstruction-design.md) §1.4 | outbound 프로파일의 **구조**(엔드포인트 명명, credential 부착에 필요한 골격)는 P1 계약에 그대로 남는다. 이 항목이 이관하는 것은 그 구조가 아니라 강제 **수위** — 전체 주소 범위 검사, `loopback` 플래그 등 P0가 쌓았던 강화 수준을 P1이 처음부터 같은 정도로 재구현할지 여부다. |
+| `SR-002` | DNS 실패·재바인딩 대응 | 능력 지도 §1.5, [재구축 설계 스펙](../superpowers/specs/2026-08-21-p1-reconstruction-design.md) §1.5 | P0에서도 검증된 적이 없다(`NOT EXERCISED`). 이 항목의 부재는 P0에서 P1로 넘어가며 새로 생긴 공백이 아니라, 한 번도 닫힌 적 없는 공백이 계속 열려 있다는 뜻이다 — 아래 상세 참조. |
+| `SR-003` | 삭제 의무 이행 경로 | 능력 지도 §2.6, [재구축 설계 스펙](../superpowers/specs/2026-08-21-p1-reconstruction-design.md) §2.6, DP-029 D4 | `raw_item` 행을 삭제해도 `snapshot_item`과 `raw_envelope`에 사본이 각각 하나씩, 도합 두 벌 남는다. 이 항목이 부재하는 동안에는 "삭제했다"는 문장이 성립하지 않는다 — 아래 상세 참조. |
+| `SR-004` | 리다이렉트·주소 범위 방어 재구현 | 능력 지도 §7.2, [재구축 설계 스펙](../superpowers/specs/2026-08-21-p1-reconstruction-design.md) §7.2 | 등록된 source profile에서만 host·port·path를 구성하고 HTTPS만 허용하는 outbound guard의 최소선은 P1 계약과 보안 baseline에 그대로 남는다. 이 항목이 이관하는 것은 P0가 다섯 차례의 반증·수리를 거쳐 쌓은 강화 수준 전체(모든 redirect의 전면 재검증, 모든 주소 범위의 전면 차단)를 P1이 처음부터 같은 강도로 재구현하는 일이며, 이것이 게이트 통과의 필수조건이 아니라는 결정이다. 승인된 개별 어댑터(DP-031 D3)가 필요로 하는 좁은 예외는 이 항목이 아니라 DP-031이 직접 정한다. |
+| `SR-005` | SEC-006 | 능력 지도 §7.3, [재구축 설계 스펙](../superpowers/specs/2026-08-21-p1-reconstruction-design.md) §7.3, DP-023 | 이 항목이 여기 있다는 것은 [DP-023](../decisions/DP-023-sec-006-waived-for-p0.md)의 P0 waiver가 P1로 **승계**된다는 뜻이 **아니다**. DP-023의 waiver는 "P1 Entry Gate must not accept a plan that carries this forward"라고 스스로 못박았고 게이트에서 만료된다. SEC-006이 이 등록부에 있다는 사실은 DP-034가 P1 범위를 새로 결정한 것이며, 그 결정은 waiver의 연장이 아니라 독립된 판단이다. |
 
 ## 항목별 상세
 

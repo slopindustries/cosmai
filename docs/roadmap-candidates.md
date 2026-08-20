@@ -25,10 +25,10 @@ Open Question이 막고 있는지를 다룬다. `[결정]` 이 문서는 그 역
 
 | id | 항목 | 출처 | 비고 |
 |---|---|---|---|
-| `RC-001` | 카드·트렌드 화면 | 능력 지도 §5.3, [plan.md](../plan.md) §5.3, [DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) D1 | DP-026 D1이 DP-011의 product scope를 P1 첫 마일스톤으로 옮긴 결정의 착지점. |
-| `RC-002` | 선크림·토너 기회 카드 | 능력 지도 §6.1, [plan.md](../plan.md) §6.1 | plan.md: 기능 후보로 등록, 필수 구현요구사항 아님. |
-| `RC-003` | 결정적 트렌드 분류 | 능력 지도 §6.3, [plan.md](../plan.md) §6.3 | 가능한 서비스 기능으로 마일스톤에 기록. |
-| `RC-004` | 성분 완전성 판단 | 능력 지도 §6.4, [plan.md](../plan.md) §6.4 | 서비스 구현에서 판단할 내용으로 마일스톤에 기록. |
+| `RC-001` | 카드·트렌드 화면 | 능력 지도 §5.3, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §5.3, [DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) D1 | DP-026 D1이 DP-011의 product scope를 P1 첫 마일스톤으로 옮긴 결정의 착지점. |
+| `RC-002` | 선크림·토너 기회 카드 | 능력 지도 §6.1, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §6.1 | plan.md: 기능 후보로 등록, 필수 구현요구사항 아님. |
+| `RC-003` | 결정적 트렌드 분류 | 능력 지도 §6.3, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §6.3 | 가능한 서비스 기능으로 마일스톤에 기록. |
+| `RC-004` | 성분 완전성 판단 | 능력 지도 §6.4, [재구축 설계 스펙](superpowers/specs/2026-08-21-p1-reconstruction-design.md) §6.4 | 서비스 구현에서 판단할 내용으로 마일스톤에 기록. |
 | `RC-005` | 새 `record_type` 설계: trend-radar rank/review 계열, youtube video 계열 | [DP-030](decisions/DP-030-p1-normalization-scope.md) D4 | DP-030 D4가 Schema 0.3(봉투 + `record_type` 유니온)은 승계하되 새 `record_type`은 이 등록부에 올리도록 정한 결정의 착지점. |
 | `RC-006` | tubedepth 잡 생성 트리거 (수집이 읽기 전용을 넘어 수집 요청까지) | [DP-012](decisions/DP-012-independent-scraper-services.md), [DP-031](decisions/DP-031-p1-collector-topology.md) D4 | DP-012의 읽기 경계를 넓히는 후보 — 지금은 COSMAI가 tubedepth의 기존 export를 읽기만 한다. |
 | `RC-007` | 대시보드 인증 | [`p0-security.md`](conventions/p0-security.md) Local execution boundary | loopback 밖 노출을 만들기 전 반드시 있어야 하는 전제조건. |
