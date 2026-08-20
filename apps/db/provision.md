@@ -73,3 +73,19 @@ corresponding roles were dropped rather than reused.
 - Schema `cosmai` in each database; `public` has `CREATE` revoked from `PUBLIC`.
 - `~/.config/cosmai/env` (mode 600) holds `COSMA_DB_MIGRATOR` and `COSMA_DB_RUNTIME` alongside
   the pre-existing NAVER/YouTube keys, untouched.
+
+## Caveat: `DROP SCHEMA ... CASCADE` + recreate voids the default-privilege grants below
+
+Part B's `ALTER DEFAULT PRIVILEGES FOR ROLE cosmai_owner IN SCHEMA cosmai ...` grants (the
+`cosmai_runtime` SELECT/INSERT/UPDATE/DELETE binding) are keyed to schema `cosmai`'s **OID**, not
+its name. If any future procedure runs `DROP SCHEMA cosmai CASCADE; CREATE SCHEMA cosmai;` — as
+opposed to migrating the existing schema in place — the new schema gets a new OID and the old
+binding does not carry over: every table created after that point is owned by `cosmai_owner` with
+**no** grant to `cosmai_runtime` at all, and the failure is silent (an empty result set, not a
+permission error). This was found and fixed in M1 Task 4 (`apps/tests/conftest.py`'s
+`_reset_schema` reissues this file's Part B grant statements immediately after `create schema`,
+over the migrator connection) — see [M1-RECORD §c deviation 5](../../docs/p1/M1-RECORD.md) for
+the full account. Any script that drops and recreates schema `cosmai` — including a future
+re-provisioning run — must reissue Part B's grants immediately afterward, in the same session, or
+verify `cosmai_runtime` can actually `SELECT` from a freshly created table before trusting the
+grant is in effect.
