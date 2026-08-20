@@ -26,9 +26,19 @@
 -- *"reproducibility is the whole reason a snapshot is materialized rather than queried"* —
 -- and `addon_api.results.SnapshotItem` carries exactly `item_key`, `payload` and
 -- `content_type`. A **column added** to this table reaches neither design's normalizer, so
--- it separates nothing. What separates them is a change to which `raw_item` rows exist: a
--- later collection that supersedes a sealed key, or the purge that `0002_domain.sql`
--- anticipates when it declines a DELETE trigger on Raw. The scenario drives both.
+-- it separates nothing. What the scenario drives instead is a change to which `raw_item`
+-- rows exist: a later collection that supersedes a sealed key, and the purge that
+-- `0002_domain.sql` anticipates when it declines a DELETE trigger on Raw.
+--
+-- **A second correction, 2026-08-20.** The paragraph above once went further and said no
+-- migration of this table could separate the designs at all. `[측정]`
+-- `ADVERSARIAL-REVIEW-2026-08-20-SNAPSHOT-R2.md` F-A falsified that by exhibiting one:
+-- `alter column item_key type text collate "und-x-icu"` changes no value, renames nothing,
+-- and reorders every member the queried design replays — because DP-019 D5's *"ordered by
+-- `item_key`"* is not an order until a collation is fixed, and nothing fixes it. That
+-- migration is deliberately **not** added: the owner chose the narrower claim over spending
+-- the gate's remaining time. So the migration axis is exercised by this file only at its
+-- floor, and the reason is recorded rather than the limitation being implied.
 --
 -- This migration is therefore the *floor* of the experiment rather than its point — the
 -- mildest evolution a Raw table can undergo, kept because a sealed snapshot has to survive

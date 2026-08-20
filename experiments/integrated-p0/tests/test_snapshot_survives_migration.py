@@ -9,8 +9,7 @@ and only one of them is a migration.
 **This file was rewritten because its first version measured only the migration, and could
 not tell the two designs apart.** ``ADVERSARIAL-REVIEW-2026-08-20-SNAPSHOT.md`` F2: the
 attacker replaced ``domain.store.READ_SNAPSHOT_ITEMS`` with a read-time re-query of
-``raw_item`` — the design OQ-004 lists as the alternative, *"preserve only references to
-append-only Raw observations"* — and every test of the surviving class passed anyway.
+``raw_item`` — and every test of the surviving class passed anyway.
 ``addon_api.results.SnapshotItem`` carries exactly ``item_key``, ``payload`` and
 ``content_type``, so a column **added** to ``raw_item`` cannot reach a normalizer under
 either design. The scenario was green for a reason weaker than the one it claimed.
@@ -19,6 +18,20 @@ So the alternative is no longer something an attacker installs by hand. ``querie
 is that design — DP-019 D5's selection re-run against ``raw_item`` at read time, projected
 to the three fields the contract defines — and it is a drop-in for
 ``DomainStore.read_snapshot_items``, so the two are read side by side on every run.
+
+**``queried_reader`` is the re-query design, and it is not OQ-004's first alternative.**
+`[확인 사실]` An earlier revision of this docstring attached OQ-004's *"preserve only
+references to append-only Raw observations"* to it, which is wrong: this reader preserves no
+references at all, it re-runs a selection. `ADVERSARIAL-REVIEW-2026-08-20-SNAPSHOT-R2.md`
+F-B is the correction, and it did the work rather than only naming the error — it
+implemented the reference design (ordinals and ``raw_item.id`` fixed at seal, bytes fetched
+at read) and drove it over this same timeline. `[측정]` **It agrees with the sealed design
+at the seal, after the migration, and after the later collection.** Only the purge separates
+them.
+
+`[추론]` So step 3 below is a real property of the re-query design and **not** the general
+claim that a snapshot beats every alternative. Against OQ-004's reference design the
+discriminating case is the purge alone. Read step 3 as scoped to the design named beside it.
 
 **The timeline, and what each step is for.** One fixture, four moments:
 
@@ -598,9 +611,24 @@ class TestTheExperimentTellsTheTwoDesignsApart:
         having. What would
         discriminate is dropping or renaming `item_key`, `payload`, or `content_type`; that
         breaks `domain.store.INSERT_ITEM` and `SELECT_SNAPSHOT_MEMBERS` in the same
-        statement, so it is not an evolution of the Raw store alone. `[가설]` No schema
-        migration this repository can legitimately apply to `raw_item` tells the two
-        designs apart. It is falsified by exhibiting one.
+        statement, so it is not an evolution of the Raw store alone.
+
+        `[측정]` **This docstring once carried a `[가설]` that no schema migration this
+        repository can legitimately apply tells the two designs apart, and it was falsified
+        the same day.** `ADVERSARIAL-REVIEW-2026-08-20-SNAPSHOT-R2.md` F-A exhibited one:
+        `alter table raw_item alter column item_key type text collate "und-x-icu"` changes no
+        value in any column, drops and renames nothing, leaves `INSERT_ITEM` and
+        `SELECT_SNAPSHOT_MEMBERS` working — and reorders **every** member the queried design
+        replays, while the sealed snapshot is unmoved and still verifies. The three-way
+        taxonomy above misses a fourth category: *change how the selection resolves without
+        changing a value*. It bites here rather than in principle, because real `item_key`s
+        are URLs and `f"{title}|{period}"`, and this cluster is `initdb --locale=C`.
+
+        `[결정]` The migration is **not** added. The owner chose the narrower claim on
+        2026-08-20 rather than spend the gate's remaining time widening the evidence, so the
+        refutation is recorded here and the migration axis stays unexercised. What this class
+        measures is therefore exactly what its name says — that an added column does *not*
+        tell the designs apart — and not the stronger claim the old `[가설]` made for it.
         """
         assert evolution.after_the_migration.queried == evolution.after_the_migration.sealed
 

@@ -77,6 +77,29 @@ Duplicate `item_key`s within a source collapse to the **latest** `emitted_at`, w
 choice and not a fact: `raw_item` deliberately has no uniqueness constraint because duplicate
 policy is an open question, and `snapshot_item` requires one row per key.
 
+### D5 is under-specified, found 2026-08-20
+
+`[측정]` **"Ordered by `item_key`" is not an order until a collation is fixed, and nothing
+here fixes one.** `ADVERSARIAL-REVIEW-2026-08-20-SNAPSHOT-R2.md` F-D: changing only the
+column's collation — `alter column item_key type text collate "und-x-icu"`, which alters no
+value and renames nothing — reorders every member a read-time selection returns. Real
+`item_key`s are URLs and `f"{title}|{period}"`, so this is where a collation bites rather
+than a theoretical concern; the development cluster is `initdb --locale=C`.
+
+`[추론]` **This is D4's own falsifier firing on D5.** D4 requires byte-identical output from
+one snapshot and D5 is what decides which bytes, in which order, a snapshot holds. Two
+clusters differing only in locale therefore seal **different manifests from identical Raw** —
+and neither `snapshot.selection` nor this packet records the collation the ordering depends
+on, so nothing in the artefact says which of the two a digest came from.
+
+`[결정]` **Not fixed in P0, and carried to the P1 Entry Gate as an unresolved item.** P0 runs
+on one cluster with one locale, so nothing it measured is wrong; what it cannot claim is
+backend-independent snapshot identity, which is
+[OQ-004](../open-questions/OQ-004-snapshot-boundary.md)'s question and not this packet's to
+answer. `[추론]` The fix is small and the decision it implies is not: pinning `collate "C"`
+in the selection would make the ordering a property of the bytes, and choosing that over a
+linguistic collation is a decision about what a snapshot *is*.
+
 **D6 — Normalization is started by an operator-created job naming a `snapshot_id`.**
 `project-state.md` §4: collection never triggers normalization. Sealing a snapshot and
 running a normalizer over it are two operator acts, not one.

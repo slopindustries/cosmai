@@ -59,6 +59,40 @@ All snapshot contracts, test doubles, persistence, and measurements belong to P0
 - Storage size and creation duration.
 - Lineage from selection to snapshot item to normalized result.
 
+### What P0-B measured, 2026-08-20
+
+`[측정]` **The exit condition's middle clause is now met for the re-query design.** TASK-005
+built the minimum experiment this question asked for — *"add later Raw observations and
+simulate a changed Raw-store projection; replay only from the snapshot"* — and drove a
+read-time re-query of `raw_item` beside the sealed reading over one timeline: at the seal,
+after an additive migration, after a later collection that supersedes a sealed key, and after
+a purge of every Raw row. The sealed snapshot verifies and replays byte-identically at all
+four steps; the re-query design replays different bytes at step three and nothing at step
+four. Independently reproduced, and the discrimination survives four mutations of the seal
+and read.
+
+`[측정]` **Against this question's *first* alternative it is narrower than that.**
+`ADVERSARIAL-REVIEW-2026-08-20-SNAPSHOT-R2.md` F-B implemented the reference design this
+question actually names — *"preserve only references to append-only Raw observations"*,
+ordinals and row ids fixed at seal with bytes fetched at read — and it agrees with the sealed
+design at the seal, after the migration, **and after the later collection**. Only the purge
+separates them. So a materialized snapshot beats a re-query, and beats a reference design
+only when the referenced rows are gone.
+
+`[측정]` **A purge does not discharge an erasure obligation.** After `delete from raw_item`,
+`snapshot_item` still holds the bytes and the manifest still verifies — and `raw_envelope`,
+the lossless original the items were carved from, is untouched. So deleting Raw rows leaves
+**two** further copies. `[추론]` This bears on DP-005's `DELETE_AFTER_EVIDENCE_CAPTURE`, which
+assigns the disposition to the local database rather than to rows: whatever discharges an
+erasure obligation, it is not one `delete` against `raw_item`. Recorded here because a
+snapshot's persistence is the property this question owns, and this is its cost.
+
+`[확인 사실]` **Still unmeasured: backend-independent identity.** D5's *"ordered by
+`item_key`"* fixes no collation, so two clusters differing only in locale seal different
+manifests from identical Raw — see the note added to
+[DP-019](../decisions/DP-019-normalized-schema-0-1-and-results.md) D5. This question's H2 is
+where that belongs.
+
 ## Exit condition
 
 Two independent runs consume identical verified input from the same snapshot, later Raw changes do not affect the input, and corruption is detected before normalization.
