@@ -93,6 +93,28 @@ manifests from identical Raw — see the note added to
 [DP-019](../decisions/DP-019-normalized-schema-0-1-and-results.md) D5. This question's H2 is
 where that belongs.
 
+`[측정]` **Which member wins when two observations of one key are sealed together is decided
+by `emitted_at`, and `emitted_at` is a transaction timestamp.** Measured 2026-08-20 by the
+attacker on [TASK-007/TASK-010](../agent-workflow/task-packets/TASK-010-obf-real-snapshot-normalized.md)
+(`ADVERSARIAL-REVIEW-2026-08-20-OBF-REAL-DATA.md` F2), on real Open Beauty Facts rows:
+
+- Two imports 59 ms apart produced distinct `emitted_at` values, `emitted_at desc` decided, and
+  all three overlapping members were byte-identical to the later delta's lines. The known
+  `uuid4` tie-break did **not** produce this result — that was checked, not assumed.
+- `[측정]` Forcing the two `emitted_at` values equal and re-sealing 12 times drops the decision
+  to `id desc` on a `uuid4`, and **2 of the 3 keys then selected the older payload**.
+
+`[확인 사실]` `emitted_at` defaults to `now()`, which in PostgreSQL is the **transaction**
+timestamp, not the statement's. `[추론]` So "the later import wins" holds per *import
+transaction* and not per row, and nothing in the tests, the contract, or `DP-019` D5 states
+that two imports must be separate transactions. A batching change that put two imports in one
+transaction would make snapshot member selection non-deterministic without any test noticing.
+
+`[결정]` Recorded here rather than repaired: this question owns snapshot member identity, the
+P0 evidence stands as measured, and the repair — an explicit ordering key, or a stated
+constraint that one import is one transaction — is a contract decision P1 makes. It joins
+TASK-003's two open items, which named the same tie-break from the other direction.
+
 ## Exit condition
 
 Two independent runs consume identical verified input from the same snapshot, later Raw changes do not affect the input, and corruption is detected before normalization.

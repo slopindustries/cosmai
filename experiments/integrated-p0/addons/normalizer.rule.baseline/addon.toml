@@ -18,7 +18,7 @@ requires_contract = ">=1.0,<2.0"
 # This add-on's own report shape, versioned independently of DP-019's `0.1` and DP-021's
 # `0.2` — the string collision with DP-019's Schema 0.1 is coincidental (both happen to be
 # an add-on's *first* version) and not a claim of compatibility. See handler.py's docstring,
-# "Question: output_contract_version collides in spelling with an unrelated schema".
+# "Another documentation gap, unrelated to input shape".
 output_contract_version = "0.1"
 
 [config]

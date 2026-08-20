@@ -550,6 +550,12 @@ class TestCleanMeansEveryApplicableRuleRan:
     none fired*, and the body carries the coverage that claim rests on. A record with no
     findings and an unread rule is neither clean nor judged wrong, and the two are told apart
     by `findings` being empty while `rules_not_evaluated` is not.
+
+    `[확인 사실]` What the test below actually proves is narrower than that sentence: that
+    `rules_evaluated` and `rules_not_evaluated` are disjoint, and that their union equals
+    this kind's declared rule set (TASK-009, correcting TASK-006's F2 text) — readable
+    directly off the two `assert` lines below. `[추론]` Neither assertion can observe whether
+    a rule in `rules_evaluated` *ran* — see `_coverage`'s docstring for the gap.
     """
 
     @pytest.mark.parametrize(
@@ -565,8 +571,11 @@ class TestCleanMeansEveryApplicableRuleRan:
     def test_the_two_coverage_lists_cover_the_kinds_rule_set_exactly(
         self, record_builder: Any
     ) -> None:
-        """Whatever happens to a record, every applicable rule is accounted for once — as
-        evaluated or as not evaluated, never both and never neither."""
+        """Whatever happens to a record, `rules_evaluated` and `rules_not_evaluated` are
+        disjoint and their union is this kind's declared rule set — never both, and never
+        outside it. `[추론]` This does not prove "never neither": a rule left off both lists
+        by a checker that silently returns is not what this test can catch (TASK-009) —
+        see `ADVERSARIAL-REVIEW-2026-08-20-COVERAGE-CLAIM.md`'s phantom-rule construction."""
         _, results = normalize(an_item("k", record_builder()))
         body = results[0].body
         evaluated = set(body["rules_evaluated"])

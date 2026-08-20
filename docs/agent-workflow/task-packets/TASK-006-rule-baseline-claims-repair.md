@@ -176,6 +176,16 @@ Three consequences, stated because they are the cost of the choice:
    starts meaning less again is a rule added without its abstention branch, and that now
    fails the run instead of shrinking the claim.
 
+   `[측정]` **Correction, 2026-08-20 (TASK-009).** The paragraph above is wrong about what
+   `_coverage` catches. It refuses a rule name outside the kind's declared set and a rule
+   that both fired and abstained — the two directions its own test drives — but a rule
+   declared in `RULES_BY_KIND` that reaches no verdict and appends no abstention is silently
+   subtracted into `rules_evaluated`, and the record is still emitted `clean: true`.
+   Coverage is computed by subtraction from the declared set, not by observing that a rule
+   ran, so it does not and cannot catch that third case. See `handler.py`'s module docstring,
+   "What `_coverage` actually checks, and the gap it does not close", for the corrected
+   claim.
+
 `[결정]` `rule_report_version` and `[addon].output_contract_version` both stay `"0.1"`
 although the body shape changed. No `normalized_result` row has ever been written for this
 add-on, so nothing exists to misread, and whether a report-shape change owes a version bump
@@ -330,6 +340,23 @@ asserts one digest set. It costs about 0.7 s of the scoped run's 0.82 s.
 
 ## Review
 
-- Attack report: not yet written
-- Result: `BLOCKED`
-- Orchestrator disposition: pending worker completion
+- Attack report: [ADVERSARIAL-REVIEW-2026-08-20-RULE-BASELINE-R2.md](../../../experiments/integrated-p0/ADVERSARIAL-REVIEW-2026-08-20-RULE-BASELINE-R2.md)
+- Result: `FAIL`
+- Orchestrator disposition: `REWORK`, narrowly. `[측정]` The four claims this packet was
+  written to repair **hold under attack** — 11 mutations killed, determinism measured as the
+  strong cross-process reading under six `PYTHONHASHSEED` values, both bucket-counter swaps
+  red, and the ten rules unchanged across 16,000 differential comparisons against `07c599b`.
+  What failed is a **fifth** claim the packet made on the way past: three places say
+  `_coverage` is what forces a rule added without an abstention branch to fail the run, and
+  F1 measured that it is not — coverage is computed by subtraction, so such a rule lands in
+  `rules_evaluated` and the record is emitted `clean: true`. `AGENTS.md`'s *"Do not describe
+  a convention as a control"* is the rule that breaks, which makes this a record defect of
+  the class this repository treats as blocking rather than a cosmetic one.
+  Repair is [TASK-009](TASK-009-coverage-claim-and-marker-collision.md); F4 is recorded
+  there as out-of-scope rather than carried silently.
+
+  `[확인 사실]` **Closed 2026-08-20 under [TASK-009](TASK-009-coverage-claim-and-marker-collision.md),
+  which this packet's `Result` deliberately does not restate.** That packet took three rounds
+  — each round's `FAIL` landed on a sentence the previous round had introduced — and was
+  accepted `PASS` on the third. This packet's own `FAIL` stands as the record of what was
+  found here; a repair accepted elsewhere does not retroactively make this review a pass.
