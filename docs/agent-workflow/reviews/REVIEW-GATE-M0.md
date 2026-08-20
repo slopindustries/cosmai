@@ -160,3 +160,22 @@ Per `AGENTS.md`, these are `BLOCKED`, not passes: (1) the live adapter targets �
 Failure classification: **evaluation** F1, F3, F5; **specification** F2, F6; **goal** F4. None is an implementation failure — no code is on this branch.
 
 P0-B work package to reopen: **none.** Every blocking finding is repairable inside M0. F4 additionally needs a decision: a body-level control for the data-browser screen, or an explicit recorded statement that a Raw payload page shows unreviewed external text and that the local-operator boundary is the only control.
+
+---
+
+## Disposition addendum (orchestrator, 2026-08-21, post-repair)
+
+The verdict above stands as written; nothing in this addendum edits it. What followed:
+
+| Round | Commit | Scope | Independent re-verification outcome |
+|---|---|---|---|
+| 1 | `418ca3c` | F1–F19 | F2–F19 ADDRESSED; F1 NOT ADDRESSED (count rewritten against the pre-fix tree); five new minors (N2–N6 of that round), all one class: line numbers and counts not re-resolved after the edit |
+| 2 | `d32e62f` | F1/N1 + N2–N6 | all ADDRESSED; one new blocking (a certifying grep that matched its own sentence) plus six minors (D2–D7) |
+| 3 | `8e87e46` | D1–D7 | ALL ADDRESSED; two quotation-fidelity minors remained |
+| 4 | `54d8bb9` | the two remaining quotes | closed with byte-identity evidence (SHA-256 of the table cell vs the quoted span), independently reproduced by the orchestrator |
+
+`[확인 사실]` Rounds 1–3 were performed by one implementer; round 4 by a fresh implementer under the escalation rule. Every round's re-verification was a separate adversarial subagent that re-derived counts, line numbers, quotes, and git claims from the tree rather than trusting the fix report; the orchestrator reproduced round 4's evidence directly.
+
+`[추론]` The attack's closing diagnosis — defects at the compression seams — held through the repair: every post-repair defect was itself a compression-seam instance (a count, citation, or attribution written against a pre-edit state). The repair discipline that ended the loop was mechanical: quote by extraction, never by transcription, and verify quoted commands against the final file.
+
+`tests/environment`: 81 passed at every round's close.

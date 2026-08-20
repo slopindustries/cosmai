@@ -8,7 +8,7 @@
   itself deciding whether to accept. `[확인 사실]` The proposed `p0-archive` tag below points at a
   different, earlier revision — see the P0 isolation checks for why.
 - Review date and timezone: 2026-08-21, `Asia/Seoul`
-- Reviewers: project owner (acceptance); Claude session (preparation, this record); adversarial review (attack — report link to be added by Task 13)
+- Reviewers: project owner (acceptance); Claude session (preparation, this record); adversarial review — [`REVIEW-GATE-M0`](../agent-workflow/reviews/REVIEW-GATE-M0.md) returned `FAIL` (6 blocking, 13 minor) against `f0e0e49`; four repair rounds followed (`418ca3c`, `d32e62f`, `8e87e46`, `54d8bb9`), each closed by an independent scoped re-verification, the last leaving no open finding. The report's addendum records the round-by-round disposition.
 
 ## Gate question
 
