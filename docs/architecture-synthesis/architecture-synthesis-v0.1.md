@@ -41,7 +41,7 @@ failures and 111 errors**.
 
 ### 2. Can one Raw envelope preserve both REST and dataset inputs without semantic loss?
 
-**`YES` for the shapes tested, and the test is weaker than the question.**
+**`YES`, and since 2026-08-20 the test is closer to the question — not level with it.**
 
 `[측정]` `raw_envelope` carries a REST response (`endpoint_ref`, `status`,
 `response_headers`, `request_summary`) and a dataset file (`input_ref`, no status, no
@@ -54,10 +54,44 @@ the **line as read** rather than a re-serialization, because `json.dumps` would 
 column becoming optional, not a second table — the hypothesis survives in the form that
 matters.
 
-`[측정]` **The dataset half is self-authored.** [SRC-002](../../experiments/source-probes/SRC-002-local-jsonl.md)
-is a file this project writes. Encoding surprises, embedded newlines in quoted strings, and
-duplicate row identities within one file are unexercised. The claim is *"the envelope
-carries both shapes"*, not *"the envelope survived a real dataset"*.
+`[확인 사실]` **The paragraph this replaces said the dataset half was self-authored.** It was,
+until [TASK-007](../agent-workflow/task-packets/TASK-007-obf-dataset-end-to-end.md).
+
+`[측정]` **A real external producer's rows now pass the same envelope, 2026-08-20.** Open Beauty
+Facts nightly delta exports — 121 and 126 products, retrieved anonymously with recorded digests
+— produce one `raw_envelope` and `raw_item` rows whose payloads are byte-identical to the
+source lines, adding no column and no table beyond DP-024's. `[추론]` The envelope has now
+carried three independently shaped inputs: a REST search response, a DataLab trend point, and a
+crowd-contributed product row. That is the claim the question asks for.
+
+`[측정]` **What stays unexercised is narrower than before, and one part of it is worse than
+unexercised.** The importer's three skip counters were all zero on the delta the test checks
+them for; the second delta's counters were not asserted. So partial-validity handling is still
+proved on [SRC-002](../../experiments/source-probes/SRC-002-local-jsonl.md)'s deliberately
+broken fixtures rather than on a real file. `[결정]` That is the right way round: fabricating a
+bad line inside a real export to exercise the path would have been inventing Raw.
+
+`[측정]` **Duplicate row identity within one file cannot be exercised by this test at all.** It
+asserts `len(set(codes)) == len(codes)`, so a duplicate would fail the test rather than
+exercise the path. That weakness the earlier paragraph named is retired by construction, not by
+evidence.
+
+`[확인 사실]` **The third weakness that paragraph named — embedded newlines inside quoted
+strings — is still unexercised and is not retired.** `importer.local.jsonl` splits on lines and
+its own docstring records the `[가설]` that one line is one record, false for a JSON string
+containing a newline; such a line is counted malformed rather than joined. No real delta
+contained one.
+
+`[측정]` **And one malformed shape is not merely unexercised — it aborts the run.** A payload
+carrying a lone surrogate (`{"code":"a\ud800"}`) is emitted by the normalizer and then raises
+`UnicodeEncodeError` inside `domain.store.canonical_body`, so **one bad row ends the whole
+normalize run instead of being skipped and counted**. Measured 2026-08-20 in
+[`ADVERSARIAL-REVIEW-2026-08-20-OBF-PRODUCT.md`](../../experiments/integrated-p0/ADVERSARIAL-REVIEW-2026-08-20-OBF-PRODUCT.md);
+`normalizer.naver.blog` has the same exposure and it predates both. `[확인 사실]` It is
+unguarded at `domain/store.py:132`. Carried in
+[`P1-INHERITED-DEFECTS.md`](P1-INHERITED-DEFECTS.md). An earlier revision of this section said
+only that malformed-row handling was unexercised on real data, which read as milder than what
+was measured.
 
 ### 3. Where are the correct transaction and idempotency boundaries?
 
@@ -102,19 +136,47 @@ this rule quietly broken.
 
 ### 5. Does the sealed snapshot protect reproducibility from Raw-store evolution?
 
-**`YES` for tampering; `NOT PROVED` for evolution.**
+**`YES` for tampering; `YES, NARROWLY` for evolution since 2026-08-20; and two new identity gaps.**
 
 `[측정]` Tampering is detected: `test_a_tampered_snapshot_fails_the_run_before_the_add_on
 sees_a_byte`, with an untampered control. The manifest digest and per-member digests are
 both checked, and `problems` names which failed. Two real captures were sealed with
 recorded manifest digests.
 
-`[측정]` **Raw-store evolution was never exercised.** No migration changed `raw_envelope` or
-`raw_item` after a snapshot was sealed, so the property the question actually asks about —
-*does a snapshot still replay after the Raw store changes underneath it* — has no evidence.
-`[추론]` The design makes it plausible (a snapshot materializes members rather than
-referencing rows), but plausible is not measured, and this is an explicit unresolved item
-for the P1 Entry Gate.
+`[확인 사실]` **The paragraph this replaces said Raw-store evolution was never exercised.** It
+was not, until [TASK-005](../agent-workflow/task-packets/TASK-005-snapshot-evolution-that-discriminates.md).
+
+`[측정]` **It is exercised and it discriminates.** An additive migration, a later collection
+superseding a sealed key, and a purge of every Raw row: the sealed snapshot verifies and
+replays byte-identically at all four steps, while a re-query design replays different bytes at
+step three and nothing at step four. Four mutations of the seal and read are killed by the
+discrimination class's own control, so the experiment is not decorative.
+
+`[측정]` **Narrowly, because against the design [OQ-004](../open-questions/OQ-004-snapshot-boundary.md)
+actually names — references to append-only Raw rows, fixed at seal — only the purge separates
+the two.** A materialized snapshot beats a re-query at the migration and the supersession; it
+beats a reference design only when the referenced rows are gone.
+
+`[측정]` **A purge does not discharge an erasure obligation.** After deleting every `raw_item`,
+`snapshot_item` still holds the bytes and `raw_envelope` holds the lossless original. So a
+snapshot's persistence has a cost, and whatever discharges an erasure obligation, it is not one
+`delete`.
+
+`[측정]` **The new gap, found 2026-08-20 on real data.** Which member wins when two observations
+of one key are sealed together is decided by `emitted_at`, which defaults to `now()` — a
+**transaction** timestamp. So "the later import wins" holds per import transaction, not per row,
+and nothing states that two imports must be separate transactions. Forcing a tie and re-sealing
+twelve times drops the decision to `id desc` on a `uuid4`, and two of three keys then selected
+the *older* payload. `[결정]` Recorded in OQ-004 as a contract question for P1 rather than
+repaired in P0, and it is an explicit unresolved item for the P1 Entry Gate.
+
+`[확인 사실]` **A second identity gap belongs beside it and this answer previously omitted it.**
+DP-019 D5 orders snapshot members by `item_key` and fixes no collation, so two clusters
+differing only in locale seal **different manifest digests from identical Raw**. Found by the
+same review that established the discrimination above, and carried in DP-019 and OQ-004.
+
+`[확인 사실]` Both gaps, and the erasure cost above, are registered in
+[`P1-INHERITED-DEFECTS.md`](P1-INHERITED-DEFECTS.md) §5.
 
 ### 6. Which component and process boundaries are useful rather than ceremonial?
 
@@ -162,7 +224,7 @@ that never happened. It is fixed, and it is still not a contention measure.
 
 ### 8. Which normalized fields survive contact with both real sources?
 
-**Only the envelope. The strong hypothesis is refuted.**
+**Only the envelope. The strong hypothesis is refuted, and a third real source confirmed it.**
 
 `[측정]` Recorded in `project-state.md` §5 on 2026-08-19 and carried here as the charter
 asks. Against a blog document and a DataLab trend point the **only** overlap is identity,
@@ -174,9 +236,34 @@ one schema carries a common **envelope** (`schema_version`, `record_type`, `exte
 provenance) and a per-type **body**, as a discriminated union. Schema 0.2 adds `trend_point`
 beside `document`.
 
+`[측정]` **A third real source arrived on 2026-08-20 and did not rescue the strong form.** An
+Open Beauty Facts product row — barcode, name, brand tags, revision timestamps — shares with a
+blog document and with a trend point exactly what those two share with each other: identity,
+time, provenance. Nothing else. `[결정]`
+[DP-028](../decisions/DP-028-schema-0-3-product-records.md) therefore answered it the way
+DP-021 answered the second source, with a third union member rather than a wider common body,
+and Schema 0.3 is 0.2 plus `product`.
+
 `[추론]` This is the most valuable negative result P0 produced, and it would have been
-expensive to discover in P1: a single flat normalized table across these two sources would
+expensive to discover in P1: a single flat normalized table across these sources would
 have been mostly null columns with a type discriminator smuggled in as a convention.
+`[추론]` **Two record shapes could have been a coincidence of pairing; three is a pattern** —
+with the caveat that two of the three come from one provider, so what varies across them is
+record shape, not provider. `[가설]` The union's cost is that it grows one member per source shape,
+which is bounded only if source shapes are few — falsified by a P1 source set where the member
+count approaches the source count, and that is the question this answer hands forward rather
+than closes.
+
+`[확인 사실]` **What no source has yet tested is the question's own word "survive".** All three
+answers compare *schemas* at the point of normalization. No P0 evidence says which fields stay
+correct, populated, or meaningful over time, because no source was normalized twice across a
+real content change and compared. `[측정]` The nearest thing is three Open Beauty Facts
+`code`s that appear in both captured deltas, whose normalized bodies were never diffed against
+each other. `[확인 사실]` Those same three `code`s were separately measured by
+[SRC-003](../../experiments/source-probes/SRC-003-open-beauty-facts.md) as having advanced
+`rev` and `last_modified_t` against the live API 23 hours later — a **different comparison**,
+and no artifact states that the delta-to-delta pair shows the same advance. An earlier revision
+of this sentence spliced the two measurements into one claim.
 
 ---
 
