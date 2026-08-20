@@ -200,9 +200,11 @@ Phase 0.3's "or record a P1-scoped decision that is not a waiver" clause.
   source.
 - **D1 Candidate 3, read/write with re-display.** Rejected: it reopens exactly the leak channel
   invariant 3 forbids — a value appearing on a screen — for a convenience (viewing the current
-  value) that DP-008 D6's design already avoids needing (`[확인 사실]` corrected 2026-08-21 — an
-  earlier revision of this line cited "DP-018 D6," a packet that has no D6; this proposal is
-  DP-008 D6's, quoted correctly elsewhere in this packet at line 104): editing is done by
+  value) that DP-008 D6's design already avoids needing (`[확인 사실]` corrected 2026-08-21 —
+  an earlier revision of this line cited "DP-018 D6"; DP-018 D6 exists but is about a
+  different subject ("The add-on never learns that attachment happened," DP-018:63) — the
+  write-only-editing design under discussion here is DP-008 D6's, quoted correctly elsewhere
+  in this packet at line 104): editing is done by
   submitting a new value,
   never by reading the old one back.
 - **D2 Candidate 1, no specific scoping.** Rejected: `AGENTS.md`'s rule that a claimed control must

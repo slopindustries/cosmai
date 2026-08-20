@@ -6,7 +6,7 @@
 - Owner confirmation: `CONFIRMED (project owner, 2026-08-21, brainstorming session — docs/superpowers/specs/2026-08-21-p1-reconstruction-design.md)`
 - Related Open Questions: [OQ-005](../open-questions/OQ-005-operations-contract.md) — partially answered. D1 fixes P1's screen set and D3 fixes the export shape; OQ-005's telemetry-detail and diagnosis-scenario questions stay open for M5/M6 implementation evidence, so OQ-005 itself does not close here. [OQ-008](../open-questions/OQ-008-operator-reexecution-authority.md) — explicitly **not** touched by this packet; stays `OPEN` (see Remaining uncertainty).
 - Affected contracts: [`PoC Contract 0.1`](../../contracts/experimental/POC-CONTRACT-0.1.md) §8 Operations gains the six-screen set and the Raw-read action in its next revision; a new `schedule` table is not yet named in any contract.
-- Affected acceptance tests: none by this packet. M5 (dashboard) and M6 (scheduler, downloads) implementation evidence is where `OPS` and `SEC` scenarios for these screens get written (spec §10).
+- Affected acceptance tests: none by this packet. M5 (dashboard) and M6 (scheduler, downloads) implementation evidence is where `OPS` and `SEC` scenarios for these screens get written (spec §10); M5's dashboard tests must additionally assert that the data-browser screen renders a Raw payload as plain text only — never as interpreted markup — per D2's plain-text-rendering control, added 2026-08-21 (fix-wave repair of `REVIEW-GATE-M0` F4).
 
 ## Decision question
 

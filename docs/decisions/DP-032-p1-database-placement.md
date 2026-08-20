@@ -176,7 +176,7 @@ answered," which claimed evidence not yet produced.
 
 `[확인 사실]` **Recorded analysis: `COSMA_DB_*` sits outside two of `secret-setup.md`'s existing
 shapes, not one.** First, naming: `secret-setup.md`'s only named key convention is
-`COSMA_SRC_<SOURCE_ID>_<PURPOSE>` for a *source* credential (`secret-setup.md:55`); `COSMA_DB_*`
+`COSMA_SRC_<SOURCE_ID>_<PURPOSE>` for a *source* credential (`secret-setup.md:57` — `[확인 사실]` corrected 2026-08-21, N3: this was `:55` before round 1's own forward-link addition to that file shifted it down two lines); `COSMA_DB_*`
 is a second, disjoint key family this packet adds, not an instance of that rule. Second,
 lifetime: `secret-setup.md` invariant 2 requires a credential value to be "resolved at the point
 of use and held only for the lifetime of that use" — read, as that document's own P0-B Worker
