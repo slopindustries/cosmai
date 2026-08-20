@@ -1,11 +1,11 @@
 # OQ-004 — Sealed Snapshot Boundary
 
-- Status: `OPEN`
+- Status: `RESOLVED`
 - Priority: P0-B — required domain evidence for the P1 contract
 - Owner: Project team
 - Blocks: reproducibility and storage contract
 - Related experiments: not started
-- Resolution Decision Packet: not created
+- Resolution Decision Packet: [DP-029](../decisions/DP-029-p1-snapshot-identity.md)
 
 ## Question
 
@@ -122,3 +122,14 @@ Two independent runs consume identical verified input from the same snapshot, la
 ## Resolution
 
 Not completed while status is `OPEN` or `EXPLORING`. Resolution records the accepted identity and manifest contract, tested storage representation, evidence, and remaining future-topology uncertainty.
+
+Resolved for P1 on 2026-08-21 by [DP-029](../decisions/DP-029-p1-snapshot-identity.md). D1
+closes materialization: a P1 snapshot copies member bytes at seal rather than referencing
+`raw_item`. D2 closes the same-key tie: an explicit monotonic `bigint` sequence on
+`raw_item` selects the maximum-sequence row, replacing the `emitted_at`/`uuid4` behavior
+measured above. D3 closes manifest-member ordering: a fixed UTF-8 bytewise comparison,
+independent of collation. The measurements recorded above stand as the evidence for all
+three and are preserved rather than superseded. DP-029 D4 additionally routes the erasure
+obligation this question surfaced — a purge leaving `snapshot_item` and `raw_envelope`
+copies behind — to [`SR-003`](../conventions/security-recommendations.md) as an
+unimplemented, explicitly-scoped P1 gap rather than closing it here.

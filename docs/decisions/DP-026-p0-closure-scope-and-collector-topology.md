@@ -75,6 +75,9 @@ Collectors added from here — which already run as independent services — are
 thin REST adapter add-ons under DP-012's read contract. The resulting architecture is a
 **hybrid**, deliberately.
 
+Narrowed 2026-08-21 by [DP-031](DP-031-p1-collector-topology.md): adapters bind heavy periodic
+collection; lightweight sources may collect in-process.
+
 `[결정]` **D3 — The hybrid's cost is that P1 carries both seams.** A direct collector needs
 the full outbound guard: host and path range, redirect revalidation, address range checks,
 deadline, byte and page bounds. An adapter needs a narrower version of the same guard plus a

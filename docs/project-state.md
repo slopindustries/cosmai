@@ -2,9 +2,11 @@
 
 - Project: Cosmai
 - Version: 0.9
-- Updated: 2026-08-19
-- Phase: P0-B — Domain Integration, Evidence Synthesis, and Disposition
-- Next gate: P1 Entry Gate (inside P0-B)
+- Updated: 2026-08-21
+- Phase: P1 — Clean Reconstruction
+- Next gate: P1 charter gate (charter not yet written; until it exists, the accepted
+  [P1 reconstruction plan](architecture-synthesis/P1-RECONSTRUCTION-PLAN.md)'s M1–M7
+  milestones govern)
 
 ## Delivery lifecycle
 
@@ -70,6 +72,19 @@ DP-011 added those on top of it. The P1 Entry Gate measures the charter.
 exist, and the P1 Entry Gate has not been held. Both are the project owner's:
 `AGENTS.md` makes commits, pushes, and tags things that happen when asked, and a gate that
 accepted itself would not be a gate.
+
+`[확인 사실]` 2026-08-21: the gate record is being prepared on `p1/entry-gate` from the
+owner's recorded selection criteria; acceptance remains the owner's act.
+
+`[결정]` **Both acts happened on 2026-08-21.** The P1 Entry Gate was held and accepted
+`GO` by the project owner — the record, its adversarial review (`FAIL`, then four repair
+rounds each independently re-verified), and what a `GO` knowingly accepts are in
+[`P1-ENTRY-GATE-2026-08-21.md`](architecture-synthesis/P1-ENTRY-GATE-2026-08-21.md). The
+`p0-archive` tag was approved at `00fdd0e`, the last pure-P0 commit, and created at merge.
+Consequences: `apps/` is open for P1 reconstruction, and `SEC-006`'s waiver
+([DP-023](decisions/DP-023-sec-006-waived-for-p0.md)) has expired — replaced not by
+satisfaction but by [DP-034](decisions/DP-034-p1-credential-entry.md) D3's explicit,
+still-unimplemented deferral (`SR-005`).
 
 `[결정]` Until that gate is held, P0-B is **complete as work against the charter, not
 started against DP-011's added product scope, and unaccepted as a stage**. The distinction
@@ -148,6 +163,63 @@ Claim-level evidence labels such as `[확인 사실]` and `[가설]` are differe
   migration. The body carries identity, name, brand tags, an observation time, and whether ingredient
   text was supplied; it decides nothing about the product, which stays P1's under DP-026.
   `[확인 사실]` Decided and **not yet implemented** — no add-on emits a `product` record.
+- `[결정]` [DP-029](decisions/DP-029-p1-snapshot-identity.md) fixes P1 snapshot identity: a
+  snapshot is materialized at seal (D1), a same-`item_key` tie is broken by a monotonic
+  `raw_item.seq` (D2), and a manifest orders members by bytewise `item_key` comparison
+  independent of collation (D3); the erasure obligation stays undesigned and is routed to
+  `SR-003` (D4). Resolves [OQ-004](open-questions/OQ-004-snapshot-boundary.md); D2 and D3 are
+  the repairs §5's materialized-snapshot hypothesis paragraph records as open gaps.
+- `[결정]` [DP-030](decisions/DP-030-p1-normalization-scope.md) scopes P1 normalization:
+  excludes byte-identical determinism from the contract, keeping normalization-time metadata
+  instead (D1); makes per-record fault tolerance — missing-value substitution plus a
+  `normalize_error` note — a contract requirement (D2); drops rule-based quality judgment,
+  not carrying `normalizer.rule.baseline` forward (D3) — the decision §5's rule-baseline
+  hypothesis paragraph now points to; inherits `Normalized Schema 0.3`, routing new
+  `record_type`s to [`RC-005`](roadmap-candidates.md) (D4) — the decision §5's schema
+  hypothesis paragraph now points to; and does not require the host to guarantee member order
+  (D5).
+- `[결정]` [DP-031](decisions/DP-031-p1-collector-topology.md) narrows
+  [DP-026](decisions/DP-026-p0-closure-scope-and-collector-topology.md) D2 for P1 without
+  superseding it: NAVER's three sources are rebuilt as internal direct collectors (D2), while
+  trend-radar and tubedepth stay behind thin REST adapters under DP-012's read contract (D3),
+  with all exchange REST-API-only and collection scheduling owned by COSMAI's own scheduler
+  (D4).
+- `[결정]` [DP-032](decisions/DP-032-p1-database-placement.md) places P1 on the shared
+  PostgreSQL server as its own dedicated database `cosmai`, not a schema partition, restating
+  the shared-server operating rules at the database-ownership level (D1); drafts a
+  16-connection budget (D2); keeps psycopg3 direct plus a copied-and-adapted SQL-file migrator
+  over an ORM (D3); and moves DB credentials into the secret file as `COSMA_DB_*` keys (D4),
+  recording the decision that addresses the authenticated-access gap
+  [DP-006](decisions/DP-006-p0a-platform-foundation.md) D2 named for P0-B/P1 to challenge —
+  the evidence itself (a working authenticated connection, negative tests) is M1 provisioning
+  and testing work, not produced by this packet. (`[확인 사실]` corrected 2026-08-21 — an
+  earlier revision of this line said "closing," which claimed evidence this packet does not
+  produce.) `COSMA_DB_*` is a second key family outside `secret-setup.md`'s
+  `COSMA_SRC_<SOURCE_ID>_<PURPOSE>` naming rule, held for a connection pool's lifetime rather
+  than a single request's — see DP-032 D4 for the recorded analysis of what that does and does
+  not satisfy of `secret-setup.md` invariant 2.
+- `[결정]` [DP-033](decisions/DP-033-p1-operator-surface.md) widens the P1 operator surface to
+  six dashboard screens (D1); reverses P0-B's Raw-payload refusal for the local operator on
+  the data-browser screen (D2); fixes scope-filtered, streaming Raw and normalized-result
+  downloads (D3); adopts MUI, React Router, and TanStack Query, declined for P0-A by DP-006 D6
+  (D4); and puts collection on a schedule while normalization stays operator-triggered, with an
+  optional schedule (D5) (`[확인 사실]` corrected 2026-08-21 — an earlier revision of this line
+  said "not normalization," which read as an outright exclusion the decision does not make) — the
+  same scheduler-creates-`collect`-job mechanism
+  [DP-031](decisions/DP-031-p1-collector-topology.md) D4 already fixes for the two adapters.
+  Partially answers
+  [OQ-005](open-questions/OQ-005-operations-contract.md) (screen set, export shape) and leaves
+  [OQ-008](open-questions/OQ-008-operator-reexecution-authority.md) explicitly open.
+- `[결정]` [DP-034](decisions/DP-034-p1-credential-entry.md) lets the collector-domain
+  dashboard screen write a credential once through a write-only path, never re-displayed or
+  logged (D1); scopes that relaxation to exactly one input request's write path, leaving
+  `secret-setup.md`'s other invariants unchanged (D2); and moves `SEC-006`, redirect defense,
+  and enforcement-level items into
+  [`security-recommendations.md`](conventions/security-recommendations.md) as an independent
+  P1-scope decision, formally ending [DP-023](decisions/DP-023-sec-006-waived-for-p0.md)'s
+  waiver at this gate rather than extending it (D3). Narrows
+  [OQ-007](open-questions/OQ-007-credential-scope.md)'s dashboard/API write side;
+  worker-side credential-resolution scope stays open.
 
 ### Technology constraints
 
@@ -271,7 +343,7 @@ The first two hypotheses can begin in P0-A. Acquisition and normalization hypoth
 | [OQ-001](open-questions/OQ-001-source-capability.md) | `OPEN` | P0-B | Which REST and dataset sources are usable and representative? | Source contract, fixtures, P0-B ingestion |
 | [OQ-002](open-questions/OQ-002-project-decision-contract.md) | `RESOLVED` | P0-B | Which decision should the final product improve? | Resolved for P0 by DP-011; long-term learned targets remain outside P0 |
 | [OQ-003](open-questions/OQ-003-normalization-protocol.md) | `OPEN` | P0-B | What are Schema 0.x and the normalizer provider protocol? | P0-B normalization |
-| [OQ-004](open-questions/OQ-004-snapshot-boundary.md) | `OPEN` | P0-B | What exactly must a sealed snapshot materialize? | Reproducibility contract |
+| [OQ-004](open-questions/OQ-004-snapshot-boundary.md) | `RESOLVED` | P0-B | What exactly must a sealed snapshot materialize? | Resolved for P1 by DP-029; measurements preserved as rationale |
 | [OQ-005](open-questions/OQ-005-operations-contract.md) | `OPEN` | P0-A/P0-B | Which platform and domain actions and evidence must the dashboard expose? | Dashboard acceptance contract |
 | [OQ-006](open-questions/OQ-006-job-concurrency.md) | `OPEN` | P0-A/P0-B | Is the PostgreSQL job model sufficient under platform and domain failures? | Worker, retry, and transaction contract |
 | [OQ-007](open-questions/OQ-007-credential-scope.md) | `OPEN` | P0-A/P0-B | What does the platform protect before a source exists, and which real credentials may a domain worker resolve? | Secret guard and source credential contract |
