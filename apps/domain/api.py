@@ -48,13 +48,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import Annotated, Any
+from datetime import datetime
+from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
 from fastapi import Body, FastAPI, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from domain import export as export_streams
 from domain.store import DomainStore
 from platform_core.config import PlatformConfig
 from platform_core.db.connection import connect
@@ -100,6 +102,18 @@ _REQUIRED_BODY: Any = Body(...)
 #: chose.
 DEFAULT_PAGE = 50
 MAX_PAGE = 200
+
+#: Media type per export format (M6 batch 6b, DP-033 D3). `application/x-ndjson`
+#: is the closest registered type for "one JSON object per line"; there is no
+#: separate registration for the ad-hoc `.jsonl` extension.
+EXPORT_MEDIA_TYPES: Final[dict[str, str]] = {"jsonl": "application/x-ndjson", "csv": "text/csv"}
+
+#: FastAPI's own alias marker, used wherever a fixed query-string name
+#: (`from`, `format`) collides with a Python keyword or a builtin — `from_`/
+#: `format_` are the identifiers below; the wire name is what the plan's §신규
+#: API fixes and Lane B's dashboard already builds URLs against.
+_FROM_QUERY: Any = Query(alias="from")
+_FORMAT_QUERY: Any = Query(alias="format")
 
 #: A credential's ``purpose`` must look like an identifier segment before it becomes part
 #: of a ref: non-empty, starting with a letter, and free of anything that is not itself a
@@ -271,6 +285,50 @@ def _register(app: FastAPI, config: PlatformConfig, logger: StructuredLogger) ->
         with connect(config, autocommit=True) as handle:
             row = DomainStore(handle).upsert_schedule(source["source_id"], interval, enabled)
         return JSONResponse(schedule_view(source_id, row))
+
+    # ----------------------------------------------------------------- export
+
+    @app.get("/export/raw")
+    def export_raw(
+        source_id: str,
+        from_: Annotated[datetime | None, _FROM_QUERY] = None,
+        to: datetime | None = None,
+        key_prefix: str | None = None,
+        format: Annotated[Literal["jsonl", "csv"], _FORMAT_QUERY] = "jsonl",
+    ) -> StreamingResponse:
+        """Every `raw_item` of `source_id`, scoped and streamed (DP-033 D3).
+
+        `source_or_404` runs before the `StreamingResponse` is constructed, so a
+        bad `source_id` is an ordinary `404` rather than a `200` that then emits
+        nothing — once streaming starts the status line is already sent.
+        """
+        source_or_404(source_id)
+        body = export_streams.stream_raw(config, source_id, from_, to, key_prefix, format)
+        filename = f"raw-{source_id}.{format}"
+        return StreamingResponse(
+            body,
+            media_type=EXPORT_MEDIA_TYPES[format],
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.get("/export/results")
+    def export_results(
+        source_id: str,
+        from_: Annotated[datetime | None, _FROM_QUERY] = None,
+        to: datetime | None = None,
+        key_prefix: str | None = None,
+        format: Annotated[Literal["jsonl", "csv"], _FORMAT_QUERY] = "jsonl",
+    ) -> StreamingResponse:
+        """Every `normalized_result` of `source_id` (the normalizer that produced
+        it), across every snapshot, scoped and streamed (DP-033 D3)."""
+        source_or_404(source_id)
+        body = export_streams.stream_results(config, source_id, from_, to, key_prefix, format)
+        filename = f"results-{source_id}.{format}"
+        return StreamingResponse(
+            body,
+            media_type=EXPORT_MEDIA_TYPES[format],
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     # --------------------------------------------------------------- credentials
 
