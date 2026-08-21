@@ -1,13 +1,17 @@
-# M4-RECORD — the platform-gaps addendum
+# M4-RECORD — five add-ons, the platform gaps they found, and what M7 reconciled
 
-This file is not a full M4 milestone record — M4's per-source lanes (NAVER blog,
-NAVER DataLab, trend-radar, tubedepth, the importer/obfuscation-normalizer pair) each
-keep their own batch report under `.superpowers/sdd/2026-08-21-m2-m7-batch/`. This is
-the **platform-gaps section** M4x's task packet asked to be registered here: the two
-architecture gaps `collector.tubedepth.rest`'s own README and its finder's report
-named as blocking live collection, and the platform mechanisms that close them.
+M4's five per-source lanes (NAVER blog, NAVER DataLab, trend-radar, tubedepth, the
+importer/obfuscation-normalizer pair) each ran in its own worktree and kept its own
+batch report under `.superpowers/sdd/2026-08-21-m2-m7-batch/`; those five reports are
+the primary evidence and are not reproduced here in full. This file consolidates them
+into one per-addon summary (§Per-addon summaries), plus the **platform-gaps section**
+M4x's task packet asked to be registered here (§Gap 1, §Gap 2 — the two architecture
+gaps `collector.tubedepth.rest`'s own README and its finder's report named as blocking
+live collection, and the platform mechanisms that close them), plus two M7-sweep
+reconciliation notes the individual lane reports each flagged as needing a merged-tree
+recheck (§Shared-infrastructure reconciliation, §Duplicated-helpers scan).
 
-- Worktree: `/home/user1/github_prj/Main/service/cosmai/.worktrees/m4x`, branch
+- M4x worktree: `/home/user1/github_prj/Main/service/cosmai/.worktrees/m4x`, branch
   `p1/m4-platform-gaps`, cut from `dev` after `p1/m4-tubedepth` merged (`a87ff08`).
 - Controlling evidence: `.superpowers/sdd/2026-08-21-m2-m7-batch/m4-tubedepth-report.md`
   ("Live verification, and two platform-level findings"); `apps/addons/collector.tubedepth.rest/README.md`
@@ -15,6 +19,181 @@ named as blocking live collection, and the platform mechanisms that close them.
   and its 2026-08-21 addendum (why these two capabilities are owed to the two adapter
   targets DP-031 fixed).
 - Full evidence and commit hashes: `.superpowers/sdd/2026-08-21-m2-m7-batch/m4x-platform-gaps-report.md`.
+
+## Per-addon summaries
+
+Quoted by extraction from each lane's own report — full detail, concerns, and
+deviations live in the source report named per section, not repeated here.
+
+### `collector.naver.blog` + `normalizer.naver.blog`
+
+- Worktree/branch: `.worktrees/m4-naver-blog`, `p1/m4-naver-blog`. Commit `e87a00e`.
+- Tests: 41 collector + 27 normalizer (68 addon-specific), full `apps` suite **860
+  passed, 2 failed** (the pre-existing worktree-scan failures, §Duplicated below is
+  unrelated — see the Concerns note each lane repeats and Commit 1(a) of this sweep).
+  Root guard 87 passed.
+- **LIVE smoke: SUCCEEDED.** One real NAVER API Hub call through the full host-worker
+  path (`JobRunner`+`addon_host`+`SocketTransport`), query `수분크림`/`sort=date`/
+  `display=10` (same parameters as P0's own `test_naver_real_data.py`). Collect job
+  `SUCCEEDED`, 1 raw envelope, **10 raw items**; normalize job `SUCCEEDED`, 10
+  normalized results, 0 carrying `normalize_error`.
+- Deviation: DP-030 D2's per-record fallback distinguishes two failure shapes (payload
+  not JSON/not an object → every derived field null; payload parses but lacks a usable
+  `link` → keep every derivable field, null only `external_id`/`url`) — a local schema
+  choice, not a contract deviation.
+
+### `collector.naver.datalab` + `normalizer.naver.trend`
+
+- Worktree/branch: `.worktrees/m4-naver-datalab`, `p1/m4-naver-datalab`. Commit
+  `dfdd0e9`.
+- Implementer choice: **one add-on, not two or three** — merges P0's
+  `collector.naver.searchtrend` and `collector.naver.shoppinginsight` (which had
+  already itself merged two of the three DataLab endpoints) into one add-on with three
+  `mode`s (`search_trend`/`shopping_categories`/`shopping_keywords`), table-driven in
+  `_MODES`. This is the reason §Duplicated-helpers scan below stays `SKIPPED` even on
+  the fully merged tree.
+- Tests: 74 addon-specific (39 collector, 26 normalizer, 9 host-loading/conformance).
+  Full `apps` suite **872 passed, 2 failed** (same pre-existing pair). Root guard 87
+  passed, including the addon-layer-direction check.
+- **LIVE smoke: SUCCEEDED across 2 endpoints.** Credential reuse confirmed
+  `[확인 사실]` the NCP APIGW key pair is account-level (the already-provisioned
+  `naver.blog` credential also authorized DataLab). Pass 1 — `search_trend` mode →
+  `/search-trend/v1/search`: collect `SUCCEEDED`, 1 raw item; normalize `SUCCEEDED`, 1
+  result, 0 errors. Pass 2 — `shopping_categories` mode → `/shopping/v1/categories`:
+  collect `SUCCEEDED`, 1 raw item; normalize `SUCCEEDED`, 1 result, 0 errors.
+  `shopping_keywords` was not separately live-tested (fixture/conformance coverage
+  only).
+- A bug the conformance run itself found and fixed: `_Mode` switched from a frozen
+  `@dataclass` to `typing.NamedTuple` after `addon_kit.harness._load_entry` (which does
+  not register a loaded module in `sys.modules` the way the real host does) raised
+  `AttributeError` under `from __future__ import annotations`'s `KW_ONLY` resolution.
+
+### `collector.trendradar.rest`
+
+- Worktree/branch: `.worktrees/m4-trendradar`, `p1/m4-trendradar`. Commits `9273ded`,
+  `efcfafc` (adds `apps/scripts/check-addons.sh`).
+- Tests: 15 addon-specific (host-loading, `_Budget`, hour-bucket pagination, filters-echo
+  refusal, full-scan pagination, 5 config-validation cases, conformance incl. cursor
+  resume). Full `apps` suite **813 passed, 2 failed** (same pre-existing pair). Root
+  guard 87 passed.
+- **LIVE smoke: BLOCKED at the transport layer, not this add-on's logic — the same
+  finding M4x (§Gap 1 below) later closed.** trend-radar's live instance
+  (`127.0.0.1:8000`) speaks plain HTTP only; `domain.transport.SocketTransport` was
+  HTTPS-only at the time this lane ran. `[측정]` collect job attempt outcome
+  `RETRYABLE_FAILURE`/`PLATFORM_TRANSIENT`, `cause: SSLError`, before any HTTP request
+  was framed. Raw item count: 0. **This lane's own finding is what M4x named and
+  closed** (Gap 1's mechanism was written after and because of this measurement); no
+  add-on code changed as a result — trend-radar is expected to reach the live target
+  through the now-fixed transport, but that live re-run through trend-radar
+  specifically was not re-taken after M4x closed the gap (tubedepth's own re-run,
+  §Gap 1 Evidence, is the closure's live confirmation; see Commit 2 of this sweep's
+  demo for whether trend-radar itself was exercised).
+- No normalizer in this batch (RC-005 deferred, as instructed); Raw rows are
+  browseable/exportable without one.
+- `captured_at` filtering 500s on the live instance for every ISO 8601 encoding tried
+  (read-only dependency, not investigated further); the collector avoids sending it as
+  a request parameter and instead relies on `source`(+`board`) filtering plus the
+  API's own `captured_at DESC` ordering and a stored per-table-per-source cursor.
+
+### `collector.tubedepth.rest`
+
+- Worktree/branch: `.worktrees/m4-tubedepth`, `p1/m4-tubedepth`. Commit `5ca9148`.
+- `[가설]→[확인 사실]` Live instance measured running `1.0.3`, not the task's stated
+  `v1.0.0` baseline; DP-031 D3's own "adapter follows a new tag that appears during the
+  work" rule applied on measured evidence — the one behavior change that matters
+  (1.0.3 requires an RFC 3339-offset `since`/`until`) needed no add-on change since
+  every timestamp this add-on constructs is already `Z`-suffixed.
+- Tests: full addon-specific suite + conformance (`CONFORMANT`: manifest, contract
+  range, entry resolvability, kind-capability, cursor-resume) + host-loading, all part
+  of the 818-passed full-suite run at the time (`COSMA_DB_NAME=cosmai_test_5`, same
+  pre-existing 2-failure pair). Root guard 87 passed.
+- Key-minting: succeeded live (not blocked) — `tubedepth key create` run against the
+  live deployment's real database over its published port; minted key written directly
+  to `~/.config/cosmai/env`, verified with two direct `curl` calls, never printed.
+- **LIVE smoke, at this lane's own commit: `BLOCKED-live` at the transport layer.**
+  `[측정]` Job `FAILED`, `error_class = PLATFORM_TRANSIENT`, `"no checked address for
+  '127.0.0.1' accepted a connection"` — this lane is the one that **named** the two
+  platform gaps M4x (§Gap 1, §Gap 2 below) closed: `SocketTransport` was HTTPS-only,
+  and `domain.outbound.resolve` had no per-request path parameter for
+  `GET /v1/artifacts/{digest}`.
+- **Post-M4x re-run: LIVE SUCCESS.** Per §Gap 1/§Gap 2 Evidence below, one bounded
+  `collect()` through the real host worker against the live instance (now `1.1.0`):
+  5 `artifacts_list` pages, **224** `artifact_payload` dereferences (each a real
+  plain-HTTP loopback request with a validated-and-substituted `{digest}`), **224 raw
+  items**, watermark advanced, 224-item snapshot sealed.
+- `apps/scripts/check-addons.sh` was deliberately **not** added a second time here
+  (this lane verified with a direct `mypy --strict addons/.../handler.py` invocation
+  instead) — reconciled below, §Shared-infrastructure reconciliation.
+
+### `importer.local.jsonl` + `normalizer.obf.product`
+
+- Worktree/branch: `.worktrees/m4-importer-obf`, `p1/m4-importer-obf`. Commit
+  `1748019`.
+- **Offline by design — no live smoke section, and none was expected.** This is the
+  one M4 lane with no outbound network surface at all: the importer reads a local
+  JSONL fixture file (an `input` profile), and the normalizer transforms already-
+  imported rows. Verification is the full addon-specific + conformance + end-to-end
+  test suite (`test_importer_local_jsonl.py`, `test_normalizer_obf_product.py`,
+  `test_addon_conformance_m4.py`, `test_addon_host_loading_m4.py`,
+  `test_importer_obf_end_to_end.py`), not a network measurement.
+- Tests: full `apps` suite **880 passed, 6 skipped, 2 failed** (same pre-existing
+  pair — this is also the lane that first identified and named that failure's root
+  cause, see Commit 1(a) of this sweep). Root guard 87 passed.
+- This lane wrote `test_addon_duplicated_helpers.py` (subject: `_day_after`) and
+  `apps/scripts/check-addons.sh` / the `pyproject.toml` `addons/` mypy exclude for the
+  first time — both reconciled below.
+- F3 from `P1-INHERITED-DEFECTS.md` §3 ("no row updated in place") recorded as left,
+  not repaired: `record_results` has no UPDATE path at all, so the coexistence claim is
+  unfalsifiable through `DomainStore` without a store-level UPDATE method nothing else
+  in this codebase needs.
+
+## Shared-infrastructure reconciliation
+
+Every M4 lane independently hit the same collision — `apps/addons/` gaining a second
+add-on makes two `handler.py` files collide in mypy's single module namespace
+("Duplicate module named handler") — and independently converged on the same two
+fixes: `apps/pyproject.toml`'s `[tool.mypy] exclude = ["^addons/"]` and
+`apps/scripts/check-addons.sh` (mirroring the repository root's own per-addon checker;
+`m4-tubedepth` alone verified with a direct `mypy --strict addons/<id>/handler.py`
+invocation instead of re-adding the script, and flagged the reconciliation as owed to
+whichever lane's merge landed first or to a fresh write against the merged tree).
+
+`[측정]` At merge, both converged rather than conflicted: `apps/pyproject.toml` carries
+exactly one `exclude = ["^addons/"]` entry (not one per lane), and exactly one
+`apps/scripts/check-addons.sh` exists, functionally identical to every lane's own
+description of what it wrote (iterate `addons/*/`, run `ruff check` + `mypy --strict
+--no-incremental` per add-on directory, one add-on at a time). `cd apps &&
+./scripts/check-addons.sh` against the fully merged 8-addon tree — **all eight `ok`**:
+`collector.naver.blog`, `collector.naver.datalab`, `collector.trendradar.rest`,
+`collector.tubedepth.rest`, `importer.local.jsonl`, `normalizer.naver.blog`,
+`normalizer.naver.trend`, `normalizer.obf.product`.
+
+## Duplicated-helpers scan
+
+`apps/tests/test_addon_duplicated_helpers.py` scans the installed `apps/addons/` tree
+for every add-on declaring a module-level `_day_after` helper and, when two or more
+exist, runs the same five-case arithmetic suite against each of them (a regression
+guard against divergent copies of duplicated logic). `m4-importer-obf` wrote it against
+an empty worktree (fewer than two implementations present) with the guard's own class
+docstring predicting it would "re-activate automatically once M7 merges every M4
+lane's add-ons into one `apps/addons/`."
+
+`[측정]` 2026-08-21, run against the fully merged 8-addon tree
+(`COSMA_DB_PORT=5434 COSMA_TEST_DB=cosmai_test`): **5 passed, 1 skipped** — the guard
+class (`TestEveryCopyOfTheDayAfterArithmetic`) still parametrizes to exactly one
+add-on (`collector.naver.datalab`) and `test_the_arithmetic_was_found_in_more_than_one_add_on`
+remains `SKIPPED`. `[추론]` This is not the unmerged-worktree gap the prediction
+above expected — the merge itself is complete (verified: `grep -rn _day_after
+apps/addons/` finds exactly one definition, in `collector.naver.datalab/handler.py`).
+The predicted second copy never materializes because it was designed out: P0 held
+`_day_after` in *two* separate add-ons (`collector.naver.searchtrend` and
+`collector.naver.shoppinginsight`), but `m4-naver-datalab`'s own implementer choice
+(§Per-addon summaries above) merged both of those into the single `collector.naver.datalab`
+add-on before this guard ever ran against a merged tree — so the duplication this
+guard was written to catch was eliminated by a design decision one lane over, not
+reproduced by the merge. The guard remains correct and ready (it will activate the
+moment a second add-on defines `_day_after`); recorded here as a verdict rather than
+left as an unresolved prediction, per this sweep's task packet.
 
 ## Gap 1 — plain HTTP for loopback
 

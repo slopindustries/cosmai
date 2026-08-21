@@ -128,9 +128,12 @@ repetition, as JOB-007 case B requires.
 Reproduction (`COSMA_DB_NAME=cosmai_test`, not the production `cosmai` named in an earlier
 revision of this line — see the note after Measurement 2):
 
+<!-- [측정] 2026-08-21, M7 sweep: port corrected 5433→5434 — the shared server was replaced
+mid-M6 (`apps/db/provision.md`'s addendum); command otherwise unchanged. -->
+
 ```sh
 cd apps
-COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
+COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5434 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
   ../scripts/with-secret-source.sh env JOB_007_REPETITIONS=10 F16_REPETITIONS=0 \
   bash tests/concurrency/run_measurements.sh
 ```
@@ -147,9 +150,11 @@ worker startup).
 
 Reproduction (`COSMA_DB_NAME=cosmai_test`; see the note below):
 
+<!-- [측정] 2026-08-21, M7 sweep: port corrected 5433→5434, same reason as above. -->
+
 ```sh
 cd apps
-COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
+COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5434 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
   ../scripts/with-secret-source.sh env JOB_007_REPETITIONS=0 F16_REPETITIONS=20 \
   bash tests/concurrency/run_measurements.sh
 ```
@@ -187,9 +192,11 @@ significant enough to record per this task's instruction that a reproduced failu
 not a bug to silently patch. Running the **whole** `apps/` suite under `-n 4` with no test
 selection —
 
+<!-- [측정] 2026-08-21, M7 sweep: port corrected 5433→5434, same reason as above. -->
+
 ```sh
 cd apps
-COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
+COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5434 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
   ../scripts/with-secret-source.sh uv run python -m pytest tests -n 4 -q
 ```
 

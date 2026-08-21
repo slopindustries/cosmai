@@ -410,12 +410,16 @@ is not set` — the configuration loader's own message, quoted verbatim from a r
 final tree, not the connection-classifier's `cannot reach the platform database` a prior revision
 of this line quoted instead. It was never actually a complete, standalone recipe, only a
 description of the one gate that was clean. The full recipe, unsandboxed (the sandbox shadows
-`~/.config/cosmai/env` and blocks the loopback TCP connection to `127.0.0.1:5433`; see
-`docker exec`/TCP note in the fix-wave's own constraints):
+`~/.config/cosmai/env` and blocks the loopback TCP connection, `:5433` at the time this line was
+written; see `docker exec`/TCP note in the fix-wave's own constraints):
+
+<!-- [측정] 2026-08-21, M7 sweep: the server this recipe reaches was replaced mid-M6
+(`apps/db/provision.md`'s 2026-08-21 addendum) — port corrected 5433→5434, command otherwise
+unchanged. -->
 
 ```sh
 cd apps
-COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
+COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5434 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
   ../scripts/with-secret-source.sh uv run python -m pytest -q
 ```
 
