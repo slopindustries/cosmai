@@ -29,7 +29,7 @@ import pytest
 from platform_core.db.connection import classify
 from platform_core.errors import ConfigurationInvalidError, PlatformTransientError
 
-TARGET = "database 'cosmai_test' on 127.0.0.1:5433 as role 'runtime'"
+TARGET = "database 'cosmai_test' on 127.0.0.1:5434 as role 'runtime'"
 
 
 def _error(sqlstate: str) -> psycopg.Error:

@@ -260,6 +260,24 @@ class TestTheApprovedPathRangeIsComparedBySegment:
         assert isinstance(result, Refusal)
         assert result.reason is RefusalReason.PATH_NOT_ALLOWED
 
+    def test_an_encoded_separator_inside_the_approved_prefix_is_still_refused(self) -> None:
+        """B5 (REVIEW-M2-M7.md): the case above cannot tell "refused for the encoded
+        separator" from "refused for being out of range" — `/v1/items%2f..%2fadmin/keys`
+        is a string prefix of neither approved endpoint even before `%2f` is considered.
+        This payload starts inside the approved range as ordinary `str.split("/")` sees
+        it (`/v1/items/x...`), so if `_ENCODED_SLASH` detection in
+        `comparable_segments` were ever removed, this segment (`x%2f..%2f..%2fadmin`,
+        containing no literal `..` segment) would compare equal to the granted prefix and
+        the redirect would be *accepted* — even though a server that treats `%2f` as a
+        path separator would resolve it outside `/v1/items` entirely. Refused here proves
+        the encoded-slash check is load-bearing, not merely redundant with the
+        out-of-range refusal above."""
+        result = check_redirect(
+            "https://api.example.com/v1/items/x%2f..%2f..%2fadmin", a_profile(), hops=1
+        )
+        assert isinstance(result, Refusal)
+        assert result.reason is RefusalReason.PATH_NOT_ALLOWED
+
     def test_an_approved_path_that_cannot_be_compared_refuses_at_resolve_time(self) -> None:
         """A source whose own approved path carries a dot segment would otherwise fail only
         on a redirect, which is the one place nobody would look. It fails on the first
@@ -951,3 +969,91 @@ class TestPathTemplateDeclaration:
         )
         assert row is not None
         assert row.path_params_of("items") == {}
+
+
+class TestThisModuleActuallyRunsWithTheDatabaseDown:
+    """M-X8 (`docs/agent-workflow/reviews/REVIEW-M2-M7.md`): this module's own claim
+    ("no fixture, no database... a security test that needs a server standing up is a
+    security test that eventually gets skipped") used to be false in practice —
+    `apps/tests/conftest.py`'s session-scoped autouse `_reset_schema` opened a database
+    connection before a single test in this file ran, gating an otherwise DB-free
+    security suite on server availability. `conftest.py` now skips that connection
+    when nothing selected needs one; the two tests below prove the mechanism directly
+    (the collection-time flag, and `_reset_schema`'s own use of it), rather than
+    trusting the conftest change by inspection.
+
+    `[측정]` End-to-end, run by hand (not as an automated test — a nested
+    pytest-inside-pytest subprocess proved too sensitive to plugin load order,
+    specifically pytest-xdist, to keep as a reliable CI assertion): `COSMA_DB_HOST=
+    127.0.0.1 COSMA_DB_PORT=1 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime
+    COSMA_DB_PASSWORD_REF=COSMA_DB_RUNTIME .venv/bin/python3 -m pytest
+    tests/test_outbound_policy.py -q` (port `1`, nothing listens there, no
+    `with-secret-source.sh` wrapper needed) — **114 passed**, this whole file,
+    server down.
+    """
+
+    def test_the_db_free_flag_matches_the_real_fixture_graph(self) -> None:
+        """Every test collected from this module requests neither `job_connection`
+        nor `_migrations_applied` — the two fixtures `conftest.py`'s
+        `_DB_TOUCHING_FIXTURES` checks for. A module that later grew a DB-backed test
+        without updating this file's own docstring would still be caught by
+        `conftest.py`'s real collection-time scan; this is the narrower, static half:
+        proof the claim is true of the source, not just of one collection run."""
+        import ast
+        from pathlib import Path
+
+        source = Path(__file__).read_text(encoding="utf-8")
+        names = {node.id for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Name)}
+        assert "job_connection" not in names
+        assert "_migrations_applied" not in names
+
+    def test_the_hook_marks_a_db_free_selection_as_needing_no_database(self) -> None:
+        """`conftest.pytest_collection_modifyitems`'s own computation, exercised
+        directly against a stand-in item list — no real pytest session, no
+        subprocess, so nothing about plugin load order or capture can make this
+        flaky. A stand-in only needs the two attributes the hook actually reads."""
+        import tests.conftest as conftest
+
+        class _StubItem:
+            def __init__(self, fixturenames: tuple[str, ...]) -> None:
+                self.fixturenames = fixturenames
+                self.fspath = "tests/test_outbound_policy.py"
+
+        db_free_items: list[Any] = [_StubItem(("a_profile",)), _StubItem(())]
+        conftest.pytest_collection_modifyitems(db_free_items)
+        assert conftest._SESSION_NEEDS_DATABASE is False
+
+        db_backed_items: list[Any] = [
+            _StubItem(("a_profile",)),
+            _StubItem(("job_connection", "domain_store")),
+        ]
+        conftest.pytest_collection_modifyitems(db_backed_items)
+        assert conftest._SESSION_NEEDS_DATABASE is True
+
+    def test_reset_schema_never_connects_when_the_session_needs_no_database(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other half: `_reset_schema` itself, called directly with the flag set
+        both ways, against a `connect` that raises if it is ever reached — the
+        positive control (flag `True`) proves the spy would actually catch a call,
+        so the flag-`False` assertion is not vacuous."""
+        import tests.conftest as conftest
+
+        def _connect_must_not_be_called(*args: Any, **kwargs: Any) -> Any:
+            raise AssertionError("connect() was called with the database allegedly not needed")
+
+        monkeypatch.setattr(conftest, "connect", _connect_must_not_be_called)
+        monkeypatch.setattr(conftest, "_SESSION_NEEDS_DATABASE", False)
+        conftest._reset_schema.__wrapped__(platform_config=object())  # type: ignore[attr-defined]
+
+        calls: list[bool] = []
+
+        def _connect_records_a_call(*args: Any, **kwargs: Any) -> Any:
+            calls.append(True)
+            raise RuntimeError("stop before actually touching a database")
+
+        monkeypatch.setattr(conftest, "connect", _connect_records_a_call)
+        monkeypatch.setattr(conftest, "_SESSION_NEEDS_DATABASE", True)
+        with pytest.raises(RuntimeError, match="stop before"):
+            conftest._reset_schema.__wrapped__(platform_config=object())  # type: ignore[attr-defined]
+        assert calls == [True]

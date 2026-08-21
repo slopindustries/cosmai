@@ -86,6 +86,23 @@ __all__ = ["RAW_HEADER", "RESULT_HEADER", "stream_raw", "stream_results"]
 #: that a 10,000-row export does not pay a network round trip per row.
 BATCH_SIZE: Final = 500
 
+#: RFC4180 quoting (what `csv.writer` already guarantees) protects a cell from breaking
+#: CSV *syntax*; it says nothing about a spreadsheet application choosing to *evaluate*
+#: a well-quoted cell because its content starts with one of these characters — CSV
+#: formula injection (M-S4, `docs/agent-workflow/reviews/REVIEW-M2-M7.md`). The content
+#: this guards (an add-on's `payload`, a normalized `body`) is exactly the untrusted
+#: content DP-033 D2 already forces to plain text on the dashboard's own detail pane and
+#: preview cell (M-S5, same review); this is that rule's export-path equivalent.
+_FORMULA_PREFIXES: Final[tuple[str, ...]] = ("=", "+", "-", "@")
+
+
+def _csv_cell(value: str) -> str:
+    """`value`, prefixed with a literal `'` if a spreadsheet would read it as a formula
+    on open. A no-op for every other string — including one that already starts with
+    `'`, which this does not double-guard."""
+    return f"'{value}" if value.startswith(_FORMULA_PREFIXES) else value
+
+
 RAW_HEADER: Final[tuple[str, ...]] = ("item_key", "seq", "emitted_at", "content_type", "payload")
 
 RESULT_HEADER: Final[tuple[str, ...]] = (
@@ -181,11 +198,20 @@ def _raw_jsonl_line(row: Mapping[str, Any]) -> bytes:
         separators=(",", ":"),
     )
     try:
-        json.loads(payload)
+        parsed = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError):
         field = json.dumps(payload.decode("utf-8", errors="replace"), ensure_ascii=False)
     else:
-        field = payload.decode("utf-8")
+        # B3 (REVIEW-M2-M7.md): `json.loads` accepts embedded newlines (and any other
+        # whitespace JSON permits between tokens), so a pretty-printed payload spliced
+        # in verbatim would put its own newlines inside what is supposed to be one JSONL
+        # line, corrupting every line after it for a line-oriented reader. Re-serializing
+        # the parsed value compactly keeps the payload's *content* exactly as stored
+        # (this is the JSONL export, not the stored Raw bytes themselves — `_raw_csv_rows`
+        # below carries the payload as a CSV field with its own quoting, untouched) while
+        # guaranteeing the one structural property JSONL requires: no newline inside a
+        # line.
+        field = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
     # `meta` is a compact `json.dumps` of a flat mapping, so it is `{...}` with no
     # trailing content after the closing brace; splicing `payload` in before that
     # brace is what keeps it spliced in rather than re-serialized.
@@ -199,11 +225,11 @@ def _raw_csv_rows(rows: Iterator[Mapping[str, Any]]) -> Iterator[bytes]:
         payload_text = bytes(row["payload"]).decode("utf-8", errors="replace")
         yield writer.writerow(
             [
-                row["item_key"],
+                _csv_cell(row["item_key"]),
                 int(row["seq"]),
                 _instant(row["emitted_at"]),
-                row["content_type"],
-                payload_text,
+                _csv_cell(row["content_type"]),
+                _csv_cell(payload_text),
             ]
         ).encode("utf-8")
 
@@ -262,15 +288,15 @@ def _result_csv_rows(rows: Iterator[Mapping[str, Any]]) -> Iterator[bytes]:
             [
                 str(row["id"]),
                 str(row["snapshot_id"]),
-                row["source_id"],
-                row["addon_id"],
+                _csv_cell(row["source_id"]),
+                _csv_cell(row["addon_id"]),
                 row["addon_version"],
                 row["output_contract_version"],
-                row["source_item_key"],
+                _csv_cell(row["source_item_key"]),
                 row["body_sha256"],
-                json.dumps(row["notes"], ensure_ascii=False),
+                _csv_cell(json.dumps(row["notes"], ensure_ascii=False)),
                 _instant(row["created_at"]),
-                json.dumps(body, ensure_ascii=False),
+                _csv_cell(json.dumps(body, ensure_ascii=False)),
             ]
         ).encode("utf-8")
 

@@ -225,6 +225,36 @@ class TestMalformedAndPartiallyInvalidRows:
         assert outcome.accepted, outcome
         assert domain_store.count_items(SOURCE) == 2
 
+    def test_an_integer_over_the_4300_digit_conversion_limit_is_skipped_not_aborted(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """B1 (REVIEW-M2-M7.md): `json.loads` raises a bare `ValueError` (not
+        `json.JSONDecodeError`) on an integer past CPython's string-conversion limit; a
+        narrow `except (json.JSONDecodeError, UnicodeDecodeError)` misses it and the whole
+        import run aborts instead of skipping the one bad line. `importer.local.jsonl` is
+        the review's highest-reachability case: an unbounded integer needs no attacker,
+        only an operator-supplied file."""
+        huge_int_line = '{"id":"huge","v":' + ("9" * 5000) + "}"
+        register(domain_store, dataset(tmp_path, GOOD_ROWS[0], huge_int_line, GOOD_ROWS[1]))
+
+        outcome = run_import(tmp_path, job_store, domain_store)
+
+        assert outcome.accepted, outcome
+        assert domain_store.count_items(SOURCE) == 2
+
+    def test_pathologically_deep_nesting_is_skipped_not_aborted(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """B1's second reproduction: deep nesting raises `RecursionError`, also missed by
+        the narrow tuple."""
+        deep_line = ("[" * 100_000) + ("]" * 100_000)
+        register(domain_store, dataset(tmp_path, GOOD_ROWS[0], deep_line, GOOD_ROWS[1]))
+
+        outcome = run_import(tmp_path, job_store, domain_store)
+
+        assert outcome.accepted, outcome
+        assert domain_store.count_items(SOURCE) == 2
+
 
 class TestNothingOutsideTheApprovedRootIsRead:
     def test_a_member_escaping_the_root_fails_the_run(

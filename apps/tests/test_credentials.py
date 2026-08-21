@@ -83,6 +83,14 @@ class TestOnlyAProtectedHeaderMayCarryACredential:
         assert "x-ncp-apigw-api-key" in PROTECTED_HEADERS
         assert "x-ncp-apigw-api-key-id" in PROTECTED_HEADERS
 
+    def test_the_tubedepth_header_is_protected(self) -> None:
+        """M-S2 (REVIEW-M2-M7.md): `x-api-key` was added to `PROTECTED_HEADERS` for
+        `collector.tubedepth.rest` but never asserted anywhere — `[측정]` deleting the
+        line left 169 tests identical to baseline. This is that assertion, the same
+        convention `test_every_naver_header_the_add_on_needs_is_protected` establishes
+        for the NAVER headers."""
+        assert "x-api-key" in PROTECTED_HEADERS
+
     def test_a_ref_that_is_not_a_key_name_is_refused(self) -> None:
         """The `source_credential_ref_is_a_key_name` constraint exists on the column and
         not on this array. Same rule, stated where the array is read."""

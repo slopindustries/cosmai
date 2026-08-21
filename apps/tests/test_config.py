@@ -88,7 +88,7 @@ def test_a_valid_baseline_loads_with_documented_defaults(baseline: dict[str, str
     assert config.retry_base_ms == 100
     assert config.retry_max_ms == 30000
     assert config.api_host == DEFAULT_API_HOST == "127.0.0.1"
-    assert config.api_port == 8000
+    assert config.api_port == 8100
     assert config.log_level == "INFO"
     assert config.unrecognized_variables == ()
     assert config.warnings() == ()

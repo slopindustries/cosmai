@@ -304,8 +304,12 @@ class Scheduler:
 
     def _process_source(self, source_id: str) -> bool:
         """Lock, check, and (if due to) create one collect job — one
-        transaction, so the lock, the duplicate check, and the advance are
-        never observed in three different states by a concurrent reader."""
+        transaction, so the lock, the duplicate check, and the advance
+        `[가설]` should never be observed in three different states by a
+        concurrent reader. Design intent, not a measured property: M-C5
+        (`docs/agent-workflow/reviews/REVIEW-M2-M7.md`) is explicit that every
+        scheduler test to date is a sequential `--once` run, none against two
+        processes racing the same source."""
         assert self._connection is not None
         store = SchedulerStore(self._connection)
         with self._connection.transaction():

@@ -304,6 +304,53 @@ class TestACollectionIsAtomicThroughAnAddOn:
         assert row is not None and row[0] != JobState.SUCCEEDED.value
 
 
+class TestAStaleConfigSchemaVersionIsRefused:
+    """M-P1 (REVIEW-M2-M7.md), now fixed rather than merely registered: the addon
+    template's and every real add-on's README both state "a source configured under an
+    older schema is marked `NEEDS_MIGRATION` and refuses to run until an operator
+    reconfigures it" — `config_schema_version` was parsed, stored, and echoed on every
+    source read, but nothing ever compared the stored value against the manifest's, so
+    the sentence was false of the code. `_resolved_source_row` now refuses at
+    load/dispatch time, before any job-specific work runs, naming both versions."""
+
+    def test_a_stored_version_older_than_the_manifests_is_refused(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        domain_store.register_source(a_source(config_schema_version="0"))
+
+        outcome = run_collect(tmp_path, job_store, domain_store, ScriptedTransport(a_page()))
+
+        assert outcome.error is not None
+        assert outcome.error.error_class is ErrorClass.CONFIGURATION_INVALID
+        assert "'0'" in outcome.error.summary
+        assert "'1'" in outcome.error.summary
+
+    def test_a_stored_version_newer_than_the_manifests_is_also_refused(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The rule is a mismatch, not "too old" — a manifest rolled back to an earlier
+        schema must refuse a row a newer build already migrated, too."""
+        domain_store.register_source(a_source(config_schema_version="2"))
+
+        outcome = run_collect(tmp_path, job_store, domain_store, ScriptedTransport(a_page()))
+
+        assert outcome.error is not None
+        assert outcome.error.error_class is ErrorClass.CONFIGURATION_INVALID
+        assert "'2'" in outcome.error.summary
+        assert "'1'" in outcome.error.summary
+
+    def test_a_matching_version_runs_normally(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The positive control. Without it the refusal above would also fire when
+        nothing at all was wrong."""
+        domain_store.register_source(a_source(config_schema_version="1"))
+
+        outcome = run_collect(tmp_path, job_store, domain_store, ScriptedTransport(a_page()))
+
+        assert outcome.accepted
+
+
 class TestTheDurableScopeRequirementIsChecked:
     """`ADVERSARIAL-REVIEW-2026-08-18.md` F3.
 
@@ -608,7 +655,10 @@ class TestTheRequestBodyLimitIsEnforced:
 
 
 # --------------------------------------------------------------------------- #
-# Refusal-swallowing — a status the add-on neither raised on nor decided about
+# Undecided status — a response the add-on neither raised on nor called
+# accept_status about (contract 1.3 invariant 5, not invariant 4 — see B6,
+# REVIEW-M2-M7.md: this section banner previously read "Refusal-swallowing", which is
+# the *other* rule, tested in `TestARefusalCannotBeSwallowed` below).
 # --------------------------------------------------------------------------- #
 
 #: Emits whatever came back without looking at the status. What the platform must catch
@@ -674,6 +724,194 @@ class TestANonSuccessStatusCannotBeIgnored:
 
         assert outcome.accepted
         assert domain_store.count_items(SOURCE_ID) == 2
+
+
+# --------------------------------------------------------------------------- #
+# It cannot be talked out of refusing — contract 1.3 invariant 4
+# --------------------------------------------------------------------------- #
+
+#: Catches everything and reports success. What a control has to survive. Ported
+#: verbatim from `experiments/integrated-p0/tests/test_capabilities.py`'s `SWALLOWING`
+#: (controller Ruling 3: the P0 original is the spec).
+SWALLOWING = """
+from addon_api import CollectOutcome
+
+
+def run(context):
+    try:
+        context.fetch(context.config_field("label", "items"), {})
+    except BaseException:
+        pass
+    return CollectOutcome(items_emitted=0)
+"""
+
+IMPORT_ADDON_ID = "importer.probe"
+IMPORT_HANDLER = f"addon:{IMPORT_ADDON_ID}"
+
+IMPORT_MANIFEST = """
+[addon]
+id = "{addon_id}"
+version = "0.1.0"
+kind = "importer"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "input_name"
+type = "string"
+required = false
+
+[declares]
+inputs = ["rows"]
+streams = ["rows"]
+"""
+
+#: The importer's mirror of `SWALLOWING`. Catches whatever `open_input` raises and
+#: reports success having read nothing. P0 never wrote this add-on or this class of
+#: test — `capabilities.py`'s importer `_check_no_refusal_was_swallowed` (`:1139`,
+#: called `:949`) is P1-only code, and B6 (REVIEW-M2-M7.md) found it untested anywhere
+#: in the tree.
+SWALLOWING_IMPORT = """
+from addon_api import CollectOutcome
+
+
+def run(context):
+    try:
+        context.open_input(context.config_field("input_name", "rows"))
+    except BaseException:
+        pass
+    return CollectOutcome(items_emitted=0)
+"""
+
+
+def an_import_source(**overrides: Any) -> SourceRow:
+    values: dict[str, Any] = {
+        "source_id": SOURCE_ID,
+        "addon_id": IMPORT_ADDON_ID,
+        "addon_version": "0.1.0",
+        "kind": "importer",
+        "config": {"input_name": "rows"},
+        "config_schema_version": "1",
+        "input_profile": None,
+    }
+    values.update(overrides)
+    return SourceRow(**values)
+
+
+class _NoTransport:
+    """An importer must never reach this. DP-024 D6. Same double
+    `test_importer_local_jsonl.py` uses, redefined here so this file's importer coverage
+    does not import from another test module."""
+
+    def send(self, request: Any, profile: Any, headers: Any = None, limits: Any = None) -> Any:
+        raise AssertionError("an importer opened a request")
+
+
+def run_import(
+    root: Path,
+    job_store: JobStore,
+    domain_store: DomainStore,
+    source_id: str = SOURCE_ID,
+    addon_source: str = SWALLOWING_IMPORT,
+    addon_id: str = IMPORT_ADDON_ID,
+    manifest: str = IMPORT_MANIFEST,
+    handler: str = IMPORT_HANDLER,
+) -> RunOutcome:
+    """The importer's mirror of `run_collect`: install, register, enqueue, run for real."""
+    install(root, addon_source, addon_id=addon_id, manifest=manifest)
+    registry = HandlerRegistry()
+    addons = load_addons(root, CONTRACT_VERSION)
+    register_addons(registry, addons, bind_capabilities(domain_store, _NoTransport()))
+    job_store.create_job(handler, {"source_id": source_id}, max_attempts=3)
+    outcome = JobRunner(job_store, registry, WORKER, lease_seconds=60).run_once()
+    assert outcome is not None
+    return outcome
+
+
+class TestARefusalCannotBeSwallowed:
+    """The failure mode this file exists for. Ported from P0's class of the same name
+    (`experiments/integrated-p0/tests/test_capabilities.py:519`) for the collector path,
+    unchanged in substance, plus a new pair of cases for the importer path P0 never
+    wrote (`capabilities.py`'s two `_check_no_refusal_was_swallowed` implementations —
+    collector `:848`/called `:377`, importer `:1139`/called `:949` — are separate code
+    and B6 found only the collector half exercised).
+
+    `fetch`/`open_input` raise a `PlatformError`, and nothing stops add-on code from
+    catching it — `except BaseException` is legal Python. If that were the end of it, a
+    collector or importer could turn every outbound or input rule into a suggestion and
+    still report success. `capabilities.py:787`'s own docstring says the *status* check
+    above (`TestANonSuccessStatusCannotBeIgnored`) is *"weaker than
+    `_check_no_refusal_was_swallowed` beside it"* — this class is that stronger control.
+    """
+
+    def test_a_collector_that_catches_the_refusal_still_fails_the_job(
+        self,
+        tmp_path: Path,
+        job_store: JobStore,
+        domain_store: DomainStore,
+        job_connection: psycopg.Connection[Any],
+    ) -> None:
+        domain_store.register_source(a_source(config={"label": "ungranted"}))
+
+        outcome = run_collect(
+            tmp_path, job_store, domain_store, ScriptedTransport(), addon_source=SWALLOWING
+        )
+
+        assert outcome.error is not None
+        assert outcome.error.error_class is ErrorClass.PLATFORM_PERMANENT
+        assert "continued past an outbound refusal" in outcome.error.summary
+        assert envelopes(job_connection) == 0
+
+    def test_the_same_swallowing_collector_succeeds_on_a_granted_endpoint(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The positive control. Without it the test above would also pass over a host
+        that failed every job that used a `try` block."""
+        domain_store.register_source(a_source(config={"label": "items"}))
+
+        outcome = run_collect(
+            tmp_path, job_store, domain_store, ScriptedTransport(a_page()), addon_source=SWALLOWING
+        )
+
+        assert outcome.accepted and outcome.state is JobState.SUCCEEDED
+
+    def test_an_importer_that_catches_the_refusal_still_fails_the_job(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The input name it asks for (`"rows"`) is declared by the manifest but not by
+        this source's *approved* profile — `input_profile=None` means "this source has
+        no approved input profile, so it reads nothing" (`INPUT_NOT_DECLARED`'s sibling,
+        `SOURCE_HAS_NO_PROFILE`), the importer's exact analogue of an ungranted
+        endpoint."""
+        domain_store.register_source(an_import_source())
+
+        outcome = run_import(tmp_path, job_store, domain_store, addon_source=SWALLOWING_IMPORT)
+
+        assert outcome.error is not None
+        assert outcome.error.error_class is ErrorClass.PLATFORM_PERMANENT
+        assert "an input was refused and the importer did not stop" in outcome.error.summary
+        assert domain_store.count_items(SOURCE_ID) == 0
+
+    def test_the_same_swallowing_importer_succeeds_on_an_approved_input(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The positive control. Without it the test above would also pass over an
+        importer that failed every job that used a `try` block."""
+        dataset_dir = tmp_path / "dataset_root"
+        dataset_dir.mkdir()
+        (dataset_dir / "rows.jsonl").write_text('{"id": "1"}\n', encoding="utf-8")
+        domain_store.register_source(
+            an_import_source(
+                input_profile={"root": str(dataset_dir), "inputs": {"rows": "rows.jsonl"}}
+            )
+        )
+
+        outcome = run_import(tmp_path, job_store, domain_store, addon_source=SWALLOWING_IMPORT)
+
+        assert outcome.accepted and outcome.state is JobState.SUCCEEDED
 
 
 # --------------------------------------------------------------------------- #

@@ -20,11 +20,17 @@ handler and `source_id` in its payload — read inside the same transaction that
 holds the schedule row locked, so nothing else claiming the same source can
 race between the check and the job this pass may go on to create.
 
-**Why the lock is only on `schedule`, not `source`.** A second scheduler
+**Why the lock is only on `schedule`, not `source`.** `[가설]` A second scheduler
 process (there is ordinarily one, but nothing here assumes exactly one) racing
-this one blocks on the schedule row it is about to act on, not on the source
-row every other read of that source also touches — `domain.api`'s own routes
-stay unaffected by a scheduler pass in flight.
+this one should block on the schedule row it is about to act on, not on the
+source row every other read of that source also touches — `domain.api`'s own
+routes should stay unaffected by a scheduler pass in flight. This is
+`for update of s`'s documented Postgres semantics, not a novel claim, but
+`docs/p1/M6-RECORD.md` (M-C5, `docs/agent-workflow/reviews/REVIEW-M2-M7.md`)
+is explicit that every scheduler test to date is a sequential `--once` run —
+no test has actually run two scheduler processes against the same row
+concurrently, so this paragraph describes the mechanism's design, not a
+measured behavior.
 """
 
 from __future__ import annotations

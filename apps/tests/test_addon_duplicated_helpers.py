@@ -94,16 +94,36 @@ class TestEveryCopyOfTheDayAfterArithmetic:
 def test_the_arithmetic_was_found_in_more_than_one_add_on() -> None:
     """The guard on the guard: discovery that matched nothing would pass every case above.
 
-    `[측정]` M4 lane note: skips rather than fails when this worktree's own `apps/addons/`
-    holds fewer than two `_day_after` implementations — true here by construction, since
-    this batch installs only `importer.local.jsonl` and `normalizer.obf.product`, and a red
-    result caused by that would be a false failure about worktree scope, not about this
-    batch's own two add-ons. M7 re-runs this file over the merged `apps/addons/` set, where
-    the two DataLab collectors are both present and this assertion is meant to hold.
+    M-C4 (`docs/agent-workflow/reviews/REVIEW-M2-M7.md`): the `pytest.skip` used to sit
+    directly above `assert len(DAY_AFTER) >= 2` with no assertion of any kind before it,
+    so a broken `ADDONS` path (finding *zero* implementations) and a merged tree that
+    legitimately has only *one* copy looked identical — both skipped, silently. The
+    `>= 1` assertion below is unconditional and load-bearing: a broken discovery path
+    now fails loudly instead of skipping.
+
+    `[측정]` 2026-08-21, run against the merged 8-add-on tree: `DAY_AFTER` discovers
+    exactly one implementation, `collector.naver.datalab`. Not the unmerged-worktree gap
+    this file's docstring predicted — the merge is complete (`grep -rn _day_after
+    apps/addons/` finds exactly one definition). P0 held `_day_after` in *two* separate
+    add-ons (`collector.naver.searchtrend`, `collector.naver.shoppinginsight`); M4's
+    `naver-datalab` lane merged both into this tree's single `collector.naver.datalab`
+    before this guard ever ran against a merged tree — the duplication this guard was
+    built to catch was designed out, not left unmerged. `docs/p1/M4-RECORD.md` already
+    records this same verdict (`[측정]`, 2026-08-21) — the fix here is that the
+    assertion path that could have caught a *different* failure (the scan itself
+    silently finding nothing) is now actually exercised rather than sitting behind an
+    unconditional skip.
     """
+    assert len(DAY_AFTER) >= 1, (
+        f"_day_after was not found under {ADDONS} at all — the scan path is broken, "
+        "not merely short of a second copy"
+    )
     if len(DAY_AFTER) < 2:
         pytest.skip(
-            f"only {[root.name for root in DAY_AFTER]} declare _day_after in this worktree; "
-            "M7 re-runs this scan over the merged apps/addons/ set"
+            f"only {[root.name for root in DAY_AFTER]} declares _day_after on this tree "
+            "— P1 consolidated the two DataLab collectors P0 split into one add-on "
+            "(collector.naver.datalab), so there is exactly one copy to compare against "
+            "by design, not by incomplete merge; this assertion re-activates the moment "
+            "a second add-on defines _day_after"
         )
     assert len(DAY_AFTER) >= 2, f"only {[root.name for root in DAY_AFTER]} were discovered"

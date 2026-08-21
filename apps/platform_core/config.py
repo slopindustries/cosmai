@@ -316,7 +316,12 @@ SETTINGS: Final[Sequence[Setting]] = (
     # Loopback, and only loopback (SEC-002). The default applies when the variable
     # is absent; a stated non-loopback address is refused rather than replaced.
     Setting("COSMA_API_HOST", "api_host", _loopback_host, default=DEFAULT_API_HOST),
-    Setting("COSMA_API_PORT", "api_port", _port, default="8000"),
+    # M-X2 (docs/agent-workflow/reviews/REVIEW-M2-M7.md): `8000` collides with
+    # trend-radar's own live dashboard (DP-031 D3, `http://127.0.0.1:8000/api/v1`) — the
+    # M7 demo ran the real platform API on `8100` with no stated reason and this default
+    # never matched it. `8100` is the number recorded, now made the default rather than
+    # left for every deployment to override to avoid a collision on the same host.
+    Setting("COSMA_API_PORT", "api_port", _port, default="8100"),
     Setting("COSMA_LOG_LEVEL", "log_level", _level, default=DEFAULT_LEVEL),
     # Absent means standard error. The default is the empty string rather than
     # ``None`` because ``None`` is how this table spells "required"; a *stated*

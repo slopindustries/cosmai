@@ -282,6 +282,26 @@ def _resolved_source_row(
             f"{addon.manifest.addon_id!r}",
             source_id,
         )
+    if row["config_schema_version"] != addon.manifest.config_schema_version:
+        # M-P1 (REVIEW-M2-M7.md): `config_schema_version` was parsed, stored, and
+        # echoed back on every source read, but nothing ever compared it — the
+        # README's/template's own "a source configured under an older schema ...
+        # refuses to run" sentence named a rule this function did not enforce. A
+        # `ConfigurationInvalidError` rather than a permanent failure for the same
+        # reason `_validated_config` below raises one: this is the operator's stored
+        # row failing to satisfy a schema the operator can fix by reconfiguring the
+        # source, not an add-on defect.
+        raise ConfigurationInvalidError(
+            f"source {source_id!r} was configured under schema "
+            f"{row['config_schema_version']!r}, but {addon.identity} now requires "
+            f"{addon.manifest.config_schema_version!r}; reconfigure the source",
+            {
+                "source_id": source_id,
+                "addon_id": addon.manifest.addon_id,
+                "stored_config_schema_version": row["config_schema_version"],
+                "required_config_schema_version": addon.manifest.config_schema_version,
+            },
+        )
     return row
 
 

@@ -130,8 +130,13 @@ def test_apps_never_imports_experiments() -> None:
 #: Every local top-level package under ``apps/`` the layer-direction rules govern.
 #: ``domain`` and ``platform_core`` are already covered by ``python_files()`` above;
 #: this reuses that same walk rather than a second one.
+#:
+#: M-C3 (``docs/agent-workflow/reviews/REVIEW-M2-M7.md``): ``scheduler`` (M6) was
+#: omitted here, leaving ``apps/scheduler/`` outside this guard entirely — it could
+#: have imported ``addons`` by name, the exact rule ``NEVER_IMPORTED`` exists to
+#: forbid, and nothing would have noticed.
 LOCAL_PACKAGES = frozenset(
-    {"platform_core", "domain", "addon_host", "addon_api", "addon_kit", "addons"}
+    {"platform_core", "domain", "addon_host", "addon_api", "addon_kit", "addons", "scheduler"}
 )
 
 #: What each package may import from :data:`LOCAL_PACKAGES`, besides itself.
@@ -148,11 +153,16 @@ ALLOWED_IMPORTS: dict[str, frozenset[str]] = {
     "addon_host": frozenset({"platform_core", "domain", "addon_api"}),
     "addon_kit": frozenset({"addon_api"}),
     "addons": frozenset({"addon_api"}),
+    #: The scheduler (M6) only ever reads/writes job and schedule rows through
+    #: ``platform_core`` — it dispatches nothing to an add-on and holds no domain
+    #: dependency, so its own allowance is the narrowest non-empty one in this table.
+    "scheduler": frozenset({"platform_core"}),
 }
 
-#: Loaded by path, never imported by name (DP-008 D2). No package may name it —
-#: ``apps/addons/`` holds nothing yet (M4), but the rule is checked now so the
-#: first add-on that lands there is already covered rather than grandfathered.
+#: Loaded by path, never imported by name (DP-008 D2). No package may name it.
+#: ``apps/addons/`` held nothing at M3 batch 3c, when this comment was first written;
+#: M4 installed all 8 real add-ons and the rule holds unchanged against every one of
+#: them (M-C2/M-C3, ``docs/agent-workflow/reviews/REVIEW-M2-M7.md``).
 NEVER_IMPORTED = "addons"
 
 LayerViolation = tuple[Path, int, str, str]
@@ -234,11 +244,18 @@ def test_the_apps_layer_points_one_way() -> None:
 
 def test_the_layer_guard_reads_the_packages_it_claims_to_read() -> None:
     """An absence assertion over a guard that never ran is vacuous — the same
-    control ``test_addon_layer_direction.py`` runs for its own P0-side scan."""
+    control ``test_addon_layer_direction.py`` runs for its own P0-side scan.
+
+    M-C3 (``docs/agent-workflow/reviews/REVIEW-M2-M7.md``): this used to assert only
+    3 of the 6 (now 7) packages :data:`ALLOWED_IMPORTS` names, and ``addons`` — the
+    one package every add-on README leans on for "an add-on imports only
+    ``addon_api``" — was not one of the three. Extended to every package in
+    :data:`ALLOWED_IMPORTS`, so a package silently dropped from the scan cannot
+    happen again without this failing.
+    """
     reviewed = {owning_layer_package(path) for path in python_files()} - {None}
-    assert "addon_api" in reviewed, "apps/addon_api was not scanned"
-    assert "platform_core" in reviewed, "apps/platform_core was not scanned"
-    assert "addon_host" in reviewed, "apps/addon_host was not scanned"
+    for package in ALLOWED_IMPORTS:
+        assert package in reviewed, f"apps/{package} was not scanned"
 
 
 def test_a_violating_import_is_actually_caught() -> None:

@@ -91,7 +91,12 @@ def run(context: ImportContext) -> CollectOutcome:
 def _parse(line: bytes, skipped: dict[str, int]) -> dict[str, Any] | None:
     try:
         entry = json.loads(line)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (ValueError, RecursionError):
+        # ValueError covers json.JSONDecodeError and UnicodeDecodeError (both are
+        # ValueError subclasses) as well as CPython's integer-string-conversion limit
+        # (`ValueError: Exceeds the limit ... for integer string conversion`, not a
+        # JSONDecodeError). RecursionError covers pathologically deep nesting. Both must
+        # abstain rather than abort per DP-030 D2 — see B1 in REVIEW-M2-M7.md.
         skipped[_MALFORMED] += 1
         return None
     if not isinstance(entry, dict):

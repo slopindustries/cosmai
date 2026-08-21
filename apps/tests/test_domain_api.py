@@ -854,6 +854,29 @@ class TestWritingACredential:
 
         assert "COSMA_SRC_PROBE_BLOG_CLIENT_ID" in log_stream.getvalue()
 
+    def test_a_body_fastapi_rejects_before_the_route_runs_does_not_echo_the_value(
+        self, client: TestClient, registered: None
+    ) -> None:
+        """B2 (REVIEW-M2-M7.md): the route's own body is declared `dict[str, Any]`, so a
+        JSON *string* — not a dict — fails Pydantic's own binding before this route's
+        code ever runs, and FastAPI's default `RequestValidationError` handler puts the
+        rejected value verbatim into the 422 response's `detail[].input`. "Write-only by
+        construction" has to also hold for the request FastAPI refuses, not only for the
+        ones this route's own logic handles — the platform-wide handler registered in
+        `platform_core.api.app` closes exactly that gap. This sends the review's own
+        probe: a secret value as a bare JSON string where an object is expected.
+        """
+        response = client.post(
+            f"/sources/{COLLECT_SOURCE}/credentials",
+            content='"MY-SECRET-42"',
+            headers={"Content-Type": "application/json"},
+        )
+
+        assert response.status_code == 422
+        assert "MY-SECRET-42" not in response.text
+        for error in response.json()["detail"]:
+            assert "input" not in error
+
 
 class TestThePlatformSurfaceIsUnchanged:
     """The seam must add and never replace. Every P0-A/M1 scenario reads these."""

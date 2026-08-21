@@ -45,15 +45,21 @@ from typing import Any
 from uuid import UUID
 
 import psycopg
-import pytest
 
 from addon_api import CONTRACT_VERSION, AddonManifest, NormalizedResult, NormalizeOutcome
 from addon_api.context import NormalizeContext
 from addon_api.results import SnapshotItem
 from domain.store import DomainStore, NormalizedResultRow, SourceRow
 
-pytestmark = pytest.mark.usefixtures("_migrations_applied")
-
+#: M-X8 (`docs/agent-workflow/reviews/REVIEW-M2-M7.md`): a blanket
+#: `pytestmark = pytest.mark.usefixtures("_migrations_applied")` used to sit here,
+#: applying to every test in this module — including the ~49 pure-function
+#: normalizer tests below that never touch a database at all — which gated this
+#: whole file on `apps/tests/conftest.py`'s session-scoped autouse `_reset_schema`
+#: regardless. Only `TestCoexistenceOverOneLineage` (below) actually needs the
+#: database, and it already gets `_migrations_applied` transitively through the
+#: `job_connection` fixture it requests directly — this module-wide mark was
+#: redundant for that one class and load-bearing (wrongly) for every other one.
 ADDON_ROOT = Path(__file__).resolve().parents[1] / "addons" / "normalizer.obf.product"
 
 
@@ -410,6 +416,34 @@ class TestARowWithNoUsableCodeIsSkipped:
         item = SnapshotItem("raw-array", b"[1, 2, 3]", "application/json")
         outcome, _, _ = normalize(item)
         assert outcome.skipped == 1
+
+    def test_an_integer_over_the_4300_digit_conversion_limit_is_skipped_not_aborted(
+        self,
+    ) -> None:
+        """B1 (REVIEW-M2-M7.md): `json.loads` raises a bare `ValueError` (not
+        `json.JSONDecodeError`) on an integer past CPython's string-conversion limit.
+        A narrow `except (json.JSONDecodeError, UnicodeDecodeError)` misses it and the
+        whole run aborts instead of skipping the one bad row. Run through `normalize()`
+        alongside good rows so an abort would surface as fewer results, not a traceback
+        this test happens to catch."""
+        good = a_snapshot_item(a_row(code="8800000000123"))
+        huge_int = SnapshotItem(
+            "raw-huge-int", b'{"code":"x","v":' + b"9" * 5000 + b"}", "application/json"
+        )
+        outcome, results, _ = normalize(good, huge_int)
+        assert (outcome.results_emitted, outcome.skipped) == (1, 1)
+        assert len(results) == 1
+
+    def test_pathologically_deep_nesting_is_skipped_not_aborted(self) -> None:
+        """B1's second reproduction: deep nesting raises `RecursionError`, also missed by
+        the narrow tuple."""
+        good = a_snapshot_item(a_row(code="8800000000123"))
+        deep = SnapshotItem(
+            "raw-deep-nest", b"[" * 100_000 + b"]" * 100_000, "application/json"
+        )
+        outcome, results, _ = normalize(good, deep)
+        assert (outcome.results_emitted, outcome.skipped) == (1, 1)
+        assert len(results) == 1
 
     def test_a_mixed_snapshot_normalizes_what_it_can(self) -> None:
         """The positive control for every skip case above."""

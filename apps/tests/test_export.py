@@ -141,6 +141,39 @@ class TestRawExportJsonl:
         record = json.loads(response.text.splitlines()[0])
         assert record["payload"] == "not json"
 
+    def test_a_pretty_printed_payload_is_re_serialized_compactly_not_spliced_verbatim(
+        self,
+        client: TestClient,
+        registered: None,
+        domain_store: DomainStore,
+        job_connection: psycopg.Connection[Any],
+    ) -> None:
+        """B3 (REVIEW-M2-M7.md): `json.loads` accepts embedded newlines, so a
+        pretty-printed payload spliced in verbatim puts its own newlines inside what is
+        supposed to be one JSONL line — one stored item becomes several unparseable
+        physical lines and everything after it in the export is corrupted. The review's
+        own reproduction payload."""
+        put_raw(
+            domain_store,
+            job_connection,
+            [
+                RawItemRow("k1", b'{\n  "title": "hello"\n}', "application/json"),
+                RawItemRow("k2", b'{"title": "second"}', "application/json"),
+            ],
+        )
+
+        response = client.get("/export/raw", params={"source_id": SOURCE_ID})
+
+        assert response.status_code == 200
+        lines = response.text.splitlines()
+        # The whole export must remain line-parseable: every physical line is its own
+        # complete JSON object, and there is exactly one line per stored item.
+        assert len(lines) == 2
+        records = [json.loads(line) for line in lines]
+        by_key = {r["item_key"]: r for r in records}
+        assert by_key["k1"]["payload"] == {"title": "hello"}
+        assert by_key["k2"]["payload"] == {"title": "second"}
+
     def test_an_empty_source_is_zero_lines_not_an_error(
         self, client: TestClient, registered: None
     ) -> None:
@@ -192,6 +225,34 @@ class TestRawExportCsv:
 
         rows = list(csv.reader(io.StringIO(response.text)))
         assert rows == [["item_key", "seq", "emitted_at", "content_type", "payload"]]
+
+    @pytest.mark.parametrize("prefix", ["=", "+", "-", "@"])
+    def test_a_payload_starting_with_a_formula_prefix_is_guarded(
+        self,
+        prefix: str,
+        client: TestClient,
+        registered: None,
+        domain_store: DomainStore,
+        job_connection: psycopg.Connection[Any],
+    ) -> None:
+        """M-S4 (REVIEW-M2-M7.md): RFC4180 quoting (`test_csv_escapes_quotes...` above)
+        protects CSV *syntax*; it does nothing against a spreadsheet application
+        evaluating a well-quoted cell as a formula because its content starts with one
+        of these characters. A leading `'` defeats that without changing the content a
+        reader that does not treat it as a formula marker sees."""
+        original = f"{prefix}cmd|'/c calc'!A1"
+        put_raw(
+            domain_store,
+            job_connection,
+            [RawItemRow("k1", original.encode("utf-8"), "text/plain")],
+        )
+
+        response = client.get(
+            "/export/raw", params={"source_id": SOURCE_ID, "format": "csv"}
+        )
+
+        rows = list(csv.reader(io.StringIO(response.text)))
+        assert rows[1][4] == f"'{original}"
 
 
 class TestRawExportScopeFilters:
@@ -297,6 +358,33 @@ class TestResultsExport:
             "/export/results", params={"source_id": NORMALIZER_SOURCE_ID}
         )
         assert jsonl_response.text == ""
+
+    @pytest.mark.parametrize("prefix", ["=", "+", "-", "@"])
+    def test_a_source_item_key_starting_with_a_formula_prefix_is_guarded(
+        self, prefix: str, client: TestClient, registered: None, domain_store: DomainStore
+    ) -> None:
+        """M-S4 (REVIEW-M2-M7.md): the results CSV's equivalent of the raw CSV's guard.
+        `source_item_key` is add-on-derived (a normalizer's `NormalizedResult.source_item_key`,
+        ultimately from an upstream provider's own record), the same kind of untrusted
+        string as a raw payload."""
+        snapshot_id = domain_store.seal_snapshot(NORMALIZER_SOURCE_ID, members=())
+        item_key = f"{prefix}cmd|'/c calc'!A1"
+        domain_store.record_results(
+            snapshot_id,
+            NORMALIZER_SOURCE_ID,
+            "normalizer.smoke",
+            "0.1.0",
+            "1",
+            [NormalizedResultRow(source_item_key=item_key, body={"title": "ok"})],
+        )
+
+        csv_response = client.get(
+            "/export/results", params={"source_id": NORMALIZER_SOURCE_ID, "format": "csv"}
+        )
+
+        rows = list(csv.reader(io.StringIO(csv_response.text)))
+        assert rows[0][6] == "source_item_key"
+        assert rows[1][6] == f"'{item_key}"
 
 
 class TestLargeExportStreams:

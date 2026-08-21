@@ -594,10 +594,17 @@ class TestLoopbackIsOnlyReachableByFlag:
         lives inside the main checkout's `.worktrees/` directory). Checking
         `path.parts` — the *absolute* path — against `SKIPPED_PARTS` therefore excluded
         every file the scan found, from every worktree, unconditionally: `found` was
-        always empty and both cases here passed vacuously. Fixed by checking the parts of
-        each file's path *relative to `REPO_ROOT`* instead, which is what `SKIPPED_PARTS`
-        was always meant to filter (a nested `.worktrees/` *inside* the tree being
-        scanned) and never depends on where that tree itself happens to sit on disk.
+        always empty. `[정정, 2026-08-21, m7-fixwave, M-R3]` This did **not** pass
+        vacuously — replayed with the bug reintroduced, this test's own positive
+        control (`assert Path("apps/domain/outbound.py") in found`, below) failed
+        loudly, because an empty `found` cannot contain that path. Only the *other*
+        assertion (`set(found) <= permitted`) would have passed vacuously on its own —
+        the positive control is exactly what stopped that vacuity from being silent,
+        which is the property a positive control exists to have. Fixed by checking the
+        parts of each file's path *relative to `REPO_ROOT`* instead, which is what
+        `SKIPPED_PARTS` was always meant to filter (a nested `.worktrees/` *inside* the
+        tree being scanned) and never depends on where that tree itself happens to sit
+        on disk.
         """
         found = []
         for path in REPO_ROOT.rglob("*"):

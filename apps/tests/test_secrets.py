@@ -225,6 +225,33 @@ def test_write_credential_leaves_the_mode_unchanged(store: Path) -> None:
     assert stat.S_IMODE(store.stat().st_mode) == 0o600
 
 
+def test_the_temp_file_is_created_at_0600_not_chmodded_after(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M-S1 (REVIEW-M2-M7.md): the temp file used to be created at the process umask
+    (typically 0644, holding the plaintext credential line) and `chmod`ed to 0600 only
+    after — a window in which the file was readable more widely than the store it was
+    about to replace. Asserts the property that closes the window: the file is
+    *created* (`os.open`'s own `mode` argument) already at 0600, not widened-then-
+    narrowed. Wraps the real `os.open` rather than replacing it, so the write still
+    happens and `write_credential`'s other behaviour is unaffected."""
+    import os as os_module
+
+    real_open = os_module.open
+    seen_modes: list[int] = []
+
+    def spying_open(path: str | os_module.PathLike[str], flags: int, mode: int = 0o777) -> int:
+        if str(path).endswith(".tmp-" + str(os_module.getpid())):
+            seen_modes.append(mode)
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(os_module, "open", spying_open)
+
+    write_credential("COSMA_SRC_PROBE_NEW", "v1")
+
+    assert seen_modes == [0o600]
+
+
 def test_a_freshly_written_key_resolves_immediately(store: Path) -> None:
     """No cache on either side: a value `write_credential` just wrote is visible to
     the very next `resolve_credential` call, in the same process."""
