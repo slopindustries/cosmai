@@ -573,6 +573,7 @@ class TestMetrics:
         assert reading.suppressed_duplicate_effects == 0
         assert reading.abandoned_attempts == 0
         assert reading.rejected_completions == 0
+        assert reading.rejected_effects == 0
         assert reading.attempt_duration.count == 0
         assert reading.lease_recovery_latency.count == 0
 
@@ -600,11 +601,13 @@ class TestMetrics:
         metrics.record_suppressed_duplicate_effect()
         metrics.record_abandoned_attempt(3)
         metrics.record_rejected_completion(4)
+        metrics.record_rejected_effect(5)
         reading = metrics.read()
         assert reading.claim_conflicts == 1
         assert reading.suppressed_duplicate_effects == 2
         assert reading.abandoned_attempts == 3
         assert reading.rejected_completions == 4
+        assert reading.rejected_effects == 5
 
     def test_durations_aggregate(self, metrics: MetricsRegistry) -> None:
         for milliseconds in (5.0, 15.0, 10.0):
@@ -661,6 +664,7 @@ class TestMetrics:
             "suppressed_duplicate_effects",
             "abandoned_attempts",
             "rejected_completions",
+            "rejected_effects",
             "attempt_duration_ms",
             "lease_recovery_latency_ms",
         }
@@ -669,10 +673,12 @@ class TestMetrics:
         metrics.record_transition("RUNNING")
         metrics.record_claim_conflict()
         metrics.record_rejected_completion()
+        metrics.record_rejected_effect()
         metrics.record_attempt_duration_ms(1.0)
         metrics.reset()
         reading = metrics.read()
         assert reading.transitions == dict.fromkeys(TARGET_STATES, 0)
         assert reading.claim_conflicts == 0
         assert reading.rejected_completions == 0
+        assert reading.rejected_effects == 0
         assert reading.attempt_duration.count == 0

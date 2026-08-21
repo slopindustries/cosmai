@@ -4,7 +4,9 @@ The contract's observability requirement names exactly what has to exist:
 counters for transitions by target state, claim conflicts, suppressed duplicate
 effect insertions, abandoned attempts, and completions the fencing rule refused;
 durations for attempt execution and lease recovery latency. This module is that
-list and nothing more.
+list, plus one counter the contract's text implied but did not name:
+``rejected_effects``, added in P1 when issue #4 found that applying an effect
+went through no fence at all — see ``platform_core.jobs.store.APPLY_EFFECT``.
 
 In-memory is sufficient because P0-A is single-host by declaration. A metrics
 backend would add an operational dependency without reducing a named
@@ -70,6 +72,7 @@ class MetricsReading:
     suppressed_duplicate_effects: int
     abandoned_attempts: int
     rejected_completions: int
+    rejected_effects: int
     attempt_duration: DurationReading
     lease_recovery_latency: DurationReading
 
@@ -80,6 +83,7 @@ class MetricsReading:
             "suppressed_duplicate_effects": self.suppressed_duplicate_effects,
             "abandoned_attempts": self.abandoned_attempts,
             "rejected_completions": self.rejected_completions,
+            "rejected_effects": self.rejected_effects,
             "attempt_duration_ms": self.attempt_duration.as_dict(),
             "lease_recovery_latency_ms": self.lease_recovery_latency.as_dict(),
         }
@@ -123,6 +127,7 @@ class MetricsRegistry:
         self._suppressed_duplicate_effects = 0
         self._abandoned_attempts = 0
         self._rejected_completions = 0
+        self._rejected_effects = 0
         self._attempt_duration = _Durations()
         self._lease_recovery_latency = _Durations()
 
@@ -164,6 +169,17 @@ class MetricsRegistry:
         with self._lock:
             self._rejected_completions += count
 
+    def record_rejected_effect(self, count: int = 1) -> None:
+        """Count one applied-effect write the fencing rule refused (issue #4).
+
+        Distinct from :meth:`record_suppressed_duplicate_effect`: that counter is
+        I1's idempotency working as designed on a legitimate repeat; this one is
+        the fence stopping an attempt the platform has already abandoned from
+        writing the job's durable effect at all.
+        """
+        with self._lock:
+            self._rejected_effects += count
+
     def record_attempt_duration_ms(self, milliseconds: float) -> None:
         """Record how long one attempt's execution took."""
         with self._lock:
@@ -192,6 +208,7 @@ class MetricsRegistry:
                 suppressed_duplicate_effects=self._suppressed_duplicate_effects,
                 abandoned_attempts=self._abandoned_attempts,
                 rejected_completions=self._rejected_completions,
+                rejected_effects=self._rejected_effects,
                 attempt_duration=self._attempt_duration.read(),
                 lease_recovery_latency=self._lease_recovery_latency.read(),
             )
@@ -204,5 +221,6 @@ class MetricsRegistry:
             self._suppressed_duplicate_effects = 0
             self._abandoned_attempts = 0
             self._rejected_completions = 0
+            self._rejected_effects = 0
             self._attempt_duration = _Durations()
             self._lease_recovery_latency = _Durations()

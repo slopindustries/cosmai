@@ -179,8 +179,20 @@ class JobRunner:
         return completion
 
     def _effect_applier(self, claimed: ClaimedJob) -> Callable[[str, Any], bool]:
+        """Bind the identifiers ``JobContext.apply_effect`` needs to fence its write.
+
+        Issue #4: this used to close over ``claimed.job_id`` alone, which is why
+        the write it called had nothing attempt-specific to fence on. It closes
+        over ``claimed`` (already required for the fence check itself, not
+        merely for logging) so the handler-facing callable stays ``(key,
+        payload) -> bool`` — the identifiers are platform state a handler never
+        sees, exactly like ``complete_success`` already keeps them out of reach.
+        """
+
         def apply(effect_key: str, payload: Any = None) -> bool:
-            return self._store.apply_effect(claimed.job_id, effect_key, payload)
+            return self._store.apply_effect(
+                claimed.job_id, claimed.attempt_id, claimed.worker_id, effect_key, payload
+            )
 
         return apply
 
