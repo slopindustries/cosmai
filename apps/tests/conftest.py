@@ -110,9 +110,10 @@ def _reset_schema(platform_config: PlatformConfig) -> None:
     mode that makes this easy to miss without a behavioural check. `[측정]`
     Found by exercising `runtime_connection` against a real `SELECT` after a
     reset, not by reading the grant statements; see the task-3-4 report's
-    "deviations" section. The four statements below are
-    `apps/db/provision_db.sql`'s Part B grants, reissued verbatim so a reset
-    schema is left in the same state a freshly provisioned one is.
+    "deviations" section. The five statements below (`revoke`, `grant usage`,
+    and three `alter default privileges`) are `apps/db/provision_db.sql`'s
+    Part B grants, reissued verbatim so a reset schema is left in the same
+    state a freshly provisioned one is.
     """
     with connect(platform_config, role="migrator") as connection:
         connection.execute(f"drop schema if exists {SCHEMA} cascade")
@@ -157,10 +158,20 @@ def runtime_connection(platform_config: PlatformConfig) -> Iterator[psycopg.Conn
 # (see the module docstring above), so isolation here is row-level instead:
 # `_reset_job_tables` clears `job`/`job_attempt`/`platform_effect` before and
 # after every test that requests `job_store`, so a `claim_next` in one test can
-# never see a row a previous test left behind. Nothing here is `autouse` — a
-# test that does not ask for `job_store` never opens a database connection at
-# all, which is what keeps `test_config.py`/`test_obs.py`/`test_secrets.py`
-# runnable without a live server.
+# never see a row a previous test left behind. Nothing *here* is `autouse` — a
+# test that does not ask for `job_store` opens no connection of its own through
+# this block.
+#
+# That is not the same as "runnable without a live server", and this comment
+# used to say it was. `_reset_schema` above (`:91`) is `scope="session",
+# autouse=True`: pytest instantiates it once for the whole session regardless
+# of which test triggers collection first, and it opens a migrator connection
+# to do so. `[측정]` REVIEW-M1 F6: running any of `test_config.py`/
+# `test_obs.py`/`test_secrets.py` — the modules this comment claimed were
+# server-free — against a dead port fails with 173 errors, not zero, because
+# `_reset_schema` still has to run before the first test in the session
+# collects. Every module in this suite needs a live server; what varies is only
+# whether a given test also opens a `job_store` connection of its own.
 # --------------------------------------------------------------------------- #
 
 

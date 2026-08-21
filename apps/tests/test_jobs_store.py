@@ -195,9 +195,22 @@ class TestClaimNext:
         assert reading.lease_recovery_latency.count == 1
 
     def test_a_reclaim_that_finds_the_budget_spent_goes_terminal_without_a_new_attempt(
-        self, job_store: JobStore, job_metrics: MetricsRegistry
+        self,
+        job_store: JobStore,
+        job_connection: psycopg.Connection[Any],
+        job_metrics: MetricsRegistry,
     ) -> None:
-        """I3/I4: the reclaim-into-exhausted-budget transition CONTRACT-JOB@0.1 names."""
+        """I3/I4: the reclaim-into-exhausted-budget transition CONTRACT-JOB@0.1 names.
+
+        Contract row 8's required side effect has two halves: the prior attempt
+        closes `ABANDONED`, and no new attempt opens. The state/terminal_reason
+        assertions below only ever exercised the first half by inference — a
+        mutation that draws the `opened` CTE from `candidate` instead of `started`
+        (opening a new attempt on every exhausted reclaim, in violation of I2/I3)
+        left this test green (REVIEW-M1 F1). These three lines read the
+        `job_attempt` table directly so that "no new attempt opened" is asserted,
+        not assumed.
+        """
         job_id = job_store.create_job(HANDLER, {}, max_attempts=1)
         first = job_store.claim_next("worker-a", EXPIRED_LEASE)
         assert first is not None
@@ -210,6 +223,11 @@ class TestClaimNext:
         assert row["terminal_reason"] == "LEASE_ABANDONED"
         assert row["lease_owner"] is None
         assert job_metrics.read().abandoned_attempts == 1
+
+        rows = attempts_of(job_connection, job_id)
+        assert len(rows) == 1, "no new attempt was opened over the exhausted budget"
+        assert rows[0]["outcome"] == "ABANDONED"
+        assert rows[0]["finished_at"] is not None
 
     def test_a_claim_conflict_is_counted_when_the_row_is_held_elsewhere(
         self, job_store: JobStore, platform_config: PlatformConfig, job_metrics: MetricsRegistry

@@ -39,6 +39,13 @@ no SQLSTATE at all (a failure to connect at startup, which psycopg reports with
 The contract records the transient branch as unexercised in P0-A — no scenario
 here kills a connection mid-statement either, so this carries the same
 unmeasured status forward rather than claiming new coverage.
+
+One SQLSTATE outside those classes is also ``PLATFORM_TRANSIENT``: ``55P03``
+(lock not available), reachable only since DP-032's ``lock_timeout='5s'`` gave
+this process a way to time out waiting on ``_FENCE``'s row lock — a condition
+P0-A's unlimited lock wait never produced. ``25P03`` (idle-in-transaction
+timeout) is deliberately left ``CONFIGURATION_INVALID``; see
+``TRANSIENT_SQLSTATES`` below and REVIEW-M1 F3.
 """
 
 from __future__ import annotations
@@ -71,6 +78,20 @@ _ROLES: Final[frozenset[str]] = frozenset({"runtime", "migrator"})
 #: was configured, and the contract's answer to that is to refuse to start.
 TRANSIENT_SQLSTATE_CLASSES: Final[frozenset[str]] = frozenset({"08", "53", "57"})
 
+#: One SQLSTATE promoted to transient outside its class (`55`, "object not in
+#: prerequisite state"), rather than widening class `55` wholesale. `55P03`
+#: (lock not available) is reachable only since DP-032's `provision.sql` set
+#: `lock_timeout='5s'` — P0 set no lock timeout at all, so this code could
+#: never fire there. `_FENCE`'s `for update of j` blocks on the job row, and a
+#: lock wait that times out (an API retry racing a fenced completion is the
+#: concrete path) is contention: waiting, or retrying, is a sensible response,
+#: the same reasoning `TRANSIENT_SQLSTATE_CLASSES` already applies to class
+#: `53`/`57`. `25P03` (idle-in-transaction timeout) is deliberately **not**
+#: reclassified here — it names a transaction that stopped making progress,
+#: not contention with another transaction, and REVIEW-M1 F3 / OQ-006 record
+#: that distinction as unresolved rather than settled by this one code.
+TRANSIENT_SQLSTATES: Final[frozenset[str]] = frozenset({"55P03"})
+
 
 def describe(config: PlatformConfig, role: str) -> str:
     """A short, non-secret description of what a connection was aiming at."""
@@ -82,7 +103,7 @@ def classify(error: psycopg.Error, target: str) -> PlatformError:
     sqlstate = error.sqlstate or ""
     summary = f"cannot reach the platform {target}: {error}"
     detail: dict[str, Any] = {"sqlstate": sqlstate or None, "target": target}
-    if sqlstate[:2] in TRANSIENT_SQLSTATE_CLASSES:
+    if sqlstate in TRANSIENT_SQLSTATES or sqlstate[:2] in TRANSIENT_SQLSTATE_CLASSES:
         return PlatformTransientError(summary, detail)
     return ConfigurationInvalidError(summary, detail)
 

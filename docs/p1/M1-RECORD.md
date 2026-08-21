@@ -58,8 +58,9 @@ the first attempt's generated passwords before they were durably recorded, so th
 constraints' one-shot rollback (`DROP DATABASE cosmai; DROP DATABASE cosmai_test; DROP ROLE
 cosmai_runtime; DROP ROLE cosmai_migrator; DROP ROLE cosmai_owner;`) was actually exercised, not
 just documented as a contingency. No password value from either attempt was ever printed, logged,
-or committed; verified by grepping the committed diff for `password|pw=|secret` (matched only
-variable names and prose).
+or committed. `[측정]` REVIEW-M1's own methodological note: a `password|pw=|secret` grep "would
+not catch a bare 48-hex value," so this record now cites the stronger check the review ran
+instead — zero matches for `\b[0-9a-f]{48}\b` across the full commit range, including `uv.lock`.
 
 ## (b) Scenario result table
 
@@ -72,7 +73,7 @@ any new file. Suite total after Task 9: 318/318; after Task 10 (adds one measure
 | JOB-001 (successful execution) | 4 | I1, I2, I4, I5 | pass |
 | JOB-002 (retryable failure then success) | 4 | I4, I5 | pass |
 | JOB-003 (retry exhaustion) | 4 | I4 | pass |
-| JOB-004 (permanent failure, no budget spent) | 4 | state-transition rows 3/6 | pass |
+| JOB-004 (permanent failure, no budget spent) | 4 | contract row 7 | pass |
 | JOB-005 (interruption before/after effect, cases A+B) | 2 | I1, I3; OQ-006 H1 | pass |
 | JOB-006 (expired-lease reclaim, fenced worker) | 1 | I2; OQ-006 H2 | pass |
 | JOB-007 case A (1 job, 4 workers, 5 reps) | 5 | I2; OQ-006 H2 | pass |
@@ -81,6 +82,23 @@ any new file. Suite total after Task 9: 318/318; after Task 10 (adds one measure
 | JOB-008 case B (20 colliding jobs, 5 reps) | 5 | I1 | pass |
 | JOB-008 case C (20 distinct keys, control, 5 reps) | 5 | I1 (control) | pass |
 | **Total** | **41** | — | **41/41** |
+
+`[확인 사실]` REVIEW-M1 F2: this table's "Contract clause" column names rows of
+CONTRACT-JOB-0.1's "State transitions" table, counted top to bottom from its
+first data row (— → `PENDING`) as row 1, and JOB-004 exercises row 7
+(permanent failure, one
+attempt, `RUNNING` → `FAILED`) — a prior revision of this cell cited "rows
+3/6", which are the reclaim and retryable-exhaustion rows, not this scenario's.
+Those numbers were correct only against a *different* table: `JOB-004`'s own
+scenario document (`tests/acceptance/JOB-004-permanent-failure-is-not-retried.md:34-39`)
+numbers its **steps**, not contract rows, and step 3 is where both of this
+scenario's transitions happen — a second numbering scheme entirely, the same
+trap `SEC-00x` finding ids fell into elsewhere in this project. The defect was
+transplanting the scenario document's step number into a column headed
+Contract clause. The other ten cells in this table cite invariants (`I1`–`I5`)
+rather than transition-table rows and were checked against the contract's
+"Invariants" section while fixing this one; none of them mis-cite a row
+number.
 
 `[확인 사실]` JOB-008 case A's scenario document asks for an operator safe retry of a `SUCCEEDED`
 job, which CONTRACT-JOB@0.1's transition table permits only from `FAILED`. This is a restated P0
@@ -170,11 +188,29 @@ did. Flagged, not fixed, in M1.
   Task 7-8 report, deviation 3) — `worker.py`'s one call site is `describe(self._config,
   "runtime")`.
 - `connect()` exists with no `connected()` context-manager wrapper — P0-A's `api/app.py` used
-  `with connected(config, autocommit=True) as handle:` throughout; P1 verified empirically that
-  an ordinary `psycopg.Connection`'s own `with`-exit already commits-or-rolls-back then closes,
-  so every call site became `with connect(config, ...)` with identical behavior (Task 7-8 report,
-  deviation 2). Not a contract deviation — `connected()` was never part of CONTRACT-JOB@0.1 — but
-  a shape change from the P0 source the briefs said to copy-adapt.
+  `with connected(config, autocommit=True) as handle:` throughout, and P0's `connected()`
+  deliberately **rolled back** on a clean exit rather than committing
+  (`experiments/integrated-p0/platform_core/db/connection.py`: "It does not commit for you...
+  leaving the block without committing rolls back and says so"). An ordinary
+  `psycopg.Connection.__exit__` does the opposite — it **commits** on a clean exit and rolls
+  back only on an exception. `[측정]` REVIEW-M1 F5: "identical behavior" is therefore true only
+  at the autocommit call sites this milestone actually has — every `with connect(config, ...)` in
+  `api/app.py` and `worker.py` passes `autocommit=True`, where commit-vs-rollback is a no-op
+  either way — and is not true in general. `apps/tests/conftest.py`'s `runtime_connection`
+  fixture opens a **non-autocommit** connection (`connect(platform_config, role="runtime")`,
+  default `autocommit=False`), so its `with connect(...) as connection: yield connection` now
+  commits on a clean exit where P0's `connected()` would have rolled back.
+  `apps/tests/test_migrate.py::test_the_runtime_role_cannot_run_ddl` (`:74-80`) only survives this
+  because it calls `runtime_connection.rollback()` itself, as a compensating rollback, immediately
+  after the DDL statement it expects to fail (`:78-80`'s own comment: "roll it back so the
+  fixture's own `with connect(...)` teardown does not try to commit one"). That compensation is a
+  test carrying a safety property the connection layer used to provide on its own — a real,
+  observable narrowing, not merely a theoretical one: a future non-autocommit caller of `connect()`
+  that does not add its own compensating rollback would commit a partial write P0's `connected()`
+  would have discarded. Not a contract deviation — `connected()` was never part of
+  CONTRACT-JOB@0.1 — but a dropped safety property from the P0 source the briefs said to
+  copy-adapt, recorded rather than fixed in M1 (a prior revision of this bullet claimed the two
+  were simply "identical").
 - `COSMA_ADDON_DIR`/`ADDON_DIR_VARIABLE` was dropped from `RECOGNIZED_UNUSED` rather than carried
   forward: P0 recognized it because `addon_host.settings` reads it (DP-008 D1); P1 builds no
   add-on host in M1, so there is nothing yet for the variable to serve. Deferred to the milestone
@@ -193,8 +229,10 @@ instruction, read literally — destroys the old OID and allocates a new one the
 provisioning-time binding does not cover; every table created after that reset would be owned by
 `cosmai_owner` with **no** grant to `cosmai_runtime` at all: a silent, not-loud failure (empty
 result set, no permission error). `[결정]` Fixed by having `apps/tests/conftest.py`'s
-`_reset_schema` reissue `apps/db/provision_db.sql`'s Part B grants (`revoke all ... from public`,
-`grant usage on schema ... to cosmai_runtime`, both `alter default privileges` statements)
+`_reset_schema` reissue `apps/db/provision_db.sql`'s Part B grants — five statements in total
+(`revoke all ... from public`; `grant usage on schema ... to cosmai_runtime`; and three
+`alter default privileges` statements, one each for tables, sequences, and functions;
+REVIEW-M1 F11, a prior revision of this line said "both", counting two) —
 immediately after `create schema`, over the same migrator connection — re-verified manually and
 via the full test suite (Task 3-4 report, "A real bug found and fixed before committing"). The
 same caveat has been added to `apps/db/provision.md` in this commit (see below) for any future
@@ -202,7 +240,11 @@ re-provisioning script that drops and recreates the schema rather than migrating
 
 **6. The M1 test suite is an invariant-mapped curated subset of P0's job-core tests, not a
 line-for-line port; Task 5's commit alone is not independently checkout-buildable.**
-`[확인 사실]` P0's four job-core test files total 2793 lines and exercise infrastructure M1's
+`[측정]` P0's four job-core test files total 2658 lines (`test_jobs.py` 961 +
+`test_job_concurrency.py` 864 + `test_job_failure_paths.py` 500 +
+`test_job_interruption.py` 333, each measured with `wc -l`; REVIEW-M1 F4 — a
+prior revision of this line said 2793, which this record's own preamble
+promises is "quoted, not recalled" and was neither) and exercise infrastructure M1's
 Task 6 file list does not build (`platform_core.handlers`, `platform_core.worker`,
 `platform_core.api`, real multi-process concurrency). Task 6's `test_jobs_store.py` (34 tests)
 and `test_jobs_runner.py` (14 tests) are copy-adapted in spirit, mapped explicitly to
@@ -236,6 +278,61 @@ the only supported mode for M1**; `-n 4` or any parallel worker count greater th
 shared `cosmai_test` database is a known, reproducible hazard, not a flake, until this is
 resolved by either scoping/locking `_reset_schema` differently or provisioning per-worker
 databases.
+
+**8. DP-032's new `lock_timeout` makes SQLSTATE `55P03` reachable for the first time; `classify()`
+now reclassifies it as retryable, and `25P03` is deliberately left as it was.** `[확인 사실]`
+`apps/db/provision.sql` sets `lock_timeout='5s'` where P0 set none, and `_FENCE` (`store.py`)
+ends every completion statement with `for update of j` — a blocking lock acquisition that P0's
+unlimited wait could never time out and P1's 5-second one can. `[측정]` REVIEW-M1 F3 measured
+this statically before the fix: `55P03 → ConfigurationInvalidError, retryable=False`,
+`25P03 → ConfigurationInvalidError, retryable=False`, `57014 → PlatformTransientError,
+retryable=True` — the three new session defaults (`statement_timeout`, `lock_timeout`,
+`idle_in_transaction_session_timeout`) did not behave alike, and a lock wait on the job row
+(an API retry racing a fenced completion is the concrete path F3 names) would terminate the
+worker with the class CONTRACT-JOB@0.1 reserves for "no number of retries fixes it." `[결정]`
+Fixed: `platform_core.db.connection.classify` now maps `55P03` individually to
+`PlatformTransientError` (waiting on contention is a sensible response, the same reasoning
+already applied to classes `53`/`57`), with a no-DB unit test
+(`apps/tests/test_db_connection.py`) asserting `55P03 → retryable=True` and, as the explicit
+boundary, `25P03 → retryable=False`. `25P03` (idle-in-transaction timeout) is deliberately **not**
+reclassified: an idle transaction is a worker that stopped making progress, not contention with
+another transaction, and this fix wave does not claim that distinction is settled — it is carried
+as an open, dated line in `docs/open-questions/OQ-006-job-concurrency.md`. **What this deviation
+does not cover:** no scenario here or elsewhere in M1 produces a real lock wait past 5 seconds —
+the `55P03` branch is reclassified and unit-tested against a synthetic driver error, not measured
+live, and the backoff curve a retried `55P03` would actually ride is untested past attempt 1 (see
+the coverage gaps below). Cite REVIEW-M1 F3.
+
+**9. DP-032 D2's draft connection-budget split was revised without registering the revision, and
+D2's own handoff asked for a confirmation against the real server that was skipped until this fix
+wave.** `[확인 사실]` DP-032 D2's exact text: "Connection budget is 16, fixed by `CONNECTION
+LIMIT`: API 4, worker 4, scheduler 2, migration 1, headroom 5. This is a draft the M1 manifest
+records and can revise before provisioning against the real server's `max_connections` and
+reserved-connection settings." `apps/db/service-db.json`'s `runtime_breakdown` instead reads
+`{"api": 4, "worker": 4, "scheduler_reserved": 2, "headroom": 2}` against a separate
+`migrator_connection_limit: 2` and `reserve: 2` — migrator 2 (not the draft's 1) and headroom 2
+(not the draft's 5), with the difference absorbed into a `reserve: 2` the draft names as a
+category but not a number. The arithmetic still closes (4+4+2+2=12 runtime, +2 migrator +2
+reserve = 16), and D2's own text pre-authorizes exactly this kind of revision — but nothing
+registered *that* the split had been revised, which is what REVIEW-M1 F9 named. `[결정]` Registered
+here. The field itself is also renamed in this fix wave: it was `"slack"` (REVIEW-M1 F9: "a
+one-off token"), now `"headroom"`, matching the name DP-032 D2's own draft used for the same
+category. `[측정]` D2's implementation handoff also asked M1 to "confirm the connection-budget
+draft against the real server before fixing it with `CONNECTION LIMIT`" — REVIEW-M1 supplied the
+missing confirmation (`max_connections=100`, 17 active connections observed, so the budget of 16
+fits comfortably) and this fix wave reproduced the server-side half of it directly:
+`docker exec tubedepth-postgres psql -U fleet -d postgres -Atc "show max_connections;"` →
+`100`, confirmed live 2026-08-21. The "17 active" figure is REVIEW-M1's own measurement, taken at
+review time, and is attributed to the review rather than re-measured here as if it were this fix
+wave's own observation.
+
+**Named coverage gaps carried forward, not fixed in this fix wave (REVIEW-M1 F12/F13).**
+- I3 ("no stranded state") has no invariant-level check — the state machine's transitions are
+  each tested individually, but nothing asserts the broader property that every job is either
+  terminal or claimable, for every reachable state.
+- I4's inequality (`attempt_count` never exceeds `max_attempts`) is never asserted directly, and
+  the retry-backoff curve is untested past attempt 1 — a constant 50 ms backoff at every attempt
+  would still pass the suite as written.
 
 ## (d) `search_path` strategy
 
@@ -280,3 +377,29 @@ operating-rules document's rule 0 reasoning DP-032 D1 carries forward ("rule 0's
 - Root guard: `.venv/bin/python -m pytest tests/environment -q` — **81 passed**.
 - `cd apps && uv run python -m pytest -q` (unsandboxed, real DB on loopback TCP) —
   **319 passed**.
+
+### Re-verified after the REVIEW-M1 fix wave
+
+`[측정]` 2026-08-21. REVIEW-M1 F8: the command above, run exactly as written and with no
+`COSMA_DB_*` variables set, fails all 319 collected items with `ConfigurationInvalidError:
+cannot reach the platform database` — it was never actually a complete, standalone recipe, only
+a description of the one gate that was clean. The full recipe, unsandboxed (the sandbox shadows
+`~/.config/cosmai/env` and blocks the loopback TCP connection to `127.0.0.1:5433`; see
+`docker exec`/TCP note in the fix-wave's own constraints):
+
+```sh
+cd apps
+COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
+  ../scripts/with-secret-source.sh uv run python -m pytest -q
+```
+
+(`COSMA_DB_NAME` is not actually load-bearing — `tests/conftest.py`'s `platform_config` fixture
+forces `cosmai_test` regardless of what the environment names — but naming the database this
+recipe actually needs is the correction OQ-006's own recipes needed for the same reason.)
+
+- `cd apps && uv run mypy --strict .` — clean, 40 source files.
+- `cd apps && uv run ruff check .` — clean.
+- The recipe above — **328 passed** (was 319; +6 from `apps/tests/test_db_connection.py` (F3)
+  and +3 from `apps/tests/test_api.py` (F14)).
+- Root guard: `.venv/bin/python -m pytest tests/environment -q` — **82 passed** (was 81;
+  `tests/environment/test_p1_isolation.py`, F7).

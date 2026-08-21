@@ -3,3 +3,11 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# REVIEW-M1 F10: the root .gitignore's private-data patterns are root-anchored
+# (docs/conventions/data-handling.md's `local`/`private` classes), so anything
+# under this tree's own data/tests/fixtures directories was committable
+# despite the root patterns' intent. Anchored here too, not only at the root.
+data/private/
+tests/fixtures/private/
+tests/fixtures/local/**

@@ -125,11 +125,12 @@ across the four workers was even in every repetition (49–51 claims each of 200
 ranged 0–2 per run; `suppressed_duplicate_effects` and `rejected_completions` were 0 in every
 repetition, as JOB-007 case B requires.
 
-Reproduction:
+Reproduction (`COSMA_DB_NAME=cosmai_test`, not the production `cosmai` named in an earlier
+revision of this line — see the note after Measurement 2):
 
 ```sh
 cd apps
-COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai COSMA_DB_USER=cosmai_runtime \
+COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
   ../scripts/with-secret-source.sh env JOB_007_REPETITIONS=10 F16_REPETITIONS=0 \
   bash tests/concurrency/run_measurements.sh
 ```
@@ -144,14 +145,20 @@ node id, twenty times under `pytest -n 4`, each repetition a separate process.
 `[측정]` **Result: 0/20 failures.** Wall-clock 16s total (~0.6–0.8s/repetition, most of it xdist
 worker startup).
 
-Reproduction:
+Reproduction (`COSMA_DB_NAME=cosmai_test`; see the note below):
 
 ```sh
 cd apps
-COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai COSMA_DB_USER=cosmai_runtime \
+COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
   ../scripts/with-secret-source.sh env JOB_007_REPETITIONS=0 F16_REPETITIONS=20 \
   bash tests/concurrency/run_measurements.sh
 ```
+
+`[측정]` 2026-08-21, REVIEW-M1 F8: both recipes above named `COSMA_DB_NAME=cosmai` (the
+production database) in an earlier revision of this section — harmless only because
+`tests/conftest.py`'s `platform_config` fixture forces `cosmai_test` regardless of what the
+environment names, but a recipe that names the wrong database by accident is a control that
+happened to hold, not one that was checked. Corrected to the database the run actually needs.
 
 ### What these two results do NOT establish
 
@@ -182,7 +189,7 @@ selection —
 
 ```sh
 cd apps
-COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai COSMA_DB_USER=cosmai_runtime \
+COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime \
   ../scripts/with-secret-source.sh uv run python -m pytest tests -n 4 -q
 ```
 
@@ -215,3 +222,15 @@ that result cannot be read as isolation holding under genuine parallel execution
 across the apps/ suite must simply never be run against the shared `cosmai_test` database, or
 `_reset_schema` needs its own coordination for a parallel session, is unresolved and is recorded
 here for whoever picks it up next rather than decided or patched by this task.
+
+## 2026-08-21 — `25P03` (idle-in-transaction timeout) left non-retryable, open
+
+`[결정]` REVIEW-M1 F3's fix-wave reclassified `55P03` (lock not available) as
+`PLATFORM_TRANSIENT` in `platform_core.db.connection.classify`, reachable now that DP-032's
+`provision.sql` sets `lock_timeout='5s'`. `25P03` (idle-in-transaction timeout, from the same
+`provision.sql`'s `idle_in_transaction_session_timeout='15s'`) was deliberately left
+`CONFIGURATION_INVALID` — an idle transaction is a worker that stopped making progress, not
+contention with another transaction, so the two SQLSTATEs were not given the same answer.
+Whether that distinction is the right one, and whether `25P03` should instead retry a bounded
+number of times, is unresolved and is carried here rather than decided by the fix wave that
+found it. See `docs/p1/M1-RECORD.md` §c deviation 8 and REVIEW-M1 F3.

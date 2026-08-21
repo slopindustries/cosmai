@@ -292,6 +292,82 @@ def test_an_unknown_job_is_a_404(platform_config: PlatformConfig) -> None:
             assert response.status_code == 404, response.text
 
 
+def test_a_failed_jobs_retry_is_accepted_and_returns_to_pending(
+    platform_config: PlatformConfig, job_store: JobStore
+) -> None:
+    """OPS-002 / transition row 9, and the API's own coverage of it (REVIEW-M1 F14).
+
+    ``test_jobs_store.py``'s ``TestRequestRetry`` already covers the store's
+    ``request_retry`` directly; this is the operator-facing half — the route
+    itself, read from the same store semantics `POST /jobs/{job_id}/retry`
+    documents itself as producing.
+    """
+    job_id = job_store.create_job("fail_permanent", {}, max_attempts=1)
+    claimed = job_store.claim_next(WORKER, LEASE_SECONDS)
+    assert claimed is not None
+    completion = job_store.complete_permanent(
+        job_id, claimed.attempt_id, WORKER, PlatformPermanentError("injected for F14")
+    )
+    assert completion.accepted
+    before = job_store.read_job(job_id)
+    assert before is not None
+    assert before["state"] == "FAILED"
+
+    with running_api(platform_config) as api:
+        response = httpx.post(
+            f"{api.base_url}/jobs/{job_id}/retry", timeout=REQUEST_TIMEOUT_SECONDS
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["accepted"] is True
+    assert body["previous_state"] == "FAILED"
+    assert body["current_state"] == "PENDING"
+    assert body["job"]["state"] == "PENDING"
+
+    after = job_store.read_job(job_id)
+    assert after is not None
+    assert after["state"] == "PENDING"
+    assert after["attempt_count"] == 0, "the store's own semantics: budget restored"
+    assert after["terminal_reason"] is None
+
+
+def test_a_retry_on_a_non_failed_job_is_refused_with_409(
+    platform_config: PlatformConfig, job_store: JobStore
+) -> None:
+    job_id = job_store.create_job("succeed", {}, max_attempts=1)  # PENDING, never FAILED
+    with running_api(platform_config) as api:
+        response = httpx.post(
+            f"{api.base_url}/jobs/{job_id}/retry", timeout=REQUEST_TIMEOUT_SECONDS
+        )
+    assert response.status_code == 409, response.text
+    body = response.json()
+    assert body["accepted"] is False
+    assert body["current_state"] == "PENDING"
+    assert body["required_state"] == "FAILED"
+
+    unchanged = job_store.read_job(job_id)
+    assert unchanged is not None
+    assert unchanged["state"] == "PENDING", "a refused retry changes nothing"
+
+
+def test_listed_jobs_each_carry_their_own_correlation_id(
+    platform_config: PlatformConfig, job_store: JobStore
+) -> None:
+    """I5 is total; `/jobs/{id}` and `/attempts` are already covered — the list wasn't."""
+    first = job_store.create_job("succeed", {}, max_attempts=1, correlation_id="corr-a")
+    second = job_store.create_job("succeed", {}, max_attempts=1, correlation_id="corr-b")
+    with running_api(platform_config) as api:
+        response = httpx.get(
+            f"{api.base_url}/jobs",
+            params={"limit": 200},
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+    assert response.status_code == 200, response.text
+    by_id = {UUID(job["id"]): job for job in response.json()["jobs"]}
+    assert by_id[first]["correlation_id"] == "corr-a"
+    assert by_id[second]["correlation_id"] == "corr-b"
+
+
 def test_an_unrecognised_debug_value_is_rejected_rather_than_read_as_default(
     platform_config: PlatformConfig,
 ) -> None:
