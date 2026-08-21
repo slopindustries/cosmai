@@ -26,6 +26,16 @@ testpaths = ["tests"]
 
 [tool.mypy]
 strict = true
+# `addons/` is excluded for a different reason and not because it is unchecked.
+# Every add-on's entry file is conventionally `handler.py`, and add-ons are
+# deliberately independent roots loaded by path rather than imported by name
+# (DP-008 D2) — so two of them collide in mypy's single module namespace the
+# moment a second add-on exists: "Duplicate module named handler". `apps/scripts/
+# check-addons.sh` type-checks each installed add-on directory on its own, which
+# does not hit this limit, mirroring `experiments/integrated-p0/pyproject.toml`'s
+# and `scripts/check-addons.sh`'s own documented resolution
+# (`docs/conventions/addon-authoring.md`, "검사하는 방법").
+exclude = ["^addons/"]
 
 [tool.ruff]
 line-length = 100
