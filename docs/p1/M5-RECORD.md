@@ -5,10 +5,11 @@
 - Consumed by: M7's full adversarial review, per the batch plan
   (`docs/superpowers/plans/2026-08-21-m2-m7-batch.md` §M5).
 
-This record grows one section per batch. All six DP-033 D1 screens now have a complete UI
-(batches 5a–5d); what remains is a final wiring/live-integration pass — batch 5-final, per the
-controller ruling recorded in the 5d section below — replacing every mocked or real-but-unwired
-call with the real thing once M2 and M6 land in dev. Its section is added when that batch lands.
+This record grows one section per batch. All six DP-033 D1 screens now have a complete UI, and as
+of batch 5-final every wired call is real and live-verified against M2's domain API and M6's
+scheduler/export routes (merged from `dev`) — the only remaining gap is M3's `addon:*` worker,
+which is out of Lane B's scope entirely (collect/import stay disabled with a note, per the batch
+5-final dispatch).
 
 ## Batch 5a — scaffold, jobs monitor, health/metrics
 
@@ -359,3 +360,207 @@ exit code 0 both before and after the fix (the warning did not fail the gate, bu
 the dispatch brief's own gate means no findings, not just a zero exit code).
 
 No Python gates were run for this batch (no Python files touched).
+
+## Batch 5-final — real wiring against M2/M6, live integration smoke
+
+- Date: 2026-08-21.
+
+`[결정]` Coordinator dispatch: `git merge dev` (M2's domain API, M6's scheduler and export
+streaming, both real and merged) into `p1/m5-dashboard`; reconcile the client layer against the
+real route shapes in `apps/domain/api.py`/`apps/domain/export.py`; update component-test mocks to
+mirror the real response shapes; run a live integration smoke against the actual stack; leave
+collect/import (M3-pending) disabled with a visible note.
+
+### Merge
+
+`git merge dev --no-ff` inside the worktree: no conflicts (disjoint paths — Lane A/C added
+`apps/domain/`, `apps/scheduler/`, `apps/tests/test_domain_*.py`/`test_export.py`/
+`test_scheduler.py`/`test_credentials.py`, migration `0002_domain.sql`; Lane B had touched none of
+those). Brought in `apps/domain/api.py`, `apps/domain/export.py`, `apps/domain/store.py`,
+`apps/scheduler/`, and `docs/p1/M2-RECORD.md`/`M6-RECORD.md`.
+
+### Reconciliation: what was read, and every mismatch found (record any mismatch found — matching the backend, per the dispatch)
+
+Read directly (not the plan's prose summary) before writing any client code: `apps/domain/api.py`
+in full (every route's actual signature and view function), `apps/domain/export.py` in full
+(`stream_raw`/`stream_results`, the format branch, the query text), and the relevant slices of
+`apps/domain/store.py` (`SourceRow`, `RawItemRow`, `record_envelope`/`record_items`,
+`raw_summary`, `read_schedule`/`upsert_schedule`, `seal_snapshot_from_raw`, `read_results`).
+
+1. **`GET /sources/{id}/raw/items` has no `matched` field.** `platform_core.api.app`'s `GET
+   /jobs` returns `{..., returned, matched, jobs}`; `apps/domain/api.py`'s `read_raw_items`
+   returns `{..., returned, items}` — `returned` only. Batch 5b/5c's `RawItemPage` type and
+   `DataBrowserScreen`'s pagination both assumed `matched` existed (copied the jobs-page shape
+   without checking the raw-items route had the same one). Fixed: `matched` removed from the
+   type; `DataBrowserScreen`'s "Next" button now disables on `returned < limit` — the only signal
+   available without a total count.
+2. **`GET/POST /export/results` accepts `jsonl` or `csv`, not CSV-only.** The plan's own prose
+   ("정규화 결과는 CSV 평탄화") and batch 5d's `buildExportUrl` both read `/export/results` as
+   CSV-only and forced `format=csv` whenever "normalized results" was selected. Reading
+   `apps/domain/api.py`'s `export_results` and `apps/domain/export.py`'s `stream_results`
+   directly shows the real signature is identical to `export_raw`'s —
+   `format: Annotated[Literal["jsonl", "csv"], _FORMAT_QUERY] = "jsonl"`, no kind-specific
+   restriction anywhere. Fixed: `buildExportUrl` no longer forces a format by kind; `DownloadScreen`
+   no longer disables the JSONL radio for normalized results. Verified live (below): both
+   `/export/raw` and `/export/results` served `jsonl` and `csv` identically.
+3. **`POST /snapshots/{id}/normalize` takes a normalizer *source id*, not an addon/version pair.**
+   Batch 5d's create-run picker offered a mocked `{addon_id, version}` pair with no backing route
+   for that shape. The real route (`start_normalization`) takes `{source_id}` in the body — a
+   registered source of `kind == "normalizer"` — because a normalizer is itself a registered
+   source row with its own `addon_id`/`addon_version` already fixed at registration; the route
+   even 409s if the named source isn't `kind == "normalizer"`. Fixed:
+   `NormalizeManagementScreen`'s picker now lists registered `kind === "normalizer"` sources by
+   `source_id`.
+4. **The credential write route is genuinely write-only — there is no "configured" status to
+   query, ever.** Batch 5b/5c's `CredentialForm` took a `configuredPurposes` prop and rendered
+   "configured"/"not configured" against it, implying a server-known, queryable truth. DP-034 D1's
+   own text (confirmed by reading `apps/domain/api.py`'s `write_source_credential` and
+   `platform_core/secrets.py`'s `write_credential`) is explicit that the route never reads a value
+   back and no route anywhere reports whether a purpose is configured — `source_view`'s
+   `credential_ref` is a single, source-level ref name, not a per-purpose configured/unconfigured
+   map. `configuredPurposes` wasn't standing in for a route that hadn't landed; it was mocking
+   information the real system cannot provide at all. Fixed: the prop is removed; the badge now
+   reads "written this session" / "not written this session" (this component's own local state),
+   never a claim about server state the component cannot see.
+
+### M3-pending: collect/import (left disabled, per the dispatch)
+
+`apps/domain/api.py`'s own docstring states `POST /sources/{id}/collect` and `.../import` were
+**never built** — both would create a job for handler `addon:<addon_id>`, and nothing in this
+tree registers a handler for that prefix until M3's `addon_host` lands, so such a job would sit
+`PENDING` forever. `CollectorDomainScreen` now shows a disabled "Collect now" button
+(`data-testid="collect-now-button"`) with a visible note
+(`data-testid="collect-disabled-note"`, text: *"Collection dispatch arrives with the add-on host
+(M3). apps/domain/api.py builds no /collect route yet..."*) rather than omitting the action or
+calling a route that does not exist. `POST /snapshots/{id}/normalize` **is** wired for real (the
+batch brief's own scope), even though it shares the same eventual-dispatch gap — a created
+normalize job also stays `PENDING` until M3; the UI's success message says so explicitly
+("It stays PENDING until M3 registers a worker for it").
+
+### Wiring table
+
+| Endpoint | Screen(s) | Status |
+|---|---|---|
+| `GET /sources` | Collectors, Data Browser, Normalization, Downloads | real, live-verified |
+| `GET /sources/{id}` | (client function; not directly consumed by a screen yet — `useSourceQuery` exists for batch 5c's later use) | real, live-verified |
+| `GET /sources/{id}/raw` | Collectors (status header: item count, last retrieved) | real, live-verified |
+| `GET /sources/{id}/raw/items` | Data Browser | real, live-verified |
+| `GET /sources/{id}/schedule` | Collectors | real, live-verified |
+| `PUT /sources/{id}/schedule` | Collectors | real, live-verified |
+| `POST /sources/{id}/credentials` | Collectors (`CredentialForm`) | real, live-verified (success + 422 validation refusal) |
+| `POST /sources/{id}/snapshots` (seal) | Normalization | real, live-verified |
+| `GET /snapshots?source_id=` | Normalization | real, live-verified |
+| `POST /snapshots/{id}/normalize` | Normalization | real, live-verified (job created; stays `PENDING`, M3) |
+| `GET /snapshots/{id}/results` | Normalization | real, live-verified (empty result set — no worker has run yet, expected) |
+| `GET /export/raw` | Downloads (URL only, no fetch) | real, live-verified via curl (jsonl + csv) |
+| `GET /export/results` | Downloads (URL only, no fetch) | real, live-verified via curl (jsonl + csv; the format-forcing mismatch above was caught here) |
+| `POST /sources/{id}/collect`, `POST /sources/{id}/import` | Collectors ("Collect now") | does not exist (M3); disabled with a note, per the dispatch |
+| `GET /jobs`, `/jobs/{id}`, `/jobs/{id}/attempts`, `POST /jobs/{id}/retry`, `/health`, `/metrics` | Jobs monitor, Health | unchanged from batch 5a — `platform_core.api.app`, real since M1 |
+
+### Live integration smoke
+
+`[측정]` Full sequence, 2026-08-21, unsandboxed for DB/env/loopback per the dispatch:
+
+1. **Python gates (no Python changed this batch):** `cd apps && uv run mypy --strict .` — clean,
+   57 source files. `uv run ruff check .` — clean.
+2. **`apps` pytest suite**, `COSMA_TEST_DB=cosmai_test_2`, port `5434`: **605 passed, 2 failed.**
+   The 2 failures (`test_outbound_transport.py::TestLoopbackIsOnlyReachableByFlag`, both of its
+   tests) are a **pre-existing defect exposed by running from inside a worktree, not a
+   regression from this batch or from the M2/M6 merge** — diagnosed directly: the class's
+   `SKIPPED_PARTS = (..., ".worktrees")` is checked against each file's *absolute* `path.parts`,
+   and `REPO_ROOT` (`Path(__file__).resolve().parents[2]`) for this lane is itself
+   `.../cosmai/.worktrees/m5` — so `.worktrees` appears in literally every scanned file's `parts`,
+   the `not any(part in SKIPPED_PARTS ...)` guard is false for everything, and the scan silently
+   returns zero files (confirmed with a throwaway diagnostic script: plain `os.walk`/`rglob` over
+   the same root, run both standalone and inside a bare pytest file with the real `conftest.py`
+   loaded, correctly found 45,000+ files with zero errors — the defect is specific to this one
+   test class's own `SKIPPED_PARTS` entry, not the environment, pytest, or any Python this batch
+   touched). Not fixed here: out of Lane B's scope (no Python changes this batch), and the class
+   belongs to Lane A's outbound-guard test suite. Recorded per AGENTS.md's classify-before-patching
+   rule rather than silently rerun until green.
+3. **Schema reset + migration**, migrator path (mirroring `apps/tests/conftest.py`'s
+   `_reset_schema` + `apply_migrations`, per the dispatch's own pointer): `drop schema if exists
+   cosmai cascade; create schema cosmai` plus the same five grant statements
+   `apps/db/provision_db.sql`/`conftest.py` use, then `apply_migrations` — applied
+   `0001_platform_core`, `0002_domain` cleanly against `cosmai_test_2` on `127.0.0.1:5434`.
+4. **Seed**: one throwaway script (`platform_core.db.connection.connect(role="runtime")` +
+   `domain.store.DomainStore`/`platform_core.jobs.store.JobStore`) registered `smoke-collector`
+   (kind `collector`, addon `collector.naver.blog`) and `smoke-normalizer` (kind `normalizer`,
+   addon `normalizer.naver.blog`), then wrote 3 Raw items for `smoke-collector` through a real
+   job+attempt (`raw_envelope.job_id`/`attempt_id` are `NOT NULL` foreign keys — seeding needs a
+   real claimed attempt, not a bare insert). One seeded item's payload deliberately contains
+   `<script>alert(1)</script>`, carrying DP-033 D2's plain-text control through to a real stored
+   row rather than only a mocked one.
+5. **API boot**: `python -m` equivalent script composing `platform_core.api.app.create_app(config,
+   logger, extend=domain.api.extend_with_domain(config, logger))` — the same `extend` seam
+   `platform_core.api.__main__.serve()` exposes, since no standalone `apps/domain/__main__.py`
+   entrypoint exists yet (that composition decision is M3's, per `apps/domain/api.py`'s own
+   docstring: "M3 must decide whether to import `extend_with_domain` from here... or move this
+   module's routes into `addon_host.api` outright"). Bound `127.0.0.1:8100`
+   (`COSMA_API_PORT=8100`), DB `cosmai_test_2` on `127.0.0.1:5434`.
+6. **curl verification**, every route in the wiring table above, response shapes compared field
+   by field against the TypeScript types: `GET /health` → `200`; `GET /sources` → both seeded
+   sources, matching `Source` exactly; `GET /sources/{id}/raw` → `{item_count: 3, ...}`; `GET
+   .../raw/items` → 3 items in `seq` order, `<script>` payload intact and unescaped in the JSON
+   string (correct — escaping is the dashboard's rendering job, not the API's); `PUT`/`GET
+   .../schedule` round-tripped `{interval_seconds: 3600, enabled: true}`; `POST
+   .../snapshots` sealed a 3-item snapshot, `verifies: true`; `GET /snapshots?source_id=` listed
+   it; `POST /snapshots/{id}/normalize` with `{source_id: "smoke-normalizer"}` returned `201`
+   `{job_id, snapshot_id}`; `GET .../results` returned `{results: []}` (correct — no worker has
+   run the job, M3); `POST .../credentials` returned `204` on a valid write and `422` `{detail:
+   ...}` on an empty purpose (the plain FastAPI `HTTPException` shape, not the
+   `CredentialWriteRefusal` shape — both are handled by `writeCredential`'s fallback, per its own
+   code); `GET /export/raw` and `GET /export/results`, both `format=jsonl` and `format=csv`,
+   streamed correctly with `content-type: application/x-ndjson`/`text/csv` and a
+   `content-disposition: attachment` header on a `GET` (a `curl -I` HEAD request showed a
+   misleading `content-type: application/json` — an artifact of HEAD against a
+   `StreamingResponse`, not a real defect; confirmed by comparing against the real `GET` headers
+   with `curl -D -`).
+7. **Client-module round-trip** (vitest, no mocked `fetch`, real network to `127.0.0.1:8100`, via
+   `VITE_API_BASE`): a throwaway `src/__live_smoke__.test.ts` imported `api/client.ts`'s real
+   functions directly — `listSources`, `readSource`, `readRawSummary`, `readRawItems`,
+   `readSchedule`, `listSnapshots`, `sealSnapshot`, `createNormalizeRun`, `writeCredential` — **9
+   tests, all passing**, including one asserting `"matched" in page === false` on the raw-items
+   page (the mismatch fix, checked against the live response, not a mock) and one confirming
+   `sealSnapshot("smoke-normalizer")` (wrong kind) comes back as `DomainRefused` rather than
+   throwing. Deleted before this batch's commits — never part of the committed suite, since
+   `npm test`'s normal run has no live server to hit.
+8. **Dev-server sanity check**: `vite` dev server booted against `VITE_API_BASE=http://127.0.0.1:8100`
+   on port `5180`; root document served `200`.
+9. **Cleanup**: API server and dev server processes killed; both ports (`8100`, `5180`) confirmed
+   refusing connections (`curl` → `000`) afterward. The seeded rows remain in `cosmai_test_2`
+   (a disposable lane test database, not `cosmai` production) — not cleaned up, since nothing in
+   this batch's scope required leaving that database empty, and the next `pytest` run against it
+   resets the schema anyway (`_reset_schema`, session-scoped autouse).
+
+### What remains unwired (updated from batch 5d)
+
+- `POST /sources/{id}/collect`, `POST /sources/{id}/import` — do not exist in `apps/domain/api.py`
+  at all (M3's gap, not this lane's). `CollectorDomainScreen` shows both disabled with a note.
+- `POST /snapshots/{id}/normalize` creates a real job that stays `PENDING` until M3 registers an
+  `addon:*` worker — the route is fully wired; what's missing is downstream of this lane.
+- `ConfigSchemaForm`'s field definitions are still a per-`addon_id` mock
+  (`MOCK_CONFIG_SCHEMAS` in `CollectorDomainScreen.tsx`) — no route anywhere exposes an add-on
+  manifest's `[[config.field]]` schema; that is M3/`addon_host` territory. Submitting the form is
+  still a no-op (no config-write route exists either).
+- Everything else named in batch 5b/5c/5d's "what remains unwired" sections is now real: the
+  source list/detail, schedule, seal, normalize-run creation, and results routes are all wired
+  and live-verified above.
+
+### Verification
+
+`[측정]` `npm run build` (`tsc -b && vite build`), 2026-08-21: clean, no TypeScript errors. Bundle
+~589 kB / 179 kB gzip (up from batch 5d's ~549 kB / 166 kB — the domain type/client surface grew
+substantially; still one chunk, still over Vite's 500 kB warning threshold, still unaddressed).
+
+`[측정]` `npm test` (`vitest run`), 2026-08-21: **37 passed, 0 failed** — the same 37 from batch
+5d, with `CredentialForm.test.tsx`, `DataBrowserScreen.test.tsx`, `CollectorDomainScreen.test.tsx`,
+`NormalizeManagementScreen.test.tsx`, and `DownloadScreen.test.tsx` all rewritten to mock the real
+response shapes (derived from `apps/domain/api.py`'s view functions, not from batch 5b/5c/5d's
+earlier guesses) rather than the old mock-source-list shapes.
+
+`[측정]` `npm run lint` (`oxlint`), 2026-08-21: clean, no findings.
+
+Commits are logical: (1) the `dev` merge, (2) the type/client/query reconciliation, (3) the
+`CredentialForm` fix (removing `configuredPurposes`), (4) the four screens' real wiring, (5) the
+`buildExportUrl` format-forcing fix, (6) the rewritten component tests, (7) this record.
