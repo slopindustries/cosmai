@@ -1,0 +1,38 @@
+# normalizer.naver.trend — DataLab points into `Normalized Schema 0.2` trend records.
+#
+# One normalizer for the DataLab collector's three modes. Search Trend and both Shopping
+# Insight breakdowns produce the same Raw item — the collector already unrolled the
+# response's nesting into one point per (series, period), DP-021 D4 — so what is left is the
+# same mapping for all three.
+#
+# `output_contract_version = "0.2"` while `normalizer.naver.blog` stays at `0.1`. That is
+# DP-021 D5 and not an oversight: the blog normalizer's output has not changed, 0.1
+# documents are valid 0.2 documents, and putting a new version number on identical bytes
+# would make the version axis say something false. The two therefore coexist in
+# `normalized_result`, which is what DP-019 D3 is for.
+#
+# DP-030 D2: this normalizer implements the record-level fallback (missing-value
+# substitution + a `notes.normalize_error {field, reason}` note, run continues) for a point
+# it recognizes as a DataLab record but cannot fully trust. See handler.py's module
+# docstring for exactly where the skip/fallback line is drawn.
+
+[addon]
+id = "normalizer.naver.trend"
+version = "0.1.0"
+kind = "normalizer"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+output_contract_version = "0.2"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "language"
+type = "string"
+required = false
+label = "Record language"
+help = "BCP-47 tag written into every record. Stated, never detected (DP-019 D2). Defaults to ko. For a trend point this describes the terms the series was built from, not a body of text."
+
+[declares]
+streams = []
