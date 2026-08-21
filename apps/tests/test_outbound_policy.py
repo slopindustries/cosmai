@@ -978,9 +978,13 @@ class TestThisModuleActuallyRunsWithTheDatabaseDown:
     `apps/tests/conftest.py`'s session-scoped autouse `_reset_schema` opened a database
     connection before a single test in this file ran, gating an otherwise DB-free
     security suite on server availability. `conftest.py` now skips that connection
-    when nothing selected needs one; the two tests below prove the mechanism directly
-    (the collection-time flag, and `_reset_schema`'s own use of it), rather than
-    trusting the conftest change by inspection.
+    when nothing selected needs one; the four tests below prove the mechanism
+    directly, in two pairs — this file's own DB-freedom against the detection set
+    (`test_this_file_itself_requests_no_db_touching_fixture`) and the detection set's
+    own completeness against `conftest.py`'s real fixture graph
+    (`test_every_db_touching_conftest_fixture_is_in_the_detection_set`), then the
+    collection-time flag and `_reset_schema`'s own use of it — rather than trusting
+    the conftest change by inspection.
 
     `[측정]` End-to-end, run by hand (not as an automated test — a nested
     pytest-inside-pytest subprocess proved too sensitive to plugin load order,
@@ -988,24 +992,73 @@ class TestThisModuleActuallyRunsWithTheDatabaseDown:
     127.0.0.1 COSMA_DB_PORT=1 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime
     COSMA_DB_PASSWORD_REF=COSMA_DB_RUNTIME .venv/bin/python3 -m pytest
     tests/test_outbound_policy.py -q` (port `1`, nothing listens there, no
-    `with-secret-source.sh` wrapper needed) — **114 passed**, this whole file,
+    `with-secret-source.sh` wrapper needed) — **115 passed**, this whole file,
     server down.
     """
 
-    def test_the_db_free_flag_matches_the_real_fixture_graph(self) -> None:
-        """Every test collected from this module requests neither `job_connection`
-        nor `_migrations_applied` — the two fixtures `conftest.py`'s
-        `_DB_TOUCHING_FIXTURES` checks for. A module that later grew a DB-backed test
-        without updating this file's own docstring would still be caught by
-        `conftest.py`'s real collection-time scan; this is the narrower, static half:
-        proof the claim is true of the source, not just of one collection run."""
+    def test_this_file_itself_requests_no_db_touching_fixture(self) -> None:
+        """This test checks only this one file, not the fixture graph: every name in
+        `conftest.py`'s own `_DB_TOUCHING_FIXTURES` is absent from this module's
+        source, so this module's own claim to be DB-free is at least self-consistent.
+        `test_every_db_touching_conftest_fixture_is_in_the_detection_set` below is the
+        other half — that the detection set itself is complete over `conftest.py`'s
+        real fixture graph, which this test cannot see and does not claim to."""
         import ast
         from pathlib import Path
 
+        import tests.conftest as conftest
+
         source = Path(__file__).read_text(encoding="utf-8")
         names = {node.id for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Name)}
-        assert "job_connection" not in names
-        assert "_migrations_applied" not in names
+        for fixture_name in conftest._DB_TOUCHING_FIXTURES:
+            assert fixture_name not in names, fixture_name
+
+    def test_every_db_touching_conftest_fixture_is_in_the_detection_set(self) -> None:
+        """N2 (round-2 re-review, `docs/agent-workflow/reviews/REVIEW-M2-M7.md` batch):
+        the first version of `_DB_TOUCHING_FIXTURES` covered `job_connection` and
+        `_migrations_applied` but not `migrator_connection`/`runtime_connection`, which
+        also open a real connection independently — a test requesting either of the
+        latter two alone (`test_migrate.py`, `test_db_connection.py`) would have been
+        wrongly read as DB-free. Rather than trust a hand-picked set again, this
+        introspects `conftest.py`'s own AST: every `@pytest.fixture`-decorated function
+        whose body calls `connect(...)` must be a member of `_DB_TOUCHING_FIXTURES`.
+        A DB-opening fixture added later without updating the set fails this test
+        immediately, rather than silently reading as DB-free."""
+        import ast
+        import inspect
+
+        import tests.conftest as conftest
+
+        source = inspect.getsource(conftest)
+        tree = ast.parse(source)
+        db_opening_fixtures: set[str] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            is_fixture = any(
+                getattr(dec.func, "attr", getattr(dec.func, "id", None)) == "fixture"
+                if isinstance(dec, ast.Call)
+                else (isinstance(dec, ast.Attribute) and dec.attr == "fixture")
+                for dec in node.decorator_list
+            )
+            if not is_fixture:
+                continue
+            calls_connect = any(
+                isinstance(inner, ast.Call) and getattr(inner.func, "id", None) == "connect"
+                for inner in ast.walk(node)
+            )
+            if calls_connect:
+                db_opening_fixtures.add(node.name)
+
+        # The positive control: the scan itself finds something. An empty result
+        # would satisfy the subset assertion below just as well as a correct one.
+        assert db_opening_fixtures, "the AST scan found no connect()-calling fixture at all"
+        # `_reset_schema` itself calls connect() but is the fixture being gated, not a
+        # fixture a test requests to opt into the database — excluded by name.
+        requestable = db_opening_fixtures - {"_reset_schema"}
+        assert requestable <= conftest._DB_TOUCHING_FIXTURES, (
+            requestable - conftest._DB_TOUCHING_FIXTURES
+        )
 
     def test_the_hook_marks_a_db_free_selection_as_needing_no_database(self) -> None:
         """`conftest.pytest_collection_modifyitems`'s own computation, exercised

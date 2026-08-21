@@ -115,7 +115,8 @@ names have each run and produced a record:
 blocking + 11 minor at the time; M2 onward proceeded from the repaired tree).
 [`REVIEW-M2-M7.md`](agent-workflow/reviews/REVIEW-M2-M7.md) reviewed the whole M2–M7
 batch (`FAIL`, 12 blocking + ~40 minor) and is the review this fix wave
-(`.superpowers/sdd/2026-08-21-m2-m7-batch/m7-fixwave-report.md`) answers, finding by
+([`p1/lane-reports/m7-fixwave-report.md`](p1/lane-reports/m7-fixwave-report.md), the
+tracked copy — not the gitignored `.superpowers/sdd/` original) answers, finding by
 finding.
 
 `[확인 사실]` **Two acts remain before `main` and a `v0.1.0` tag, and neither is a

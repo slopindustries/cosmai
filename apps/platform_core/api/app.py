@@ -281,8 +281,16 @@ def create_app(
         each route re-deriving its own 422 shape.
 
         Every other field FastAPI's default handler emits (`type`, `loc`, `msg`, and any
-        `ctx`) is preserved unchanged, so a caller still learns what was wrong and where
-        — only the raw value that was wrong is withheld.
+        `ctx`) is preserved unchanged, so a caller still learns what was wrong and where.
+        `[측정]` `ctx` is not withheld and is not always empty of the input — a
+        `uuid_parsing`-class error, for one, puts a fragment of the offending value in
+        `ctx["error"]` ("invalid character: found `n` at 1"). This route's own failure
+        class (`dict_type`, a JSON string bound where the body schema requires an
+        object) carries no `ctx` at all, so the credential value withholds completely
+        here — but this handler is registered platform-wide, and a route accepting a
+        typed path/body field whose validator's `ctx` echoes part of the input (UUID
+        parsing is the one Pydantic v2 ships with this shape) would still leak that
+        fragment through `ctx`, not through the `input` key this handler strips.
         """
         errors = [
             {key: value for key, value in error.items() if key != "input"}

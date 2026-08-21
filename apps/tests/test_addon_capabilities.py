@@ -306,12 +306,17 @@ class TestACollectionIsAtomicThroughAnAddOn:
 
 class TestAStaleConfigSchemaVersionIsRefused:
     """M-P1 (REVIEW-M2-M7.md), now fixed rather than merely registered: the addon
-    template's and every real add-on's README both state "a source configured under an
-    older schema is marked `NEEDS_MIGRATION` and refuses to run until an operator
+    template's and every real add-on's README used to state "a source configured under
+    an older schema is marked `NEEDS_MIGRATION` and refuses to run until an operator
     reconfigures it" — `config_schema_version` was parsed, stored, and echoed on every
     source read, but nothing ever compared the stored value against the manifest's, so
     the sentence was false of the code. `_resolved_source_row` now refuses at
-    load/dispatch time, before any job-specific work runs, naming both versions."""
+    load/dispatch time, before any job-specific work runs, naming both versions
+    (`CONFIGURATION_INVALID`, not a `NEEDS_MIGRATION` state — no such state exists
+    anywhere in this codebase; that was always the README's own wording, not a
+    mechanism this fix built). The READMEs were corrected in the same round of this fix
+    wave to describe the `CONFIGURATION_INVALID` mechanism this class tests, so they no
+    longer say `NEEDS_MIGRATION` either."""
 
     def test_a_stored_version_older_than_the_manifests_is_refused(
         self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
@@ -771,8 +776,8 @@ streams = ["rows"]
 
 #: The importer's mirror of `SWALLOWING`. Catches whatever `open_input` raises and
 #: reports success having read nothing. P0 never wrote this add-on or this class of
-#: test — `capabilities.py`'s importer `_check_no_refusal_was_swallowed` (`:1139`,
-#: called `:949`) is P1-only code, and B6 (REVIEW-M2-M7.md) found it untested anywhere
+#: test — `capabilities.py`'s importer `_check_no_refusal_was_swallowed` (`:1159`,
+#: called `:969`) is P1-only code, and B6 (REVIEW-M2-M7.md) found it untested anywhere
 #: in the tree.
 SWALLOWING_IMPORT = """
 from addon_api import CollectOutcome
@@ -836,13 +841,13 @@ class TestARefusalCannotBeSwallowed:
     (`experiments/integrated-p0/tests/test_capabilities.py:519`) for the collector path,
     unchanged in substance, plus a new pair of cases for the importer path P0 never
     wrote (`capabilities.py`'s two `_check_no_refusal_was_swallowed` implementations —
-    collector `:848`/called `:377`, importer `:1139`/called `:949` — are separate code
+    collector `:868`/called `:397`, importer `:1159`/called `:969` — are separate code
     and B6 found only the collector half exercised).
 
     `fetch`/`open_input` raise a `PlatformError`, and nothing stops add-on code from
     catching it — `except BaseException` is legal Python. If that were the end of it, a
     collector or importer could turn every outbound or input rule into a suggestion and
-    still report success. `capabilities.py:787`'s own docstring says the *status* check
+    still report success. `capabilities.py:807`'s own docstring says the *status* check
     above (`TestANonSuccessStatusCannotBeIgnored`) is *"weaker than
     `_check_no_refusal_was_swallowed` beside it"* — this class is that stronger control.
     """

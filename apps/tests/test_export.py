@@ -20,6 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from domain.api import extend_with_domain
+from domain.export import _raw_jsonl_line
 from domain.store import DomainStore, NormalizedResultRow, RawItemRow, SourceRow
 from platform_core.api.app import create_app
 from platform_core.config import PlatformConfig
@@ -187,6 +188,47 @@ class TestRawExportJsonl:
 
     def test_a_source_id_is_required(self, client: TestClient, registered: None) -> None:
         assert client.get("/export/raw").status_code == 422
+
+
+def a_raw_row(payload: bytes) -> dict[str, Any]:
+    return {
+        "item_key": "k1",
+        "seq": 1,
+        "emitted_at": None,
+        "content_type": "application/json",
+        "payload": payload,
+    }
+
+
+class TestRawJsonlLineSurvivesSpecValidJsonThatIsNotAJsonDecodeError:
+    """N1 (round-2 re-review, `docs/agent-workflow/reviews/REVIEW-M2-M7.md` batch):
+    `_raw_jsonl_line`'s own `except (json.JSONDecodeError, UnicodeDecodeError)` carried
+    the exact defect class B1 fixed in the four add-on handlers — `json.loads` raises a
+    bare `ValueError` (CPython's integer-string-conversion limit) or `RecursionError`
+    (pathological nesting) on spec-valid JSON without ever raising `JSONDecodeError`,
+    and the narrow tuple let either propagate out of this generator mid-stream instead
+    of taking the escaped-string fallback. Pure-function tests against `_raw_jsonl_line`
+    directly — no fixture, no database, the same two reproduction payloads B1's own
+    tests use.
+    """
+
+    def test_an_integer_over_the_4300_digit_conversion_limit_takes_the_fallback(self) -> None:
+        payload = b'{"id":"b","v":' + b"9" * 5000 + b"}"
+
+        line = _raw_jsonl_line(a_raw_row(payload))
+
+        assert line.count(b"\n") == 1
+        record = json.loads(line)
+        assert record["payload"] == payload.decode("utf-8")
+
+    def test_pathologically_deep_nesting_takes_the_fallback(self) -> None:
+        payload = b"[" * 100_000 + b"]" * 100_000
+
+        line = _raw_jsonl_line(a_raw_row(payload))
+
+        assert line.count(b"\n") == 1
+        record = json.loads(line)
+        assert record["payload"] == payload.decode("utf-8")
 
 
 class TestRawExportCsv:

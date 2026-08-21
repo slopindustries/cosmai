@@ -67,13 +67,20 @@ TEST_DATABASE = os.environ.get("COSMA_TEST_DB", "cosmai_test")
 
 
 #: M-X8 (``docs/agent-workflow/reviews/REVIEW-M2-M7.md``): fixtures whose transitive
-#: closure means "this test actually touches the database." `job_connection` opens the
-#: connection; `_migrations_applied` opens one to apply migrations; every other
-#: DB-backed fixture in this file (`domain_store`, `job_store`, `_reset_job_tables`, …)
-#: already depends on one of the two, so checking only these two is sufficient — not a
-#: guess, `test_the_db_free_flag_matches_the_real_fixture_graph` in
-#: `test_outbound_policy.py` pins it.
-_DB_TOUCHING_FIXTURES: Final = frozenset({"job_connection", "_migrations_applied"})
+#: closure means "this test actually touches the database" — every fixture in this
+#: file whose own body calls :func:`connect` directly. `job_connection` and
+#: `_migrations_applied` are the two most-used; `migrator_connection` and
+#: `runtime_connection` (round-2 re-review, N2: the first version of this set omitted
+#: both, so a test requesting either one alone — `test_migrate.py`, `test_db_connection.py`
+#: — would have wrongly read as DB-free) also open a connection independently, not
+#: through either of the first two. Every *other* DB-backed fixture in this file
+#: (`domain_store`, `job_store`, `_reset_job_tables`, …) depends transitively on one of
+#: these four, so this set is exhaustive over fixtures a test can request — not a guess:
+#: `test_every_db_touching_conftest_fixture_is_in_the_detection_set` in
+#: `test_outbound_policy.py` introspects this module's own AST and asserts it.
+_DB_TOUCHING_FIXTURES: Final = frozenset(
+    {"job_connection", "_migrations_applied", "migrator_connection", "runtime_connection"}
+)
 
 #: Set by :func:`pytest_collection_modifyitems` before fixtures run, so
 #: :func:`_reset_schema` can read it. A module attribute rather than a

@@ -33,15 +33,21 @@ deviations live in the source report named per section, not repeated here.
 ### `collector.naver.blog` + `normalizer.naver.blog`
 
 - Worktree/branch: `.worktrees/m4-naver-blog`, `p1/m4-naver-blog`. Commit `e87a00e`.
-- Tests: `[정정, 2026-08-21, m7-fixwave, B7]` "41 collector + 27 normalizer (68
-  addon-specific), full apps suite 860 passed" was wrong, and self-contradictory:
-  68 addon-specific over an 800-baseline lane suite implies 868, not 860. `[측정]`
-  at `e87a00e`: `test_collector_naver_blog.py` collects 37, `test_normalizer_naver_blog.py`
-  collects 25 — **62 addon-specific**, lane suite 862 (800+62). See B7,
-  `docs/agent-workflow/reviews/REVIEW-M2-M7.md`. `[측정]` Re-derived again at this fix
-  wave's own post-edit tree (B1 added two fixture tests to
-  `test_normalizer_naver_blog.py`): 37 collector / 27 normalizer, **64 addon-specific**.
-  Root guard 87 passed.
+- Tests: `[정정, 2026-08-21, m7-fixwave round 1+2, B7/N3]` "41 collector + 27
+  normalizer (68 addon-specific)" was wrong component-by-component, the same shape
+  as M-R1's DataLab correction below — but **"full apps suite 860 passed, 2
+  failed" was already correct and needed no correction**: 862 collected =
+  860 passed + 2 pre-existing failures, consistent on its face; a round-1 version
+  of this note wrongly called it self-contradictory by comparing 68 against 860
+  while dropping the "2 failed" the original sentence also stated. `[측정]` at
+  `e87a00e` (this lane's own commit, per `docs/p1/lane-reports/m4-naver-blog-report.md`,
+  which states "860 passed, 2 failed" verbatim): `test_collector_naver_blog.py`
+  collects 37, `test_normalizer_naver_blog.py` collects 25 — **62 addon-specific**,
+  matching the lane suite's real 862 = 800 baseline + 62. See B7,
+  `docs/agent-workflow/reviews/REVIEW-M2-M7.md`. `[측정]` Re-derived again at this
+  fix wave's own post-edit tree (B1 added two fixture tests to
+  `test_normalizer_naver_blog.py`): 37 collector / 27 normalizer, **64
+  addon-specific**. Root guard 87 passed.
 - **LIVE smoke: SUCCEEDED.** One real NAVER API Hub call through the full host-worker
   path (`JobRunner`+`addon_host`+`SocketTransport`), query `수분크림`/`sort=date`/
   `display=10` (same parameters as P0's own `test_naver_real_data.py`). Collect job

@@ -199,7 +199,16 @@ def _raw_jsonl_line(row: Mapping[str, Any]) -> bytes:
     )
     try:
         parsed = json.loads(payload)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (ValueError, RecursionError, UnicodeDecodeError):
+        # N1 (round-2 re-review): the same guard-tuple defect B1 fixed in the four
+        # add-on handlers survived here — `json.JSONDecodeError`/`UnicodeDecodeError`
+        # alone miss a bare `ValueError` (CPython's integer-string-conversion limit,
+        # e.g. a 4300+-digit number) and `RecursionError` (pathological nesting),
+        # either of which would otherwise propagate out of this generator mid-stream
+        # instead of taking the escaped-string fallback below. `ValueError` already
+        # covers `JSONDecodeError` (a subclass); `UnicodeDecodeError` is named
+        # explicitly for the same reason it always was here, though it is itself a
+        # `ValueError` subclass too.
         field = json.dumps(payload.decode("utf-8", errors="replace"), ensure_ascii=False)
     else:
         # B3 (REVIEW-M2-M7.md): `json.loads` accepts embedded newlines (and any other

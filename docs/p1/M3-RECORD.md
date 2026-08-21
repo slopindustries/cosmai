@@ -73,7 +73,7 @@ credential attachment — and those were added (15 tests: `TestThePageLimitIsEnf
 `TestANonSuccessStatusCannotBeIgnored` credits. Contract 1.3 invariants 4 and 5 are
 different rules: invariant 4 is refusal-swallowing (an outbound/input refusal the
 add-on caught and ran past — `capabilities.py`'s `_check_no_refusal_was_swallowed`,
-collector `:848`/called `:377`, importer `:1139`/called `:949`); invariant 5 is an
+collector `:868`/called `:397`, importer `:1159`/called `:969`); invariant 5 is an
 undecided non-success status (`_check_every_status_was_decided`). `TestANonSuccess
 StatusCannotBeIgnored` is invariant 5 — the section banner in
 `apps/tests/test_addon_capabilities.py` that introduced it was itself mistitled

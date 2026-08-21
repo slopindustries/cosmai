@@ -6,8 +6,9 @@
 - Fix-loop law honored: every count, quote, and command below was re-derived from the
   post-edit tree by actually running it, not transcribed from the review.
 - Commits (this branch, in order): `07dafb6` (defects), `de7cc53` (dashboard), `34fb260`
-  (records). This file and the copy of the sixteen lane reports into `docs/p1/lane-reports/`
-  land in a fourth commit alongside it (evidence-promotion).
+  (records), `29b8f84` (evidence-promotion — this file plus the 16 copied lane reports;
+  `git ls-files docs/p1/lane-reports | wc -l` → **17**, this file itself the 17th).
+  Round 2 lands in one further commit, appended below.
 
 ## Gates, re-derived at HEAD
 
@@ -59,14 +60,21 @@ and after).
   (`SWALLOWING` add-on, positive control on a granted endpoint) into
   `apps/tests/test_addon_capabilities.py`, and added a new pair for the importer path P0
   never had (`SWALLOWING_IMPORT`, `run_import` harness, positive control on an approved
-  input) — `capabilities.py`'s importer-side `_check_no_refusal_was_swallowed` (`:1139`,
-  called `:949`) had no test anywhere before this. Fixed the mistitled "Refusal-swallowing"
+  input) — `capabilities.py`'s importer-side `_check_no_refusal_was_swallowed` (`:1159`,
+  called `:969` — both re-derived post-M-P1's insertion into the same file; the pre-M-P1
+  line numbers were `:1139`/`:949`) had no test anywhere before this. Fixed the mistitled "Refusal-swallowing"
   banner above `TestANonSuccessStatusCannotBeIgnored` (that class is invariant 5, not
   invariant 4) and corrected M3-RECORD's matching claim. 27 tests pass in the file.
-- **B7 — fixed (record only).** M4-RECORD's naver.blog counts corrected: re-derived at
-  `e87a00e` (37 collector + 25 normalizer = 62, not 68; lane suite 862, not 860) and again at
-  this fix wave's own tree (37 + 27 = 64, since B1 added two tests to the normalizer file).
-- **B8 — fixed, per controller ruling.** All 16 lane/batch reports under
+- **B7 — fixed (record only), corrected again in round 2 (N3).** M4-RECORD's "41
+  collector + 27 normalizer (68 addon-specific)" was wrong component-by-component —
+  re-derived at `e87a00e`: 37 collector + 25 normalizer = 62, not 68, matching the
+  lane's own report's "862 collected" figure. **"860 passed, 2 failed" was already
+  correct and never needed correcting** (862 = 860 + 2) — round 1's fix wrongly called
+  it self-contradictory by comparing 68 against 860 while dropping the "2 failed" the
+  original sentence also stated; round 2 rewrote the correction to say exactly that.
+  Re-derived again at this fix wave's own post-edit tree: 37 + 27 = 64 addon-specific,
+  since B1 added two tests to the normalizer file.
+- **B8 — fixed, per controller ruling.** The 16 lane/batch reports under
   `.superpowers/sdd/2026-08-21-m2-m7-batch/` (every `*.md` except `progress.md`) scanned for
   secret shapes (`[0-9a-f]{40,}`, `PASSWORD`, `ytd_`, `COSMA_[A-Z_]+=` key-value pairs) —
   zero hits requiring redaction (the one `ytd_...` mention is already truncated with an
@@ -285,3 +293,117 @@ above) — building a new ImporterDomainScreen was judged out of this fix wave's
 `apps/dashboard/dist/` was present at the start of this fix wave (build output, gitignored,
 untracked) and was deleted; it reappeared twice more from this fix wave's own build runs and
 was deleted each time.
+
+## Round 2 — repairs against the re-review of round 1's own diff
+
+Re-verification confirmed B1–B12 by execution. Round 1's own fix diff introduced seven new
+findings (N1–N8, one item split into two sub-findings by the re-reviewer). All fixed in one
+commit. Every number below was re-derived from the tree after this round's own last edit, not
+carried over from round 1's report or the re-review's own numbers.
+
+- **N1 (blocking) — fixed.** `apps/domain/export.py`'s `_raw_jsonl_line` (the function B3
+  edited) carried the exact guard-tuple defect class B1 fixed elsewhere:
+  `except (json.JSONDecodeError, UnicodeDecodeError)` misses a bare `ValueError` (the
+  4300+-digit-integer payload) and `RecursionError` (the deeply-nested payload), so
+  `/export/raw?format=jsonl` would raise mid-stream instead of taking the escaped-string
+  fallback. Widened to `(ValueError, RecursionError, UnicodeDecodeError)`. Two pure-function
+  tests added directly against `_raw_jsonl_line` (no fixture, no database) with the review's
+  own two payloads — each now emits exactly one parseable JSONL line via the fallback.
+  `[측정]` `tests/test_export.py -k SurvivesSpecValidJson`: 2 passed, both with
+  `COSMA_DB_PORT` pointed at a dead port (0.15s, no connection attempted) and against the
+  live database (part of the file's own 23-passed run, up from 21 in round 1).
+- **N2 (blocking) — fixed, two parts.** `_DB_TOUCHING_FIXTURES` in `apps/tests/conftest.py`
+  checked only `job_connection`/`_migrations_applied`; `migrator_connection` and
+  `runtime_connection` also call `connect()` independently and were missing, so a test
+  requesting either alone (`test_migrate.py`, `test_db_connection.py`) would have been
+  wrongly read as DB-free. Both added to the set. The comment's "pinning" claim was also
+  false — the test it named checks only that *this one file* (`test_outbound_policy.py`)
+  is DB-free, not that the detection set is complete over `conftest.py`'s real fixture
+  graph. Fixed by renaming that test to say only what it checks
+  (`test_this_file_itself_requests_no_db_touching_fixture`) and adding a second test that
+  actually introspects `conftest.py`'s AST — every `@pytest.fixture`-decorated function
+  whose body calls `connect(...)` must be in `_DB_TOUCHING_FIXTURES`
+  (`test_every_db_touching_conftest_fixture_is_in_the_detection_set`, with a positive
+  control that the scan finds something at all). `test_migrate.py`'s "starts from empty"
+  precondition, which used to silently hold or not depending on whatever schema state a
+  prior session left behind when this file ran standalone, is now enforced automatically —
+  every test in it already requests `migrator_connection`, now in the detection set, so
+  `_reset_schema` runs before it regardless. `test_db_connection.py`'s own docstring claim
+  ("a live server is still required to run pytest at all here") is now false and was
+  corrected — none of its tests request a DB-touching fixture, so it now runs standalone
+  with no connection at all. `[측정]`, all four re-derived against the post-edit tree: live
+  run, `test_migrate.py` alone — 5 passed (schema genuinely reset). Dead-port run
+  (`COSMA_DB_PORT=1`), `test_migrate.py` alone — 5 errors after ~130s
+  (`psycopg`'s own connect timeout), `platform_core.errors.ConfigurationInvalidError:
+  cannot reach the platform database` — a clear, terminating failure, not a silent pass and
+  not an infinite hang. Dead-port run, `test_db_connection.py` alone — 6 passed in 0.01s, no
+  connection. Dead-port run, `test_outbound_policy.py` — 115 passed (114 + the new
+  introspection test).
+- **N3 (blocking, record) — fixed.** Round 1's own "correction" to M4-RECORD's naver.blog
+  test-count sentence was itself wrong: the original lane report
+  (`docs/p1/lane-reports/m4-naver-blog-report.md:26`) genuinely says "**860 passed, 2
+  failed**" — 862 collected = 860 + 2, internally consistent — and round 1 called this
+  self-contradictory by comparing it against 68 while dropping the "2 failed" the original
+  sentence also stated. Only "41 collector + 27 normalizer (68 addon-specific)" was ever
+  wrong (real count 37 + 25 = 62). Rewritten to say exactly that, and to note the DataLab
+  row at M4-RECORD's M-R1 correction was already handled the right way (total right,
+  component breakdown wrong) and needed no further change for consistency — confirmed by
+  re-reading it: it already says "872 passed, 2 failed" and needed no correction.
+- **N4 (blocking, record) — fixed.** `docs/project-state.md`'s pointer to the fix-wave
+  report cited the gitignored `.superpowers/sdd/...` path; repointed to the tracked
+  `docs/p1/lane-reports/m7-fixwave-report.md`. `[측정]` `grep -rln '\.superpowers/sdd'
+  docs/` → 5 files: `project-state.md` (fixed, above), `agent-workflow/reviews/REVIEW-M1.md`
+  and `REVIEW-M2-M7.md` (immutable adversarial-review transcripts — both files' own header
+  notes say they are transcribed verbatim from the reviewer, who cannot write files;
+  editing their citations would misrepresent what was found at review time, so left
+  untouched), `p1/M4-RECORD.md` (already dual-references the tracked
+  `docs/p1/lane-reports/` path as primary, with the `.superpowers/sdd/` path only
+  parenthetical provenance — "committed copy of ..." — not a broken pointer), and this
+  file itself (describes the scan's source location, not a follow-this-link citation).
+  One genuinely stale pointer found and fixed; four correctly left as-is.
+- **N5 — fixed, re-verified last as instructed.** M-P1's insertion into
+  `apps/addon_host/capabilities.py` shifted every line at or after it by exactly +20.
+  `[측정]`, re-derived at the final post-round-2 tree: `_check_no_refusal_was_swallowed`
+  (collector) at `:868` (was `:848`), called at `:397` (was `:377`); the importer copy at
+  `:1159` (was `:1139`), called at `:969` (was `:949`); the "weaker than
+  `_check_no_refusal_was_swallowed` beside it" docstring at `:807` (was `:787`). All five
+  citations corrected in `apps/tests/test_addon_capabilities.py` (two sites),
+  `docs/p1/M3-RECORD.md` (one site), and this report (one site, kept as a historical note
+  naming both the old and new numbers rather than silently replaced). `grep`
+  for the four old numbers across `apps/`, `docs/`, and `tests/` (excluding the immutable
+  review transcripts) after this round's own edits: zero remaining stale hits.
+- **N6 — fixed.** `TestAStaleConfigSchemaVersionIsRefused`'s docstring in
+  `test_addon_capabilities.py` claimed, present tense, that the add-on READMEs "state" the
+  `NEEDS_MIGRATION` sentence — true when M-P1 was written, false now that round 1's own
+  README fix (same fix wave) replaced that sentence with the real `CONFIGURATION_INVALID`
+  mechanism. Corrected to past tense and to name the real mechanism.
+- **N7 — fixed.** `git ls-files docs/p1/lane-reports | wc -l` → **17** (16 lane/batch
+  reports plus this report itself). The report's own "sixteen"/"All 16" wording was already
+  correct for the lane-report count specifically, but ambiguous next to a reader running
+  that exact command and seeing 17 — reworded to state both numbers and which is which.
+  Also fixed the B7 bullet's summary, which still carried round 1's now-superseded (N3)
+  explanation.
+- **N8 — fixed.** The B2 handler's docstring (`platform_core/api/app.py`) claimed "only the
+  raw value that was wrong is withheld," overclaiming: Pydantic v2's `ctx` field is not
+  stripped by this handler and is not always empty of the input — `[측정]` a `uuid_parsing`
+  error's `ctx["error"]` contains a fragment of the offending value (reproduced:
+  `"invalid character: found `n` at 1"` for input `"not-a-uuid-at-all-XYZZY"`). This route's
+  own failure class (`dict_type`) carries no `ctx` at all — `[측정]` reproduced with
+  `pydantic.TypeAdapter(dict[str, Any]).validate_python("MY-SECRET-42")` → no `ctx` key —
+  so the credentials route withholds completely, but the docstring no longer claims that of
+  every route this platform-wide handler covers.
+
+### Round-2 gates, re-derived at the final tree
+
+| Gate | Command | Result |
+|---|---|---|
+| Root guard | `.venv/bin/python -m pytest tests/environment -q` | **87 passed** (unchanged) |
+| apps full suite | `COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5434 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime ../scripts/with-secret-source.sh uv run python -m pytest -q` | **1127 passed, 1 skipped** (up from 1124: N1's 2 tests + N2's 1 introspection test) |
+| mypy | `cd apps && uv run mypy --strict .` | clean, 104 source files |
+| ruff | `cd apps && uv run ruff check .` | clean |
+| DB-free: outbound | dead port (`COSMA_DB_PORT=1`), `.venv/bin/python3 -m pytest tests/test_outbound_policy.py -q` | **115 passed** |
+| DB-free: obf | dead port, `-k` excluding `TestCoexistenceOverOneLineage` | **51 passed** |
+| DB-free: new export tests | dead port, `-k SurvivesSpecValidJson` | **2 passed** |
+| dashboard vitest | `npx vitest run` (unchanged this round — no dashboard file touched) | **47 passed** |
+
+Not fully repaired: nothing on N1–N8 was left unaddressed.

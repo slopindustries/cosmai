@@ -12,13 +12,18 @@ regression guard for that fix and its explicit boundary — ``25P03`` stays
 ``CONFIGURATION_INVALID``.
 
 **This is about the logic under test, not this file's own requirements.**
-Running *this file* inside the ordinary suite still opens a database
-connection: `conftest.py`'s session-scoped, `autouse=True` `_reset_schema`
-fixture runs once per session regardless of which test triggers collection
-first, so a live server is still required to run `pytest` at all here — the
-same fact the F6 fix documented in `conftest.py`'s own comment. No test
-*function* below opens a connection or requests a database fixture; the
-session-level cost is paid once, by the session, not by this file.
+No test *function* below opens a connection or requests a database fixture.
+`[정정, 2026-08-21, m7-fixwave round 2, N2/M-X8]` This paragraph used to say a
+live server was "still required to run pytest at all here" because
+`conftest.py`'s session-scoped, `autouse=True` `_reset_schema` fixture ran
+regardless of which test triggered collection first (F6's own finding). That
+is no longer true when this file runs alone: `_reset_schema` now skips
+connecting when nothing selected touches the database
+(`conftest._SESSION_NEEDS_DATABASE`), and this file's own tests do not.
+`[측정]` run standalone with `COSMA_DB_PORT` pointed at a dead port: 6 passed
+in 0.01s, no connection attempted. Run inside the ordinary full suite
+alongside DB-backed modules, the session-level reset still happens once, same
+as always — this file just no longer forces it on its own.
 """
 
 from __future__ import annotations
