@@ -26,6 +26,19 @@ testpaths = ["tests"]
 
 [tool.mypy]
 strict = true
+# Add-ons are independent roots loaded by path, not imported by name (DP-008 D2),
+# and every add-on's entry file is conventionally `handler.py` — the same reason
+# `experiments/integrated-p0/`'s `scripts/check-addons.sh` excludes its own
+# `addons/` from the tree-wide P0 run. Excluded here for the identical reason,
+# first surfaced when `addons/collector.trendradar.rest/handler.py` collided
+# with `tests/fixtures/normalizer.conformance/handler.py` in mypy's one module
+# namespace ("Duplicate module named handler"). Checked instead with an explicit
+# file path per add-on, e.g.:
+#   uv run mypy --strict addons/collector.trendradar.rest/handler.py
+# A tree-wide `apps/scripts/check-addons.sh` mirroring the P0 one is a natural
+# follow-up once a second add-on lands under `addons/`; not added speculatively
+# here for a collision only one add-on exists to demonstrate.
+exclude = ["^addons/"]
 
 [tool.ruff]
 line-length = 100
