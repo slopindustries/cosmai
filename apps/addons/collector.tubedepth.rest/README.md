@@ -77,6 +77,41 @@ A live key was minted through tubedepth's own CLI (`tubedepth key create
 `COSMA_SRC_TUBEDEPTH_API_KEY=ytd_...`. The value is never printed by this
 work, never committed, and does not appear in any fixture, log, or this file.
 
+## The operator-approved outbound profile
+
+M4x closed the two gaps below; this is the profile shape a source row now
+registers to actually reach the live target, not a hypothetical one:
+
+```json
+{
+  "hosts": ["127.0.0.1"],
+  "port": 8080,
+  "scheme": "http",
+  "allow_loopback": true,
+  "endpoints": {
+    "artifacts_list": {"path": "/v1/artifacts", "method": "GET"},
+    "artifact_payload": {
+      "path": "/v1/artifacts/{digest}",
+      "method": "GET",
+      "path_params": {"digest": "^[0-9a-f]{64}$"}
+    }
+  },
+  "credentials": [{"header": "X-API-Key", "ref": "COSMA_SRC_TUBEDEPTH_API_KEY"}]
+}
+```
+
+`scheme: "http"` is granted only because `allow_loopback` is also set — the
+same flag that already admits a loopback address at all
+(`domain.outbound.resolve`, M4x gap 1); a non-loopback host with `scheme:
+"http"` is refused both there and again by `domain.transport.SocketTransport`
+against the address it actually resolved. `artifact_payload.path_params`
+declares the one regex `{digest}` must match; `resolve` validates the value
+`context.fetch("artifact_payload", {"digest": digest})` supplies, substitutes
+it, and only then runs the same segment-by-segment containment every approved
+path has always been checked with (M4x gap 2) — this add-on's own
+`context.fetch` call, quoted in "Live verification" below, needed no change
+to use either mechanism.
+
 ## Normalizer
 
 None. RC-005 (normalizing tubedepth's payload shapes) is deferred — this
@@ -109,21 +144,24 @@ scheduled.
 - Conformance suite (`addon_kit.conformance`) and host-loading — see the
   batch report for the exact commands and results.
 
-## Live verification, and two platform-level findings
+## Live verification
 
 `[측정]` Confirmed live, 2026-08-21, against the running instance at
 `127.0.0.1:8080` (unsandboxed shell; the default sandbox's loopback
 isolation refuses the connection, matching spec §11's own note):
 
-- `/healthz` reports `"version": "1.0.3"` — **not v1.0.0**. `git log` on the
-  target repository shows `v1.0.3` is `v1.0.0` plus two fix commits
-  (`0767076`, `e2ead38`); the artifacts-feed routes this add-on depends on
-  are unchanged between the two tags except for the `since`/`until`
-  timezone-offset requirement noted above. Per DP-031 D3's own standing
-  rule ("if a new release tag appears during the work, the adapter switches
-  to that tag"), this add-on is written against the live 1.0.3 behavior; the
-  task brief's "baseline = v1.0.0" is the surface this add-on's design and
-  docs cite, since the artifacts-feed contract itself did not change.
+- `/healthz` reports `"version": "1.0.3"` at M4 finding time — **not
+  v1.0.0**. `git log` on the target repository shows `v1.0.3` is `v1.0.0`
+  plus two fix commits (`0767076`, `e2ead38`); the artifacts-feed routes this
+  add-on depends on are unchanged between the two tags except for the
+  `since`/`until` timezone-offset requirement noted above. Per DP-031 D3's
+  own standing rule ("if a new release tag appears during the work, the
+  adapter switches to that tag"), this add-on is written against the live
+  1.0.3 behavior; the task brief's "baseline = v1.0.0" is the surface this
+  add-on's design and docs cite, since the artifacts-feed contract itself did
+  not change. `[측정]` At M4x's own live-smoke time the instance had moved
+  again, to `1.1.0` — the artifacts-feed surface is still unchanged; recorded
+  here rather than silently absorbed, the same way the 1.0.0→1.0.3 move was.
 - A key was minted live via `tubedepth key create --label cosmai-adapter`
   (run from the target repository's own `uv run`, pointed at the live
   deployment's actual database over its published port,
@@ -131,50 +169,38 @@ isolation refuses the connection, matching spec §11's own note):
   container's own env is not reachable from the host shell). Confirmed
   working: `GET /v1/artifacts` and `/v1/artifacts/{digest}` both answered
   200 with this key.
-- **`domain.transport.SocketTransport` is HTTPS-only** (`apps/domain/transport.py`:
-  `http.client.HTTPSConnection`, a real TLS handshake) and tubedepth's live
-  instance serves plain HTTP with no TLS by design (its own
-  `docs/api.md`: "There is no TLS here"). Measured directly against the
-  platform's own `resolve()`/`SocketTransport` code, not a hand-rolled
-  socket:
 
-  ```
-  TransportUnavailable: no checked address for '127.0.0.1' accepted a
-  connection {'host': '127.0.0.1', 'addresses': ['127.0.0.1'], 'cause': 'SSLError'}
-  ```
+## M4x — the two platform gaps this add-on named, closed
 
-  This blocks **any** live collect through the real host worker, for either
-  endpoint this add-on declares — not something this add-on can route
-  around (`ALLOWED_SCHEMES = frozenset({"https"})` and the hardcoded
-  `HTTPSConnection` are platform code, out of an M4 add-on's scope to
-  change). Confirmed end to end, not just at the transport unit: a real
-  source row (`outbound_profile.credentials` filling `X-API-Key`,
-  `allow_loopback = true`, target `127.0.0.1:8080`) was registered in
-  `cosmai_test_5`, a collect job was submitted, and one real
-  `platform_core.worker.Worker` (via `addon_host.worker.capability_registry`,
-  the same wiring `platform_core.worker.main` uses) claimed and ran it. The
-  job ended `FAILED`, one attempt, `PLATFORM_TRANSIENT`, `error_summary`:
-  `"no checked address for '127.0.0.1' accepted a connection"` — the same
-  `SSLError` measured directly above, reached through the real dispatch path
-  rather than a hand-built call. The live smoke this milestone's brief asks
-  for is therefore `BLOCKED-live` at the transport layer, not at this
-  add-on's own logic; see the batch report for the full evidence.
-- **`domain.outbound.resolve` has no per-request path parameter.** An
-  approved endpoint's `path` is one fixed string per `endpoint_ref`
-  (`domain/outbound.py`, `OutboundProfile.path_of`); `params` only ever
-  becomes a query string (or, for `POST`, a body — DP-020). tubedepth's
-  dereference route needs `digest` **in the path**
-  (`GET /v1/artifacts/{digest}`), and a digest is discovered at run time from
-  the previous page, so it cannot be one of the paths an operator
-  pre-approves ahead of time the way `hosts`/`endpoints` are for every other
-  endpoint this platform has hosted so far. This add-on's `artifact_payload`
-  endpoint and its `context.fetch(_ARTIFACT_PAYLOAD, {"digest": digest})`
-  call are written to the contract's *intended* shape (a fixed endpoint name,
-  the digest supplied as the "question" the way `params` always is), on the
-  expectation that a future platform capability makes that request correct;
-  until one exists, this exact call is refused or misrouted by
-  `domain.outbound.resolve` today, independent of the transport finding
-  above. `tests/test_handler.py` therefore exercises this code path directly
-  against a fake `CollectContext.fetch`, not through `domain.outbound`,
-  which is the only way to test it that does not depend on a platform
-  capability that has not been decided yet.
+M4 found and named two platform-level gaps rather than routing around them:
+`domain.transport.SocketTransport` was HTTPS-only against a target that
+serves plain HTTP by design, and `domain.outbound.resolve` had no per-request
+path parameter for `GET /v1/artifacts/{digest}`. Both are now platform
+mechanisms — `domain/outbound.py`'s `scheme`/`allow_loopback` and
+`path_params`, `domain/transport.py`'s loopback-checked plain-HTTP path — and
+this add-on needed **no handler code change** to use either: `handler.py`'s
+`context.fetch(_ARTIFACT_PAYLOAD, {"digest": digest})` was already written to
+the contract's intended shape (see "Design" above and the git history of this
+file). What changed is the *operator-approved outbound profile* — "The
+operator-approved outbound profile" above is the row that now actually
+reaches the target — and `tests/test_handler.py`'s dereference-branch tests
+still exercise `handler.py` directly against a hand-built `CollectContext`
+(the harness-cannot-express-three-statuses-in-one-page reason given above,
+unrelated to either gap).
+
+`[측정]` Live smoke, 2026-08-21, one bounded `collect()` through the real
+host worker (`platform_core.worker.Worker` via
+`addon_host.worker.capability_registry`, real `SocketTransport`, a real
+source row in `cosmai_test_5` with the profile above, cleaned up
+afterward — nothing left in the database): **SUCCEEDED**, one attempt, one
+page-plus-dereference pass bounded to a ~3-minute slice of the live feed
+(this target's own retention window holds far more than one job's page
+budget can afford in one pass; a real second-and-later run reads its own
+watermark and stays this small on every ordinary run). 5 `artifacts_list`
+pages, 224 `artifact_payload` dereferences — every one of them a plain-HTTP
+request to `127.0.0.1:8080` admitted by `allow_loopback`, with `{digest}`
+validated against `^[0-9a-f]{64}$` and substituted by `domain.outbound.resolve`
+— 224 Raw items recorded, watermark advanced from `03:09:25.090879Z` to
+`03:12:25.090879Z`, and (called directly, the way an operator action would)
+`domain.store.seal_snapshot_from_raw` sealed a snapshot of all 224 items.
+Counts only; no payload bytes are reproduced here.

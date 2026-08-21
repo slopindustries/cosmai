@@ -35,6 +35,28 @@ hole and it is guarded two ways: a test asserts no committed source sets it, and
 second asserts that with the flag off a loopback address is actually refused. The second
 is not optional — an absence assertion with no positive control passes just as well
 against a rule that checks nothing.
+
+**M4x — two gaps two live adapters actually hit, closed the same way as everything above:
+by rule, testable without a socket, belt-and-suspenders where DNS or an add-on's own input
+is the part policy cannot see in advance.**
+
+*Gap 1, plain HTTP for loopback.* `ALLOWED_SCHEMES` stays `https`-only for redirects and
+for the general case; `OutboundProfile.scheme` lets a profile state `"http"` instead, and
+`resolve` grants it only alongside `allow_loopback` — the same flag that is already the
+one hole in the address rule, rather than a second flag that could disagree with it. That
+is the validation half. `SocketTransport` holds the other half: it refuses to speak plain
+HTTP to anything the DNS it actually performed did not resolve to a loopback address,
+which is the check `resolve` cannot make without a socket.
+
+*Gap 2, path parameters.* An approved path may carry a `{name}` placeholder; the profile
+declares one validation regex per placeholder in `path_params`. The add-on supplies the
+value through `fetch`'s existing `params` — the same channel that has always carried a
+query string or a body, so an add-on still names an endpoint and a question, never a
+destination. `resolve` validates each placeholder's value against its declared pattern,
+substitutes, and only then runs the same segment-by-segment containment every approved
+path has always been checked with — now against the path a template actually resolved to.
+An endpoint with no placeholder is unaffected: `_template_param_names` returns nothing for
+it and every check above takes the branch it already took.
 """
 
 from __future__ import annotations
@@ -94,6 +116,13 @@ class RefusalReason(StrEnum):
     #: reached past what the source row approved.
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     REQUEST_TOO_LARGE = "REQUEST_TOO_LARGE"
+    #: M4x platform gap 2 (path templates). An endpoint whose approved path carries a
+    #: `{name}` placeholder needs that name supplied through `fetch`'s existing `params`
+    #: channel — the add-on names the value, the profile still decides the destination.
+    #: `MISSING` is an add-on that named no value for a placeholder the profile declares;
+    #: `INVALID` is a value that does not match the profile's own declared regex for it.
+    PATH_PARAMETER_MISSING = "PATH_PARAMETER_MISSING"
+    PATH_PARAMETER_INVALID = "PATH_PARAMETER_INVALID"
 
 
 @dataclass(frozen=True)
@@ -126,6 +155,10 @@ class PreparedRequest:
     method: str = "GET"
     #: DP-020 D2. From the add-on, exactly as `params` always has been. `None` for a `GET`.
     body: bytes | None = None
+    #: M4x platform gap 1 (loopback HTTP). From the profile, never from the add-on — the
+    #: same provenance `method` already has. `"https"` unless the profile explicitly
+    #: declares `"http"`, which `resolve` only grants when `allow_loopback` is also set.
+    scheme: str = "https"
 
 
 #: `p0-security.md` requires per-source limits; these are the values used when a profile
@@ -250,6 +283,61 @@ def _as_bytes(body: object) -> bytes | None:
     return None
 
 
+#: A path-template placeholder: `{digest}`, not `{{digest}}` or `{}`. Matches Python's own
+#: identifier grammar, since it is a name the profile's `path_params` dict is keyed by.
+_TEMPLATE_PARAM: Final = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def _template_param_names(path: str) -> frozenset[str]:
+    """Every `{name}` placeholder an approved path declares, or `frozenset()` for none.
+
+    M4x platform gap 2. A path with no placeholder behaves exactly as it always has —
+    this is how "profile without template → unchanged behavior" holds without a second
+    code path.
+    """
+    return frozenset(_TEMPLATE_PARAM.findall(path))
+
+
+def _read_path_params(
+    endpoint_name: str, path: str, declared: object
+) -> dict[str, re.Pattern[str]]:
+    """Read `path_params`, refusing a declaration that does not exactly cover the template.
+
+    Every placeholder in `path` needs exactly one regex here and every regex here needs a
+    placeholder in `path` — a name with no regex is a value nothing would validate before
+    it becomes part of a request; a regex with no placeholder is dead configuration that
+    would silently stop applying the day someone rewrote the path. Read at profile
+    construction, like every other malformed-row check in this function: the row should
+    never have been written, and an operator learns that at registration rather than on the
+    add-on's first `fetch` of it.
+    """
+    template_names = _template_param_names(path)
+    if declared is None and not template_names:
+        return {}
+    if not isinstance(declared, Mapping):
+        raise ValueError(
+            f"outbound_profile.endpoints[{endpoint_name!r}].path_params must be an object "
+            "of parameter name -> validation regex"
+        )
+    declared_names = {str(key) for key in declared}
+    if declared_names != template_names:
+        raise ValueError(
+            f"outbound_profile.endpoints[{endpoint_name!r}] declares path_params "
+            f"{sorted(declared_names)} but its path {path!r} names {sorted(template_names)}; "
+            "every {name} placeholder needs exactly one declared regex and no more"
+        )
+    patterns: dict[str, re.Pattern[str]] = {}
+    for param_name, pattern in declared.items():
+        try:
+            patterns[str(param_name)] = re.compile(str(pattern))
+        except re.error as error:
+            raise ValueError(
+                f"outbound_profile.endpoints[{endpoint_name!r}].path_params[{param_name!r}] "
+                f"is not a valid regular expression: {error}"
+            ) from error
+    return patterns
+
+
 def _read_endpoints(endpoints: Mapping[str, Any]) -> dict[str, Any]:
     """Read both endpoint shapes, refusing a method the platform does not grant.
 
@@ -275,9 +363,17 @@ def _read_endpoints(endpoints: Mapping[str, Any]) -> dict[str, Any]:
                     "such endpoint granted the whole host as the redirect range for all the "
                     "others. State the path, or remove the endpoint."
                 )
-            read[str(name)] = {"path": path, "method": method}
+            path_params = _read_path_params(str(name), path, entry.get("path_params"))
+            read[str(name)] = {"path": path, "method": method, "path_params": path_params}
         else:
-            read[str(name)] = str(entry)
+            path = str(entry)
+            if _template_param_names(path):
+                raise ValueError(
+                    f"outbound_profile.endpoints[{name!r}] uses a {{name}} path template but "
+                    "is declared as a bare string; declare it as an object with 'path' and "
+                    "'path_params' so every placeholder gets a validation regex"
+                )
+            read[str(name)] = path
     return read
 
 
@@ -351,6 +447,12 @@ class OutboundProfile:
     limits: Mapping[str, Any] = field(default_factory=lambda: dict(DEFAULT_LIMITS))
     allowed_parameters: tuple[str, ...] | None = None
     allow_loopback: bool = False
+    #: M4x platform gap 1. `"https"` unless the profile states `"http"` — and `resolve`
+    #: grants `"http"` only when `allow_loopback` is also set, which is the same flag
+    #: `check_resolved_addresses` already uses to admit a loopback address at all. One base
+    #: value per profile rather than per endpoint: every fixed adapter target this platform
+    #: has hosted so far speaks one scheme for every route it serves.
+    scheme: str = "https"
     #: What this source authenticates with, and where each part goes (DP-018 D2). On the
     #: *profile* rather than in the add-on's manifest: an add-on naming its own header would
     #: be describing the wire format of a request DP-008 D4 forbids it to compose, which is
@@ -386,6 +488,21 @@ class OutboundProfile:
             path for name in self.endpoints if (path := self.path_of(name)) is not None
         )
 
+    def path_params_of(self, endpoint_ref: str) -> Mapping[str, re.Pattern[str]]:
+        """The declared validation regex for each `{name}` placeholder in this endpoint's
+        approved path, or an empty mapping for an endpoint with no template.
+
+        M4x platform gap 2. Populated by `_read_endpoints`/`_read_path_params` at profile
+        construction, where every placeholder is already checked to have exactly one regex —
+        so a name `resolve` looks up here is guaranteed present, never a `KeyError`.
+        """
+        entry = self.endpoints.get(endpoint_ref)
+        if isinstance(entry, Mapping):
+            patterns = entry.get("path_params", {})
+            if isinstance(patterns, Mapping):
+                return patterns
+        return {}
+
     @classmethod
     def from_row(cls, profile: Mapping[str, Any] | None) -> OutboundProfile | None:
         """Read a `source.outbound_profile` jsonb value, or `None` if the source has none.
@@ -410,6 +527,7 @@ class OutboundProfile:
             allowed_parameters=None if allowed is None else tuple(str(a) for a in allowed),
             allow_loopback=bool(profile.get("allow_loopback", False)),
             credentials=_read_credentials(profile),
+            scheme=str(profile.get("scheme", "https")),
         )
 
 
@@ -450,8 +568,69 @@ def resolve(
         )
     host = profile.hosts[0]
 
-    if profile.allowed_parameters is not None and params:
-        unexpected = sorted(set(params) - set(profile.allowed_parameters))
+    # M4x platform gap 1. The scheme is the profile's, exactly as the host and method
+    # already are — an add-on names an endpoint, never a transport. `http` is granted only
+    # alongside `allow_loopback`: the same flag `check_resolved_addresses` already requires
+    # before it will admit a loopback address at all, so one flag states one intention
+    # rather than two that could disagree. This is the "profile validation" half of the
+    # belt-and-suspenders rule; `SocketTransport` holds the other half against the address
+    # DNS actually resolved.
+    scheme = profile.scheme
+    if scheme not in ("https", "http"):
+        return Refusal(
+            RefusalReason.SCHEME_NOT_ALLOWED,
+            f"the profile declares scheme {scheme!r} for {endpoint_ref!r}, which this "
+            "platform does not send",
+            {"endpoint_ref": endpoint_ref, "scheme": scheme},
+        )
+    if scheme == "http" and not profile.allow_loopback:
+        return Refusal(
+            RefusalReason.SCHEME_NOT_ALLOWED,
+            f"plain HTTP is only permitted when the source's profile sets allow_loopback; "
+            f"{endpoint_ref!r} would be requested over 'http' without it",
+            {"endpoint_ref": endpoint_ref, "scheme": scheme},
+        )
+
+    # M4x platform gap 2. A `{name}` placeholder in the approved path is filled from the
+    # add-on's existing `params` channel — the same one that has always carried "the
+    # question" for a query string or a body. The add-on never composes the path: the
+    # profile states which names it will accept and what pattern each must match, and only
+    # those exact names are consumed here. Whatever `params` holds beyond them still becomes
+    # a query string below, unchanged from before this gap existed.
+    remaining_params: Mapping[str, str] | None = params
+    template_names = _template_param_names(path)
+    if template_names:
+        regexes = profile.path_params_of(endpoint_ref)
+        substitutions: dict[str, str] = {}
+        for name in sorted(template_names):
+            if params is None or name not in params:
+                return Refusal(
+                    RefusalReason.PATH_PARAMETER_MISSING,
+                    f"{endpoint_ref!r} requires path parameter {name!r}, which was not "
+                    "supplied",
+                    {"endpoint_ref": endpoint_ref, "parameter": name},
+                )
+            value = params[name]
+            pattern = regexes.get(name)
+            if pattern is None or pattern.fullmatch(value) is None:
+                # The value is never quoted, for the same reason every other `Refusal`
+                # here never quotes one: it is the one part of a request an add-on
+                # controls, and it is what a traversal attempt (`digest=../../admin`)
+                # would otherwise put straight into a log line.
+                return Refusal(
+                    RefusalReason.PATH_PARAMETER_INVALID,
+                    f"path parameter {name!r} for {endpoint_ref!r} does not match the "
+                    "profile's declared pattern",
+                    {"endpoint_ref": endpoint_ref, "parameter": name},
+                )
+            substitutions[name] = value
+        for name, value in substitutions.items():
+            path = path.replace("{" + name + "}", value)
+        remainder = {k: v for k, v in params.items() if k not in template_names} if params else {}
+        remaining_params = remainder or None
+
+    if profile.allowed_parameters is not None and remaining_params:
+        unexpected = sorted(set(remaining_params) - set(profile.allowed_parameters))
         if unexpected:
             # Names only. A value is the part an add-on controls.
             return Refusal(
@@ -460,6 +639,11 @@ def resolve(
                 {"endpoint_ref": endpoint_ref, "unexpected": unexpected},
             )
 
+    # Runs against the *substituted* path when a template was used: this is the same
+    # containment every approved path has always been checked with, applied to the final
+    # path a template resolved to rather than to the literal `{name}` text — the belt this
+    # gap needed and not a new rule. A traversal value fails validation above before it
+    # would ever reach here; a permissive profile's declared regex is what this catches.
     if not path.startswith("/"):
         return Refusal(
             RefusalReason.PATH_NOT_ALLOWED,
@@ -523,11 +707,13 @@ def resolve(
         # sent cannot differ. `_hop` writes `request.body` and re-measures nothing.
         body = measured
 
-    url = f"https://{host}:{profile.port}{quote(path, safe='/')}"
+    url = f"{scheme}://{host}:{profile.port}{quote(path, safe='/')}"
     # A `POST` asks its question in the body, so nothing goes in the URL as well: two places
     # for one fact is two places that can disagree, and only one of them is what was sent.
-    if params and method == "GET":
-        url = f"{url}?{urlencode(dict(params))}"
+    # `remaining_params` has already had any path-template names removed above, so a value
+    # consumed as a path segment is never also appended as a query parameter.
+    if remaining_params and method == "GET":
+        url = f"{url}?{urlencode(dict(remaining_params))}"
     return PreparedRequest(
         url=url,
         host=host,
@@ -535,6 +721,7 @@ def resolve(
         endpoint_ref=endpoint_ref,
         method=method,
         body=body,
+        scheme=scheme,
     )
 
 
