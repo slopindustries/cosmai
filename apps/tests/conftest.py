@@ -384,6 +384,11 @@ def worker_command(*arguments: str) -> list[str]:
     return [sys.executable, "-m", "platform_core.worker", *arguments]
 
 
+def scheduler_command(*arguments: str) -> list[str]:
+    """The command line M6 batch 6a fixes for the scheduler process."""
+    return [sys.executable, "-m", "scheduler", *arguments]
+
+
 def api_command(*arguments: str) -> list[str]:
     """The command line DP-006 D1 fixes for the operator API process."""
     return [sys.executable, "-m", "platform_core.api", *arguments]
@@ -434,6 +439,33 @@ def run_worker(
 ) -> subprocess.CompletedProcess[str]:
     """Run a worker process to completion. The common case in a scenario."""
     return wait_for_worker(start_worker(config, *arguments, **overrides), timeout=timeout)
+
+
+def start_scheduler(
+    config: PlatformConfig, *arguments: str, **overrides: str
+) -> subprocess.Popen[str]:
+    """Start a scheduler process against ``config`` and return it still running.
+
+    Named after ``start_worker`` and shaped identically — see that function's
+    own docstring for why both streams are captured.
+    """
+    return subprocess.Popen(
+        scheduler_command(*arguments),
+        env=worker_environment(config, **overrides),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def run_scheduler(
+    config: PlatformConfig,
+    *arguments: str,
+    timeout: float = PROCESS_TIMEOUT_SECONDS,
+    **overrides: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run a scheduler process to completion. The common case in a scenario."""
+    return wait_for_worker(start_scheduler(config, *arguments, **overrides), timeout=timeout)
 
 
 def free_port(host: str) -> int:

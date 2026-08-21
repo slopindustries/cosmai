@@ -228,6 +228,50 @@ def _register(app: FastAPI, config: PlatformConfig, logger: StructuredLogger) ->
             )
         )
 
+    # ---------------------------------------------------------------- schedule
+
+    @app.get("/sources/{source_id}/schedule")
+    def read_schedule(source_id: str) -> JSONResponse:
+        """This source's recurring-collection schedule, or an unset one (DP-033 D5).
+
+        No schedule row is not an error: most sources never get one. `enabled`
+        reads `false` and every timestamp reads `null` on an unset schedule, the
+        same shape a `PUT` that then disables it would leave — a caller does not
+        have to special-case "never configured" against "configured, disabled".
+        """
+        source_or_404(source_id)
+        with connect(config, autocommit=True) as handle:
+            row = DomainStore(handle).read_schedule(source_id)
+        return JSONResponse(schedule_view(source_id, row))
+
+    @app.put("/sources/{source_id}/schedule")
+    def write_schedule(source_id: str, body: dict[str, Any] = _REQUIRED_BODY) -> JSONResponse:
+        """Create or replace this source's schedule; upserts, per the plan's own
+        `GET|PUT /sources/{id}/schedule` shape (DP-033 D5; `apps/scheduler`
+        polls what this writes).
+
+        Restricted to a `collector` source: D5's own text is "collection runs on
+        a schedule; normalization stays operator-triggered, with an optional
+        schedule" — the optional normalization hook is explicitly *not* built by
+        this batch (M6's brief: "정규화는 수동 유지+선택 스케줄 훅만"), so a
+        schedule on a normalizer or an importer would be a row `apps/scheduler`
+        can create a `collect`-shaped job against but that can never mean
+        anything — the same "a route that looks like it works and does not"
+        reasoning this module's own docstring gives for `/collect`/`/import`.
+        """
+        source = require_kind(source_or_404(source_id), "collector")
+        interval = body.get("interval_seconds")
+        enabled = body.get("enabled")
+        if not isinstance(interval, int) or isinstance(interval, bool) or interval <= 0:
+            raise HTTPException(
+                status_code=422, detail="interval_seconds must be a positive integer"
+            )
+        if not isinstance(enabled, bool):
+            raise HTTPException(status_code=422, detail="enabled must be a boolean")
+        with connect(config, autocommit=True) as handle:
+            row = DomainStore(handle).upsert_schedule(source["source_id"], interval, enabled)
+        return JSONResponse(schedule_view(source_id, row))
+
     # --------------------------------------------------------------- credentials
 
     @app.post("/sources/{source_id}/credentials", status_code=204)
@@ -465,6 +509,30 @@ def result_view(row: dict[str, Any]) -> dict[str, Any]:
         "body_sha256": row["body_sha256"],
         "notes": row["notes"],
         "created_at": _instant(row["created_at"]),
+    }
+
+
+def schedule_view(source_id: str, row: dict[str, Any] | None) -> dict[str, Any]:
+    """One source's schedule, or the unset shape when it has none (DP-033 D5).
+
+    `GET`'s own docstring is why `row is None` is not a 404: it is the ordinary
+    resting state of "never configured", answered with the same field shape a
+    configured-then-disabled schedule would have.
+    """
+    if row is None:
+        return {
+            "source_id": source_id,
+            "interval_seconds": None,
+            "enabled": False,
+            "next_run_at": None,
+            "last_run_at": None,
+        }
+    return {
+        "source_id": row["source_id"],
+        "interval_seconds": row["interval_seconds"],
+        "enabled": row["enabled"],
+        "next_run_at": _instant(row["next_run_at"]),
+        "last_run_at": _instant(row["last_run_at"]),
     }
 
 

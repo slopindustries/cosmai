@@ -389,6 +389,127 @@ class TestRawItemsAreBrowsable:
         )
 
 
+class TestScheduleReadAndWrite:
+    """`GET|PUT /sources/{id}/schedule` (M6 batch 6a; DP-033 D5). `apps/scheduler`
+    is what actually acts on what these tests write; the process-level "due →
+    job created" / "duplicate suppressed" / "disabled ignored" scenarios live
+    in `tests/test_scheduler.py`, against `scheduler.store.SchedulerStore`
+    directly and via a spawned `python -m scheduler` process — this class only
+    covers the HTTP surface `PUT` upserts through."""
+
+    def test_an_unconfigured_source_reports_the_unset_shape_not_a_404(
+        self, client: TestClient, registered: None
+    ) -> None:
+        response = client.get(f"/sources/{COLLECT_SOURCE}/schedule")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "source_id": COLLECT_SOURCE,
+            "interval_seconds": None,
+            "enabled": False,
+            "next_run_at": None,
+            "last_run_at": None,
+        }
+
+    def test_an_unregistered_source_is_404(self, client: TestClient, registered: None) -> None:
+        assert client.get("/sources/nope/schedule").status_code == 404
+        assert (
+            client.put("/sources/nope/schedule", json={"interval_seconds": 60, "enabled": True})
+            .status_code
+            == 404
+        )
+
+    def test_put_then_get_round_trips_and_next_run_at_is_due_immediately(
+        self, client: TestClient, registered: None
+    ) -> None:
+        put = client.put(
+            f"/sources/{COLLECT_SOURCE}/schedule",
+            json={"interval_seconds": 3600, "enabled": True},
+        )
+
+        assert put.status_code == 200
+        body = put.json()
+        assert body["source_id"] == COLLECT_SOURCE
+        assert body["interval_seconds"] == 3600
+        assert body["enabled"] is True
+        assert body["next_run_at"] is not None
+        assert body["last_run_at"] is None
+
+        get = client.get(f"/sources/{COLLECT_SOURCE}/schedule")
+        assert get.json() == body
+
+    def test_editing_the_interval_of_an_already_due_schedule_keeps_next_run_at(
+        self, client: TestClient, registered: None
+    ) -> None:
+        """Changing the cadence is not itself a request to run right now
+        (`apps/domain/store.py`'s `UPSERT_SCHEDULE` docstring)."""
+        first = client.put(
+            f"/sources/{COLLECT_SOURCE}/schedule",
+            json={"interval_seconds": 60, "enabled": True},
+        ).json()
+
+        second = client.put(
+            f"/sources/{COLLECT_SOURCE}/schedule",
+            json={"interval_seconds": 120, "enabled": True},
+        ).json()
+
+        assert second["interval_seconds"] == 120
+        assert second["next_run_at"] == first["next_run_at"]
+
+    def test_disabling_then_re_enabling_a_never_run_schedule_stays_due(
+        self, client: TestClient, registered: None
+    ) -> None:
+        enabled = client.put(
+            f"/sources/{COLLECT_SOURCE}/schedule",
+            json={"interval_seconds": 60, "enabled": True},
+        ).json()
+
+        disabled = client.put(
+            f"/sources/{COLLECT_SOURCE}/schedule",
+            json={"interval_seconds": 60, "enabled": False},
+        ).json()
+        assert disabled["enabled"] is False
+        assert disabled["next_run_at"] == enabled["next_run_at"]
+
+        re_enabled = client.put(
+            f"/sources/{COLLECT_SOURCE}/schedule",
+            json={"interval_seconds": 60, "enabled": True},
+        ).json()
+        assert re_enabled["next_run_at"] == enabled["next_run_at"]
+
+    def test_a_normalizer_source_cannot_be_scheduled(
+        self, client: TestClient, registered: None
+    ) -> None:
+        """D5: collection runs on a schedule; the optional normalization hook is
+        not built by this batch — see `apps/domain/api.py`'s `write_schedule`."""
+        response = client.put(
+            f"/sources/{NORMALIZE_SOURCE}/schedule",
+            json={"interval_seconds": 60, "enabled": True},
+        )
+
+        assert response.status_code == 409
+
+    def test_a_non_positive_interval_is_a_422(
+        self, client: TestClient, registered: None
+    ) -> None:
+        response = client.put(
+            f"/sources/{COLLECT_SOURCE}/schedule",
+            json={"interval_seconds": 0, "enabled": True},
+        )
+
+        assert response.status_code == 422
+
+    def test_a_non_boolean_enabled_is_a_422(
+        self, client: TestClient, registered: None
+    ) -> None:
+        response = client.put(
+            f"/sources/{COLLECT_SOURCE}/schedule",
+            json={"interval_seconds": 60, "enabled": "yes"},
+        )
+
+        assert response.status_code == 422
+
+
 class TestSealingASnapshot:
     def test_an_operator_can_seal_what_has_been_collected(
         self,

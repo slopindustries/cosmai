@@ -465,6 +465,38 @@ where snapshot_id = %(snapshot_id)s
 order by ordinal
 """
 
+# M6 batch 6a, new in P1: `cosmai.schedule` CRUD (spec §5.5; DP-033 D5;
+# `apps/platform_core/db/migrations/0002_domain.sql`'s `schedule` table). One row
+# per source, `source_id` the primary key, so a read is a lookup and a write is
+# always an upsert — there is no second row to disambiguate.
+READ_SCHEDULE = """
+select source_id, interval_seconds, enabled, next_run_at, last_run_at
+from cosmai.schedule
+where source_id = %(source_id)s
+"""
+
+# `next_run_at` is set to `now()` only when this write is what makes the
+# schedule newly due — a fresh row, or one going from disabled/never-run
+# (`next_run_at is null`) to enabled. An already-scheduled, already-enabled row
+# whose interval changes keeps its existing `next_run_at`: changing the cadence
+# is not itself a request to run right now, and resetting it on every interval
+# edit would make "next run" un-eyeballable across an operator's own edits.
+UPSERT_SCHEDULE = """
+insert into cosmai.schedule (source_id, interval_seconds, enabled, next_run_at)
+values (
+    %(source_id)s, %(interval_seconds)s, %(enabled)s,
+    case when %(enabled)s then now() else null end
+)
+on conflict (source_id) do update
+set interval_seconds = excluded.interval_seconds,
+    enabled = excluded.enabled,
+    next_run_at = case
+        when excluded.enabled and cosmai.schedule.next_run_at is null then now()
+        else cosmai.schedule.next_run_at
+    end
+returning source_id, interval_seconds, enabled, next_run_at, last_run_at
+"""
+
 
 class DomainStore:
     """Data access for the domain tables. One instance per connection, no commits."""
@@ -908,6 +940,43 @@ class DomainStore:
         if recomputed_manifest != snapshot["manifest_sha256"]:
             problems.append("the recomputed manifest digest differs from the sealed one")
         return tuple(problems)
+
+    # -------------------------------------------------------------- schedule
+
+    def read_schedule(self, source_id: str) -> dict[str, Any] | None:
+        """This source's schedule row, or ``None`` if it has never been configured.
+
+        ``None`` is a normal answer, not a fault — most sources have no schedule
+        until an operator sets one (`GET /sources/{id}/schedule`,
+        ``apps/domain/api.py``).
+        """
+        with self._cursor() as cursor:
+            cursor.execute(READ_SCHEDULE, {"source_id": source_id})
+            return cursor.fetchone()
+
+    def upsert_schedule(
+        self, source_id: str, interval_seconds: int, enabled: bool
+    ) -> dict[str, Any]:
+        """Create or replace this source's schedule and return the row that resulted.
+
+        The caller (``apps/domain/api.py``'s `PUT /sources/{id}/schedule`) validates
+        ``interval_seconds > 0`` before this is called, but the schema's own
+        ``schedule_interval_is_positive`` CHECK is the actual guarantee — this method
+        does not repeat that validation, the same division of labour
+        ``register_source`` documents for `config`.
+        """
+        with self._cursor() as cursor:
+            cursor.execute(
+                UPSERT_SCHEDULE,
+                {
+                    "source_id": source_id,
+                    "interval_seconds": interval_seconds,
+                    "enabled": enabled,
+                },
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return row
 
     # ---------------------------------------------------------------- internal
 
