@@ -259,3 +259,14 @@ So the correct finding is narrower and **MINOR**: `AGENTS.md:15` and `M4-RECORD:
 - **B12 and M-P1…M-P4** are operator- and author-facing false statements shipped in the product and in the add-on template. M-P1 is the one MINOR I would consider promoting to blocking: it violates AGENTS.md's "do not describe a convention as a control" verbatim and propagates to every future add-on.
 
 **Housekeeping:** a review subagent's `npm run build` left `apps/dashboard/dist/` on disk. It is gitignored (`apps/dashboard/.gitignore:11`) so the tracked tree is clean — `git status --porcelain -uno` is empty — but it should be deleted. Neither I nor any subagent modified a tracked file at any point; all mutation work was under `$TMPDIR`.
+
+---
+
+## Disposition addendum (orchestrator, 2026-08-21, post-repair)
+
+| Round | Commits | Scope | Independent re-verification |
+|---|---|---|---|
+| 1 | `07dafb6` `de7cc53` `34fb260` `29b8f84` | B1–B12 + every M-# per controller rulings (B8 promoted to `docs/p1/lane-reports/` after a secret-shape scan; M-P1 implemented as a real refusal; M-X2 port → 8100; B12 collect wired) | B1–B12 confirmed **by execution** (B1 four real/mutant pairs; B2 live probe; B5 RED/GREEN re-run by the reviewer). Four new findings: N1 (the B1 tuple gap surviving in `export.py`), N2 (DB-detection flag incomplete + a convention described as a control), N3 (a correction that was itself false), N4 (a gitignored path cited from a new section), N5–N8 minor |
+| 2 | `020924a` | N1–N8 | Orchestrator reproduced directly: the widened tuple at `export.py:202`, the corrected M4-RECORD wording, 17 tracked lane reports, all remaining `.superpowers` mentions verified as historical/provenance text rather than evidence pointers, root guard 87 |
+
+Final state: root guard **87**, apps suite **1127 passed / 1 skipped** (live DB), mypy --strict clean, ruff clean, `check-addons.sh` 8/8, dashboard build + **47** vitest. Residuals accepted with rulings: importer UI screen absent (client+hook tested; screen is follow-on work), one immutable commit message, two P0-tree E501s (read-only tree).
