@@ -73,3 +73,14 @@ The claim statement, `_FENCE`, lease-expiry handling, and `APPLY_EFFECT` are unm
 ## Recommended disposition
 
 **REWORK.** F1/F2 mechanical before merge; F3 needs a decision; F4–F11 record/control corrections; F12–F14 named as gaps rather than fixed in M1. Everything the record claims about the job core's fidelity to P0 is true, verified line by line. The failures are in the layer that describes the work, not the work.
+
+---
+
+## Disposition addendum (orchestrator, 2026-08-21, post-repair)
+
+| Round | Commit | Scope | Independent re-verification |
+|---|---|---|---|
+| 1 | `b581820` | F1–F14 per controller rulings (55P03→transient; convention→control guard; budget registered) | all fourteen ADDRESSED; F1's durable-row gap closed regardless of which assertion catches which mutation; two new blocking doc defects (stale 319 count under a fresh `[측정]`; "no database required" contradicted by the same wave's own F6 text) |
+| 2 | `6732fc8` | D1–D3, D5–D7 (text-level; D4 parked — the plan file is point-in-time, the manifest is authoritative) | orchestrator reproduced each edit directly: quoted output matches an actually-run command, guard-limit sentences present, root guard 82 |
+
+`tests/environment`: 82 passed (81 + `test_p1_isolation.py`, the F7 convention promoted to a control). The apps suite: 328 passed per the fixer at rounds 1–2; the re-reviewer could independently verify collection (328), mypy (40 files), ruff, and every static claim, but not the live-DB run — recorded as their named gap, discharged by the fixer's runs and the orchestrator's earlier direct runs.
