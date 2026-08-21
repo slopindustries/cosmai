@@ -89,3 +89,61 @@ the full account. Any script that drops and recreates schema `cosmai` — includ
 re-provisioning run — must reissue Part B's grants immediately afterward, in the same session, or
 verify `cosmai_runtime` can actually `SELECT` from a freshly created table before trusting the
 grant is in effect.
+
+## 2026-08-21 — lane test databases (`cosmai_test_2`/`_3`/`_4`)
+
+M2 batch 2a (`docs/superpowers/plans/2026-08-21-m2-m7-batch.md` §공통 제약): each M2–M7
+lane gets its own test database on the same shared server, so parallel `pytest` runs across
+worktrees do not race on one schema reset (OQ-006). `cosmai_test` (Lane A) already existed;
+this section provisions three more against the roles and passwords already created above —
+**no new role, no new password, `~/.config/cosmai/env` untouched.**
+
+Part A (roles, `cosmai`, `cosmai_test`) is not repeated: `cosmai_owner`/`cosmai_migrator`/
+`cosmai_runtime` already exist cluster-wide, and `CONNECTION LIMIT` on a role is cluster-wide
+too, not per-database, so adding databases does not touch the budget recorded above
+(migrator 2 / runtime 12 / sum 16).
+
+```bash
+for db in cosmai_test_2 cosmai_test_3 cosmai_test_4; do
+  docker exec tubedepth-postgres psql -U fleet -d postgres -c "CREATE DATABASE $db OWNER cosmai_owner;"
+done
+
+for db in cosmai_test_2 cosmai_test_3 cosmai_test_4; do
+  docker exec -i tubedepth-postgres psql -U fleet -d "$db" < apps/db/provision_db.sql   # Part B, reused verbatim
+done
+
+# Part C (role-level session defaults), one block per new database — the same five
+# statements provision.sql's Part A+C ran for `cosmai`/`cosmai_test` above.
+for db in cosmai_test_2 cosmai_test_3 cosmai_test_4; do
+  docker exec tubedepth-postgres psql -U fleet -d postgres -c "
+ALTER ROLE cosmai_runtime IN DATABASE $db SET search_path = cosmai, pg_catalog;
+ALTER ROLE cosmai_migrator IN DATABASE $db SET search_path = pg_catalog;
+ALTER ROLE cosmai_runtime IN DATABASE $db SET statement_timeout = '30s';
+ALTER ROLE cosmai_runtime IN DATABASE $db SET lock_timeout = '5s';
+ALTER ROLE cosmai_runtime IN DATABASE $db SET idle_in_transaction_session_timeout = '15s';
+"
+done
+```
+
+Negative verification (Step 4's pattern, run once against `cosmai_test_2` as a representative —
+Part B is the same statements applied to every database in the loop above):
+
+```bash
+docker exec tubedepth-postgres psql -U fleet -d cosmai_test_2 -c \
+  "SET ROLE cosmai_runtime; CREATE TABLE cosmai.must_fail(id int);"
+# -> ERROR: permission denied for schema cosmai   (confirmed)
+```
+
+`\l` confirms all five databases (`cosmai`, `cosmai_test`, `cosmai_test_2`, `cosmai_test_3`,
+`cosmai_test_4`) owned by `cosmai_owner`; `pg_roles` confirms the role/connection-limit set is
+unchanged (`cosmai_migrator` 2, `cosmai_runtime` 12, `cosmai_owner` -1). No password value was
+generated, printed, or written at any step in this section. `dangerouslyDisableSandbox` was used
+for every `docker exec`/TCP step per the M1 global constraints' sandbox note; nothing else needed
+it.
+
+**Lane assignment** (`docs/superpowers/plans/2026-08-21-m2-m7-batch.md` §공통 제약): Lane A
+(M2/M3/M4) = `cosmai_test`, Lane B (M5) = `cosmai_test_2`, Lane C (M6) = `cosmai_test_3`, M4's
+per-add-on worktrees share `cosmai_test_4` and run their add-on tests sequentially against it.
+`apps/tests/conftest.py`'s `TEST_DATABASE` now reads `COSMA_TEST_DB` (default `cosmai_test`), so
+a lane selects its database by setting that environment variable rather than by editing the
+fixture.

@@ -55,10 +55,14 @@ from platform_core.obs.logging import StructuredLogger
 from platform_core.obs.metrics import MetricsRegistry
 
 #: DP-032 D1: the dedicated test database, distinct from the production
-#: `cosmai` database `apps/db/provision.sql` also created. Forced here rather
-#: than trusted to `COSMA_DB_NAME`, so a test run can never reach `cosmai` by
-#: way of an operator's ordinary shell configuration.
-TEST_DATABASE = "cosmai_test"
+#: `cosmai` database `apps/db/provision.sql` also created. Read from
+#: `COSMA_TEST_DB` (default `cosmai_test`) rather than `COSMA_DB_NAME`, so a
+#: test run can never reach `cosmai` by way of an operator's ordinary shell
+#: configuration, while still letting each M2-M7 lane point at its own
+#: provisioned database (`apps/db/provision.md`'s 2026-08-21 section) instead
+#: of racing another lane's parallel `pytest` run over one shared schema reset
+#: (OQ-006).
+TEST_DATABASE = os.environ.get("COSMA_TEST_DB", "cosmai_test")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -289,8 +293,23 @@ def worker_environment(config: PlatformConfig, **overrides: str) -> dict[str, st
     (a short lease, a fast poll, a deliberately broken variable), and a caller
     that wants a setting *removed* can still delete a key from the mapping this
     returns.
+
+    ``COSMA_TEST_DB`` (M2 batch 2a) is dropped from the copied environment
+    before it reaches a spawned process. It selects *this session's* database
+    (see ``TEST_DATABASE`` above) and is not one of ``platform_core.config``'s
+    settings, so a spawned worker or API process has no use for it — and
+    because it is ``COSMA_``-prefixed, an operator who set it in their shell to
+    pick a lane's database (`apps/db/provision.md`'s 2026-08-21 section) would
+    otherwise make every spawned process log an unrelated
+    ``api.configuration_warning``/``worker.configuration_warning`` for an
+    "unknown COSMA_-prefixed variable" that has nothing to do with that
+    process's own configuration — `[측정]` this broke
+    ``test_sec_003_case_f_the_api_entrypoint_reports_an_unknown_variable_and_runs``
+    (`tests/test_api.py`), which counts exactly one such warning for the one
+    variable *it* injects.
     """
     values = dict(os.environ)
+    values.pop("COSMA_TEST_DB", None)
     values.update(
         {
             "COSMA_DB_HOST": str(config.db_host),
