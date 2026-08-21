@@ -29,6 +29,7 @@ required) in place of a fixture this file would otherwise have to redefine.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +125,9 @@ class ScriptedTransport:
     def __init__(self, *scripted: TransportResponse | Refusal | BaseException) -> None:
         self.scripted = list(scripted)
         self.sent: list[PreparedRequest] = []
+        #: What the platform attached to each hop. A credential arrives here and nowhere
+        #: else, so this is where a test can see one without one being recorded.
+        self.headers: list[Mapping[str, str]] = []
 
     def send(
         self,
@@ -133,6 +137,7 @@ class ScriptedTransport:
         limits: TransportLimits | None = None,
     ) -> TransportResponse | Refusal:
         self.sent.append(request)
+        self.headers.append(dict(headers or {}))
         if not self.scripted:
             raise AssertionError(f"the run made an unscripted request to {request.url}")
         nxt = self.scripted.pop(0)
@@ -174,10 +179,12 @@ def a_page(body: bytes = PAGE, status: int = 200) -> TransportResponse:
 # --------------------------------------------------------------------------- #
 
 
-def install(root: Path, source: str = COLLECTOR) -> Path:
-    package = root / ADDON_ID
+def install(
+    root: Path, source: str = COLLECTOR, addon_id: str = ADDON_ID, manifest: str = MANIFEST
+) -> Path:
+    package = root / addon_id
     package.mkdir(parents=True)
-    (package / "addon.toml").write_text(MANIFEST.format(addon_id=ADDON_ID), encoding="utf-8")
+    (package / "addon.toml").write_text(manifest.format(addon_id=addon_id), encoding="utf-8")
     (package / "handler.py").write_text(source, encoding="utf-8")
     return package
 
@@ -207,6 +214,10 @@ def run_collect(
     transport: ScriptedTransport,
     source_id: str = SOURCE_ID,
     addon_source: str = COLLECTOR,
+    addon_id: str = ADDON_ID,
+    manifest: str = MANIFEST,
+    handler: str = HANDLER,
+    logger: Any = None,
 ) -> RunOutcome:
     """Install, register, enqueue, and run one job through the real runner.
 
@@ -214,11 +225,11 @@ def run_collect(
     under test in this file is the *transaction* the runner opens — and a test that
     called the capability layer itself would prove none of it.
     """
-    install(root, addon_source)
+    install(root, addon_source, addon_id=addon_id, manifest=manifest)
     registry = HandlerRegistry()
     addons = load_addons(root, CONTRACT_VERSION)
-    register_addons(registry, addons, bind_capabilities(domain_store, transport))
-    job_store.create_job(HANDLER, {"source_id": source_id}, max_attempts=3)
+    register_addons(registry, addons, bind_capabilities(domain_store, transport, logger))
+    job_store.create_job(handler, {"source_id": source_id}, max_attempts=3)
     outcome = JobRunner(job_store, registry, WORKER, lease_seconds=60).run_once()
     assert outcome is not None
     return outcome
@@ -352,3 +363,560 @@ class TestTheDurableScopeRequirementIsChecked:
 
         assert outcome.accepted
         assert envelopes(job_connection) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Deferred from batch 3b, picked up in 3c: refusal-swallowing, limits, and
+# credential attachment — the three behaviors the 3c task packet named
+# explicitly. One strong test per behavior (plus the positive control this
+# codebase's own convention pairs every absence assertion with — see this
+# module's own docstring and every P0 file quoted in it), not the full 1750
+# lines of P0's `test_capabilities.py`. `docs/p1/M3-RECORD.md` names what is
+# still not carried (the redirect-budget class, the miscount/output-shape
+# refusals, the full status/body-refusal matrix) and why.
+# --------------------------------------------------------------------------- #
+
+
+def a_bounded_source(**limits: Any) -> SourceRow:
+    """A source whose profile states the limits under test and leaves the rest default."""
+    profile = {
+        "hosts": ["api.example.com"],
+        "endpoints": {"items": "/v1/items"},
+        "port": 443,
+        "limits": limits,
+    }
+    return a_source(outbound_profile=profile)
+
+
+#: Fetches until something stops it. Against `max_pages` this is the whole test; the
+#: independent review's version of it made 12 requests against a limit of 2 and succeeded
+#: (`ADVERSARIAL-REVIEW-2026-08-18.md` F1).
+RUNAWAY_PAGES = """
+from addon_api import CollectOutcome
+
+
+def run(context):
+    for _ in range(12):
+        context.fetch("items", {})
+    return CollectOutcome(items_emitted=0)
+"""
+
+#: Emits far more items than the record limit permits, out of one page.
+RUNAWAY_RECORDS = """
+from addon_api import CollectOutcome, RawItem
+
+
+def run(context):
+    response = context.fetch("items", {})
+    items = [
+        RawItem(
+            item_key=str(n),
+            payload=b"{}",
+            content_type="application/json",
+            envelope_ref=response.envelope_ref,
+        )
+        for n in range(50)
+    ]
+    context.emit_raw(items)
+    return CollectOutcome(items_emitted=len(items))
+"""
+
+
+class TestThePageLimitIsEnforced:
+    """`ADVERSARIAL-REVIEW-2026-08-18.md` F1. `p0-security.md` §Outbound requires a
+    per-source page limit and DP-008 D4 puts it on the platform; this is the counter,
+    written against an add-on that does not cooperate.
+    """
+
+    def test_a_collector_that_ignores_the_page_limit_is_stopped_at_it(
+        self,
+        tmp_path: Path,
+        job_store: JobStore,
+        domain_store: DomainStore,
+        job_connection: psycopg.Connection[Any],
+    ) -> None:
+        domain_store.register_source(a_bounded_source(max_pages=2))
+        transport = ScriptedTransport(a_page(), a_page(), a_page(), a_page(), a_page())
+
+        outcome = run_collect(
+            tmp_path, job_store, domain_store, transport, addon_source=RUNAWAY_PAGES
+        )
+
+        assert outcome.error is not None
+        assert outcome.error.error_class is ErrorClass.PLATFORM_PERMANENT
+        assert len(transport.sent) == 2, "the third request must never have been sent"
+        assert envelopes(job_connection) == 0
+
+    def test_a_collector_inside_the_page_limit_is_not_stopped(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The positive control. Without it the refusal above would pass against a
+        counter that refused the first page."""
+        domain_store.register_source(a_bounded_source(max_pages=20))
+
+        outcome = run_collect(tmp_path, job_store, domain_store, ScriptedTransport(a_page()))
+
+        assert outcome.accepted
+
+
+class TestTheRecordLimitIsEnforced:
+    def test_a_collector_that_emits_past_the_record_limit_is_refused(
+        self,
+        tmp_path: Path,
+        job_store: JobStore,
+        domain_store: DomainStore,
+        job_connection: psycopg.Connection[Any],
+    ) -> None:
+        domain_store.register_source(a_bounded_source(max_records=3))
+
+        outcome = run_collect(
+            tmp_path,
+            job_store,
+            domain_store,
+            ScriptedTransport(a_page()),
+            addon_source=RUNAWAY_RECORDS,
+        )
+
+        assert outcome.error is not None
+        assert outcome.error.error_class is ErrorClass.PLATFORM_PERMANENT
+        assert envelopes(job_connection) == 0
+        assert domain_store.count_items(SOURCE_ID) == 0
+
+    def test_a_collector_inside_the_record_limit_persists_its_items(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The positive control for the assertion above."""
+        domain_store.register_source(a_bounded_source(max_records=5000))
+
+        outcome = run_collect(tmp_path, job_store, domain_store, ScriptedTransport(a_page()))
+
+        assert outcome.accepted
+        assert domain_store.count_items(SOURCE_ID) == 2
+
+
+# --------------------------------------------------------------------------- #
+# max_request_bytes — DP-020 D2/D3, the body is the add-on's, the bound is not
+# --------------------------------------------------------------------------- #
+
+POSTING_ADDON_ID = "collector.posting"
+POSTING_HANDLER = f"addon:{POSTING_ADDON_ID}"
+
+POSTING_MANIFEST = """
+[addon]
+id = "{addon_id}"
+version = "0.1.0"
+kind = "collector"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+
+[config]
+schema_version = "1"
+
+[declares]
+hosts = ["api.example.com"]
+endpoints = ["trend"]
+"""
+
+POSTING = """
+import json
+
+from addon_api import CollectOutcome, RawItem
+
+
+def run(context):
+    asked = json.dumps({"keywordGroups": [{"groupName": "a"}]})
+    response = context.fetch("trend", {}, body=asked.encode("utf-8"))
+    context.emit_raw([
+        RawItem(
+            item_key="a",
+            payload=response.body,
+            content_type="application/json",
+            envelope_ref=response.envelope_ref,
+        )
+    ])
+    return CollectOutcome(items_emitted=1)
+"""
+
+TREND_PAGE = json.dumps({"results": [{"title": "a"}]}).encode("utf-8")
+
+
+def a_posting_source(**limits: Any) -> SourceRow:
+    profile: dict[str, Any] = {
+        "hosts": ["api.example.com"],
+        "endpoints": {"trend": {"path": "/search-trend/v1/search", "method": "POST"}},
+        "port": 443,
+    }
+    if limits:
+        profile["limits"] = limits
+    return SourceRow(
+        source_id=SOURCE_ID,
+        addon_id=POSTING_ADDON_ID,
+        addon_version=ADDON_VERSION,
+        kind="collector",
+        config={},
+        config_schema_version="1",
+        outbound_profile=profile,
+    )
+
+
+class TestTheRequestBodyLimitIsEnforced:
+    """DP-020 D2 gives an add-on a body; DP-020 D3 says the platform bounds it, not the
+    add-on's own restraint. `max_request_bytes` is counted before the request is sent.
+    """
+
+    def test_an_oversized_body_is_refused_before_the_request(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        domain_store.register_source(a_posting_source(max_request_bytes=8))
+        transport = ScriptedTransport(a_page(body=TREND_PAGE))
+
+        outcome = run_collect(
+            tmp_path,
+            job_store,
+            domain_store,
+            transport,
+            addon_source=POSTING,
+            addon_id=POSTING_ADDON_ID,
+            manifest=POSTING_MANIFEST,
+            handler=POSTING_HANDLER,
+        )
+
+        assert outcome.error is not None
+        assert transport.sent == [], "an oversized body must never reach the transport"
+
+    def test_the_same_body_is_accepted_within_a_stated_limit(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The positive control. Without it the refusal above would pass against a bound
+        that refused every request regardless of size."""
+        domain_store.register_source(a_posting_source())
+        transport = ScriptedTransport(a_page(body=TREND_PAGE))
+
+        outcome = run_collect(
+            tmp_path,
+            job_store,
+            domain_store,
+            transport,
+            addon_source=POSTING,
+            addon_id=POSTING_ADDON_ID,
+            manifest=POSTING_MANIFEST,
+            handler=POSTING_HANDLER,
+        )
+
+        assert outcome.accepted, outcome
+        assert len(transport.sent) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Refusal-swallowing — a status the add-on neither raised on nor decided about
+# --------------------------------------------------------------------------- #
+
+#: Emits whatever came back without looking at the status. What the platform must catch
+#: (`ADVERSARIAL-REVIEW-2026-08-19.md` F2(b): a collector that emitted from a `401` body
+#: reported `SUCCEEDED`, and the error body landed in `raw_item` as data).
+IGNORES_STATUS = """
+import json
+
+from addon_api import CollectOutcome, RawItem
+
+
+def run(context):
+    response = context.fetch("items", {})
+    context.emit_raw([
+        RawItem(
+            item_key="a",
+            payload=response.body,
+            content_type="application/json",
+            envelope_ref=response.envelope_ref,
+        )
+    ])
+    return CollectOutcome(items_emitted=1)
+"""
+
+
+class TestANonSuccessStatusCannotBeIgnored:
+    """`ADVERSARIAL-REVIEW-2026-08-19.md` F2(b), contract 1.2's `accept_status`.
+
+    The platform does not decide what a status *means* — a `404` is "no results" to one
+    API and "wrong endpoint" to another — but it does enforce that the add-on **decided**:
+    raised on it, or called `accept_status` with a reason. Silence fails the run.
+    """
+
+    def test_emitting_from_a_non_success_response_without_deciding_fails_the_job(
+        self,
+        tmp_path: Path,
+        job_store: JobStore,
+        domain_store: DomainStore,
+        job_connection: psycopg.Connection[Any],
+    ) -> None:
+        domain_store.register_source(a_source())
+
+        outcome = run_collect(
+            tmp_path,
+            job_store,
+            domain_store,
+            ScriptedTransport(a_page(status=401, body=b'{"errorCode":"SE01"}')),
+            addon_source=IGNORES_STATUS,
+        )
+
+        assert outcome.error is not None
+        assert outcome.error.error_class is ErrorClass.PLATFORM_PERMANENT
+        assert domain_store.count_items(SOURCE_ID) == 0
+
+    def test_an_ordinary_success_needs_no_decision(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The positive control. A check that demanded a decision on every response would
+        pass the assertion above and break every ordinary collector."""
+        domain_store.register_source(a_source())
+
+        outcome = run_collect(tmp_path, job_store, domain_store, ScriptedTransport(a_page()))
+
+        assert outcome.accepted
+        assert domain_store.count_items(SOURCE_ID) == 2
+
+
+# --------------------------------------------------------------------------- #
+# DP-018 — the credential the platform attaches and the add-on never sees
+# --------------------------------------------------------------------------- #
+
+CREDENTIAL_ADDON_ID = "collector.credentialed"
+CREDENTIAL_HANDLER = f"addon:{CREDENTIAL_ADDON_ID}"
+CREDENTIAL_REF = "COSMA_SRC_PROBE_TOKEN"
+CREDENTIAL_VALUE = "ncp-secret-value-42"
+
+CREDENTIAL_MANIFEST = """
+[addon]
+id = "{addon_id}"
+version = "0.1.0"
+kind = "collector"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+
+[config]
+schema_version = "1"
+
+[declares]
+hosts = ["api.example.com"]
+endpoints = ["items"]
+streams = ["items"]
+needs_credential = true
+"""
+
+#: Reports whatever it can see. If a credential ever reaches an add-on, this finds it.
+INSPECTING = """
+import json
+
+from addon_api import CollectOutcome, RawItem
+
+
+def run(context):
+    response = context.fetch("items", {})
+    seen = {"response_headers": dict(response.headers), "config": dict(context.config)}
+    context.emit_raw([
+        RawItem(
+            item_key="seen",
+            payload=json.dumps(seen, sort_keys=True).encode("utf-8"),
+            content_type="application/json",
+            envelope_ref=response.envelope_ref,
+        )
+    ])
+    return CollectOutcome(items_emitted=1)
+"""
+
+
+@pytest.fixture
+def secret_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    store = tmp_path / "secrets" / "env"
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text(f"{CREDENTIAL_REF}={CREDENTIAL_VALUE}" + "\n", encoding="utf-8")
+    store.chmod(0o600)
+    monkeypatch.setenv("COSMA_SECRET_SOURCE", str(store))
+    return store
+
+
+def an_authenticated_source() -> SourceRow:
+    profile = {
+        "hosts": ["api.example.com"],
+        "endpoints": {"items": "/v1/items"},
+        "port": 443,
+        "credentials": [{"header": "X-NCP-APIGW-API-KEY", "ref": CREDENTIAL_REF}],
+    }
+    return SourceRow(
+        source_id=SOURCE_ID,
+        addon_id=CREDENTIAL_ADDON_ID,
+        addon_version=ADDON_VERSION,
+        kind="collector",
+        config={},
+        config_schema_version="1",
+        outbound_profile=profile,
+    )
+
+
+def _run_credentialed(
+    tmp_path: Path,
+    job_store: JobStore,
+    domain_store: DomainStore,
+    transport: ScriptedTransport,
+    addon_source: str = COLLECTOR,
+) -> RunOutcome:
+    return run_collect(
+        tmp_path,
+        job_store,
+        domain_store,
+        transport,
+        addon_source=addon_source,
+        addon_id=CREDENTIAL_ADDON_ID,
+        manifest=CREDENTIAL_MANIFEST,
+        handler=CREDENTIAL_HANDLER,
+    )
+
+
+class TestTheCredentialReachesTheRequestAndNothingElse:
+    """DP-018. The add-on composes no URL, holds no credential, and opens no socket — and
+    the request it caused is authenticated anyway. Every assertion here is paired with the
+    one that makes it mean something: the value is *present* on the wire and *absent*
+    everywhere it could be recorded — either half alone passes against a platform that
+    attaches nothing at all.
+    """
+
+    def test_the_platform_attaches_the_credential_to_the_request(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore, secret_store: Path
+    ) -> None:
+        domain_store.register_source(an_authenticated_source())
+        transport = ScriptedTransport(a_page())
+
+        outcome = _run_credentialed(tmp_path, job_store, domain_store, transport)
+
+        reason = outcome.error.summary if outcome.error else outcome
+        assert outcome.state is JobState.SUCCEEDED, reason
+        assert transport.headers[0]["X-NCP-APIGW-API-KEY"] == CREDENTIAL_VALUE
+
+    def test_a_source_without_a_credential_sends_none(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        """The control. Without it the assertion above could not tell attachment from a
+        transport double that was handed a header by something else."""
+        domain_store.register_source(a_source())
+        transport = ScriptedTransport(a_page())
+
+        run_collect(tmp_path, job_store, domain_store, transport)
+
+        assert transport.headers[0] == {}
+
+    def test_the_add_on_never_sees_the_value(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore, secret_store: Path
+    ) -> None:
+        """DP-008 D4, kept while a real request is authenticated. The add-on reports
+        everything reachable from its context; the value is in none of it."""
+        domain_store.register_source(an_authenticated_source())
+
+        _run_credentialed(
+            tmp_path, job_store, domain_store, ScriptedTransport(a_page()), addon_source=INSPECTING
+        )
+
+        with domain_store.connection.cursor() as cursor:
+            cursor.execute("select payload from cosmai.raw_item")
+            row = cursor.fetchone()
+        assert row is not None
+        reported = bytes(row[0]).decode("utf-8")
+        assert CREDENTIAL_VALUE not in reported
+        assert CREDENTIAL_REF not in reported
+
+    def test_the_value_is_in_no_recorded_envelope(
+        self,
+        tmp_path: Path,
+        job_store: JobStore,
+        domain_store: DomainStore,
+        job_connection: psycopg.Connection[Any],
+        secret_store: Path,
+    ) -> None:
+        """`p0-security.md`: nothing recorded carries a credential. The header this source
+        uses is in `PROTECTED_HEADERS`, which DP-018 D3 makes a precondition of using it —
+        this is the assertion that the precondition does what it was chosen for."""
+        domain_store.register_source(an_authenticated_source())
+
+        outcome = _run_credentialed(tmp_path, job_store, domain_store, ScriptedTransport(a_page()))
+        reason = outcome.error.summary if outcome.error else outcome
+        assert outcome.state is JobState.SUCCEEDED, reason
+
+        row = job_connection.execute(
+            "select request_summary::text, coalesce(response_headers::text, '') "
+            "from cosmai.raw_envelope"
+        ).fetchone()
+        assert row is not None
+        assert CREDENTIAL_VALUE not in row[0] + row[1]
+        # The real header-stripping assertion, over a socket, is `test_outbound_transport.py`'s;
+        # this is the control that says something was actually recorded to check.
+        assert "url" in row[0], "nothing was recorded, so the absence proves nothing"
+
+
+class TestACredentialPartMustNameAProtectedHeader:
+    """DP-018 D3, checked directly against `domain.outbound` rather than through a run:
+    `strip_protected_headers` only strips what `PROTECTED_HEADERS` names, so a profile
+    free to attach *any* header to *any* name could authenticate a request with a header
+    that reaches recorded Raw untouched — a credential in Raw with every other rule still
+    satisfied. `[측정]` P0 built and enforced this rule (`domain/outbound.py`'s
+    `_read_credentials`) but — as far as this tree's copy of its test suite shows — never
+    actually tested it; this is new coverage, not a copy-adapt.
+    """
+
+    def test_a_credential_naming_an_unprotected_header_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="not a protected header"):
+            OutboundProfile.from_row(
+                {
+                    "hosts": ["api.example.com"],
+                    "endpoints": {"items": "/v1/items"},
+                    "credentials": [{"header": "X-Custom-Header", "ref": CREDENTIAL_REF}],
+                }
+            )
+
+    def test_a_credential_naming_a_protected_header_is_accepted(self) -> None:
+        """The positive control. Without it the refusal above could pass against a
+        function that rejects every credential regardless of the header it names."""
+        profile = OutboundProfile.from_row(
+            {
+                "hosts": ["api.example.com"],
+                "endpoints": {"items": "/v1/items"},
+                "credentials": [{"header": "X-NCP-APIGW-API-KEY", "ref": CREDENTIAL_REF}],
+            }
+        )
+        assert profile is not None
+        assert profile.credentials[0].header == "X-NCP-APIGW-API-KEY"
+
+
+# --------------------------------------------------------------------------- #
+# The cursor resume scenario — OQ-010, on the single-stream path that is bound
+# --------------------------------------------------------------------------- #
+
+
+class TestASecondRunResumesFromTheFirstsCursor:
+    """The read/write pair OQ-010 is about, through the real runner and two attempts."""
+
+    def test_a_second_run_resumes_from_the_cursor_the_first_one_wrote(
+        self, tmp_path: Path, job_store: JobStore, domain_store: DomainStore
+    ) -> None:
+        domain_store.register_source(a_source())
+        install(tmp_path, COLLECTOR)
+        registry = HandlerRegistry()
+        transport = ScriptedTransport(
+            a_page(),
+            a_page(json.dumps({"items": [{"id": 3}], "next": 4}).encode("utf-8")),
+        )
+        register_addons(
+            registry,
+            load_addons(tmp_path, CONTRACT_VERSION),
+            bind_capabilities(domain_store, transport),
+        )
+        runner = JobRunner(job_store, registry, WORKER, lease_seconds=60)
+
+        job_store.create_job(HANDLER, {"source_id": SOURCE_ID}, max_attempts=3)
+        first = runner.run_once()
+        assert first is not None and first.accepted
+        assert domain_store.read_cursor(SOURCE_ID, "items") == 3
+
+        job_store.create_job(HANDLER, {"source_id": SOURCE_ID}, max_attempts=3)
+        second = runner.run_once()
+        assert second is not None and second.accepted
+        assert domain_store.read_cursor(SOURCE_ID, "items") == 4
+        assert domain_store.count_items(SOURCE_ID) == 3

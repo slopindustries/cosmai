@@ -19,6 +19,10 @@ Everything that can be refused is refused here, before a job exists:
 * an add-on whose ``requires_contract`` excludes this host's ``CONTRACT_VERSION``
   raises :class:`~addon_host.errors.AddonRefusedError`, naming the add-on and both
   versions (D3);
+* an add-on whose executable code names a credential, a header, or a URL is refused
+  the same way, before its module is ever imported — the M3 batch 3c promotion of
+  the contract's own "prohibited in an add-on's executable code" rule from a test
+  to a load-time check; see :mod:`addon_host.hygiene`;
 * an add-on whose module raises while being imported is refused the same way,
   with the exception's type recorded.
 
@@ -46,6 +50,7 @@ from typing import Any, Final
 from addon_api import CONTRACT_VERSION, AddonManifest, ManifestError
 from addon_api.manifest import MANIFEST_FILENAME
 from addon_host.errors import AddonRefusedError
+from addon_host.hygiene import scan_source_file
 
 __all__ = [
     "LoadedAddon",
@@ -193,6 +198,7 @@ def _import_by_path(manifest: AddonManifest, directory: Path, where: Path) -> Mo
             f"{where}: [addon].entry names module {manifest.entry_module!r}, "
             f"but {path.name} is not a file in {directory}"
         )
+    _require_credential_hygiene(manifest, path, where)
     name = module_name_for(manifest)
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
@@ -218,6 +224,32 @@ def _import_by_path(manifest: AddonManifest, directory: Path, where: Path) -> Mo
             },
         ) from error
     return module
+
+
+def _require_credential_hygiene(manifest: AddonManifest, path: Path, where: Path) -> None:
+    """Refuse an add-on whose executable code names a credential, a header, or a URL.
+
+    `addon_host.hygiene`'s own docstring has the full reasoning: this is the same rule
+    P0 only ever checked with a test, promoted to a load-time refusal here — read-only,
+    over the source text, before the module is ever imported, so a hygiene violation
+    never runs.
+    """
+    violations = scan_source_file(path)
+    if not violations:
+        return
+    found = "; ".join(f"{rule!r}: {', '.join(names)}" for rule, names in violations.items())
+    raise AddonRefusedError(
+        f"add-on {manifest.addon_id}@{manifest.addon_version} at {path} names "
+        f"credential-shaped content in its executable code ({found}); an add-on may "
+        "declare a header name, a secret-store key name, or a URL only in a "
+        "docstring, never in code that runs (CONTRACT-ADDON-1.3 §Provenance and security)",
+        {
+            "addon_id": manifest.addon_id,
+            "addon_version": manifest.addon_version,
+            "module": str(path),
+            "violations": {rule: list(names) for rule, names in violations.items()},
+        },
+    )
 
 
 def _require_entry(
