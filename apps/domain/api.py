@@ -48,13 +48,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import Annotated, Any
+from datetime import datetime
+from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
 from fastapi import Body, FastAPI, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from domain import export as export_streams
 from domain.store import DomainStore
 from platform_core.config import PlatformConfig
 from platform_core.db.connection import connect
@@ -100,6 +102,18 @@ _REQUIRED_BODY: Any = Body(...)
 #: chose.
 DEFAULT_PAGE = 50
 MAX_PAGE = 200
+
+#: Media type per export format (M6 batch 6b, DP-033 D3). `application/x-ndjson`
+#: is the closest registered type for "one JSON object per line"; there is no
+#: separate registration for the ad-hoc `.jsonl` extension.
+EXPORT_MEDIA_TYPES: Final[dict[str, str]] = {"jsonl": "application/x-ndjson", "csv": "text/csv"}
+
+#: FastAPI's own alias marker, used wherever a fixed query-string name
+#: (`from`, `format`) collides with a Python keyword or a builtin — `from_`/
+#: `format_` are the identifiers below; the wire name is what the plan's §신규
+#: API fixes and Lane B's dashboard already builds URLs against.
+_FROM_QUERY: Any = Query(alias="from")
+_FORMAT_QUERY: Any = Query(alias="format")
 
 #: A credential's ``purpose`` must look like an identifier segment before it becomes part
 #: of a ref: non-empty, starting with a letter, and free of anything that is not itself a
@@ -226,6 +240,94 @@ def _register(app: FastAPI, config: PlatformConfig, logger: StructuredLogger) ->
                     "items": [raw_item_view(row) for row in rows],
                 }
             )
+        )
+
+    # ---------------------------------------------------------------- schedule
+
+    @app.get("/sources/{source_id}/schedule")
+    def read_schedule(source_id: str) -> JSONResponse:
+        """This source's recurring-collection schedule, or an unset one (DP-033 D5).
+
+        No schedule row is not an error: most sources never get one. `enabled`
+        reads `false` and every timestamp reads `null` on an unset schedule, the
+        same shape a `PUT` that then disables it would leave — a caller does not
+        have to special-case "never configured" against "configured, disabled".
+        """
+        source_or_404(source_id)
+        with connect(config, autocommit=True) as handle:
+            row = DomainStore(handle).read_schedule(source_id)
+        return JSONResponse(schedule_view(source_id, row))
+
+    @app.put("/sources/{source_id}/schedule")
+    def write_schedule(source_id: str, body: dict[str, Any] = _REQUIRED_BODY) -> JSONResponse:
+        """Create or replace this source's schedule; upserts, per the plan's own
+        `GET|PUT /sources/{id}/schedule` shape (DP-033 D5; `apps/scheduler`
+        polls what this writes).
+
+        Restricted to a `collector` source: D5's own text is "collection runs on
+        a schedule; normalization stays operator-triggered, with an optional
+        schedule" — the optional normalization hook is explicitly *not* built by
+        this batch (M6's brief: "정규화는 수동 유지+선택 스케줄 훅만"), so a
+        schedule on a normalizer or an importer would be a row `apps/scheduler`
+        can create a `collect`-shaped job against but that can never mean
+        anything — the same "a route that looks like it works and does not"
+        reasoning this module's own docstring gives for `/collect`/`/import`.
+        """
+        source = require_kind(source_or_404(source_id), "collector")
+        interval = body.get("interval_seconds")
+        enabled = body.get("enabled")
+        if not isinstance(interval, int) or isinstance(interval, bool) or interval <= 0:
+            raise HTTPException(
+                status_code=422, detail="interval_seconds must be a positive integer"
+            )
+        if not isinstance(enabled, bool):
+            raise HTTPException(status_code=422, detail="enabled must be a boolean")
+        with connect(config, autocommit=True) as handle:
+            row = DomainStore(handle).upsert_schedule(source["source_id"], interval, enabled)
+        return JSONResponse(schedule_view(source_id, row))
+
+    # ----------------------------------------------------------------- export
+
+    @app.get("/export/raw")
+    def export_raw(
+        source_id: str,
+        from_: Annotated[datetime | None, _FROM_QUERY] = None,
+        to: datetime | None = None,
+        key_prefix: str | None = None,
+        format: Annotated[Literal["jsonl", "csv"], _FORMAT_QUERY] = "jsonl",
+    ) -> StreamingResponse:
+        """Every `raw_item` of `source_id`, scoped and streamed (DP-033 D3).
+
+        `source_or_404` runs before the `StreamingResponse` is constructed, so a
+        bad `source_id` is an ordinary `404` rather than a `200` that then emits
+        nothing — once streaming starts the status line is already sent.
+        """
+        source_or_404(source_id)
+        body = export_streams.stream_raw(config, source_id, from_, to, key_prefix, format)
+        filename = f"raw-{source_id}.{format}"
+        return StreamingResponse(
+            body,
+            media_type=EXPORT_MEDIA_TYPES[format],
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.get("/export/results")
+    def export_results(
+        source_id: str,
+        from_: Annotated[datetime | None, _FROM_QUERY] = None,
+        to: datetime | None = None,
+        key_prefix: str | None = None,
+        format: Annotated[Literal["jsonl", "csv"], _FORMAT_QUERY] = "jsonl",
+    ) -> StreamingResponse:
+        """Every `normalized_result` of `source_id` (the normalizer that produced
+        it), across every snapshot, scoped and streamed (DP-033 D3)."""
+        source_or_404(source_id)
+        body = export_streams.stream_results(config, source_id, from_, to, key_prefix, format)
+        filename = f"results-{source_id}.{format}"
+        return StreamingResponse(
+            body,
+            media_type=EXPORT_MEDIA_TYPES[format],
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     # --------------------------------------------------------------- credentials
@@ -465,6 +567,30 @@ def result_view(row: dict[str, Any]) -> dict[str, Any]:
         "body_sha256": row["body_sha256"],
         "notes": row["notes"],
         "created_at": _instant(row["created_at"]),
+    }
+
+
+def schedule_view(source_id: str, row: dict[str, Any] | None) -> dict[str, Any]:
+    """One source's schedule, or the unset shape when it has none (DP-033 D5).
+
+    `GET`'s own docstring is why `row is None` is not a 404: it is the ordinary
+    resting state of "never configured", answered with the same field shape a
+    configured-then-disabled schedule would have.
+    """
+    if row is None:
+        return {
+            "source_id": source_id,
+            "interval_seconds": None,
+            "enabled": False,
+            "next_run_at": None,
+            "last_run_at": None,
+        }
+    return {
+        "source_id": row["source_id"],
+        "interval_seconds": row["interval_seconds"],
+        "enabled": row["enabled"],
+        "next_run_at": _instant(row["next_run_at"]),
+        "last_run_at": _instant(row["last_run_at"]),
     }
 
 
