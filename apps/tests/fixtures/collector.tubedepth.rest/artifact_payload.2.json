@@ -1,0 +1,13 @@
+{
+  "digest": "b9f4c0e2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "kind": "video.metadata",
+  "target": "dQw4w9WgXcQ",
+  "observations": 9,
+  "first_fetched_at": "2026-08-18T12:00:00.000000Z",
+  "fetched_at": "2026-08-18T12:00:00.000000Z",
+  "schema_version": "1",
+  "current_schema_version": "1",
+  "payload_fields": ["chapters", "most_replayed", "tags", "view_count"],
+  "current_fields": ["chapters", "most_replayed", "published_date", "tags", "view_count"],
+  "payload": {"video_id": "dQw4w9WgXcQ", "title": "example", "view_count": 1000}
+}

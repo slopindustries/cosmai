@@ -26,6 +26,15 @@ testpaths = ["tests"]
 
 [tool.mypy]
 strict = true
+# `addons/` is excluded for the same reason the root `pyproject.toml` excludes
+# `experiments/integrated-p0/addons/`: every add-on's entry file is conventionally
+# `handler.py`, and add-ons are deliberately independent roots loaded by path
+# rather than imported by name (DP-008 D2), so two of them collide in mypy's
+# single module namespace — "Duplicate module named handler" — the moment a
+# second one exists in this tree. `scripts/check-addons.sh` checks each add-on
+# on its own by naming its files explicitly, which is not filtered by this
+# exclusion the way a directory argument would be.
+exclude = ["^addons/"]
 
 [tool.ruff]
 line-length = 100

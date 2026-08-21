@@ -1,0 +1,14 @@
+{
+  "artifacts": [
+    {
+      "kind": "channel.about",
+      "target": "UCHnyfMqiRRG1u-2MsSQLbXA",
+      "schema_version": "1",
+      "digest": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "byte_count": 512,
+      "fetched_at": "2026-08-17T09:00:00.000000Z",
+      "fresh_until": "2026-08-24T09:00:00.000000Z"
+    }
+  ],
+  "cursor": null
+}

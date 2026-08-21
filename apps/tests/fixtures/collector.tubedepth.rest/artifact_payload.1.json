@@ -1,0 +1,13 @@
+{
+  "digest": "0be813a5998c93b6936521fd8b312734d0dc14b9def6f9c5976df1101fd2f557",
+  "kind": "video.sponsor_segments",
+  "target": "MfqI-W_JRQQ",
+  "observations": 1,
+  "first_fetched_at": "2026-08-19T00:29:38.328557Z",
+  "fetched_at": "2026-08-19T00:29:38.328557Z",
+  "schema_version": "1",
+  "current_schema_version": "1",
+  "payload_fields": ["segments", "source", "video_id"],
+  "current_fields": ["segments", "source", "video_id"],
+  "payload": {"video_id": "MfqI-W_JRQQ", "segments": [], "source": "sponsorblock"}
+}

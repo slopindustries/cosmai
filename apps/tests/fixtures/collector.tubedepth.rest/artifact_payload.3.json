@@ -1,0 +1,13 @@
+{
+  "digest": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "kind": "channel.about",
+  "target": "UCHnyfMqiRRG1u-2MsSQLbXA",
+  "observations": 1,
+  "first_fetched_at": "2026-08-17T09:00:00.000000Z",
+  "fetched_at": "2026-08-17T09:00:00.000000Z",
+  "schema_version": "1",
+  "current_schema_version": "1",
+  "payload_fields": ["channel_id", "name", "view_count"],
+  "current_fields": ["channel_id", "name", "view_count"],
+  "payload": {"channel_id": "UCHnyfMqiRRG1u-2MsSQLbXA", "name": "Example Channel", "view_count": 12345}
+}
