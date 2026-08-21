@@ -170,13 +170,73 @@ export interface MetricsResponse {
 }
 
 // --------------------------------------------------------------------------- //
-// The domain surface (Lane A / M2). Only the two shapes batch 5b/5c actually
-// call against: the credential write DP-034 D1 fixes, and the raw-item page
-// the M2-M7 batch plan's §신규 API fixes
-// (`GET /sources/{id}/raw/items?offset&limit`). Neither route is served yet —
-// batch 5d wires these against the real thing once M2 merges — but the shapes
-// are already fixed by the plan/decision, not guessed.
+// The domain surface (`apps/domain/api.py`, M2 — real as of batch 5-final,
+// merged from `dev`). Every field name below is copied from that file's own
+// view functions (`source_view`, `snapshot_view`, `result_view`,
+// `schedule_view`, `raw_item_view`) — never coined. `apps/domain/store.py`'s
+// `SourceRow`/dataclasses back them where a view function itself is thin.
 // --------------------------------------------------------------------------- //
+
+/** `source.kind`'s CHECK constraint. */
+export type SourceKind = "collector" | "importer" | "normalizer";
+
+/** One approved outbound endpoint: where it goes, and by which method. */
+export interface Endpoint {
+  path: string;
+  method: string;
+}
+
+/** One credential part: which header it fills, and the secret-store key name that fills it (DP-018 D1). Never a value. */
+export interface CredentialPart {
+  header: string;
+  ref: string;
+}
+
+/** `profile_view`: the operator's own outbound grant, read back. */
+export interface OutboundProfile {
+  hosts: string[];
+  endpoints: Record<string, Endpoint>;
+  port: number;
+  limits: Record<string, number>;
+  allow_loopback: boolean;
+  credentials: CredentialPart[];
+}
+
+/** `input_profile_view`: the operator's approved input grant for an importer (DP-024). */
+export interface InputProfile {
+  root: string;
+  inputs: Record<string, string>;
+}
+
+/** `source_view`. */
+export interface Source {
+  source_id: string;
+  addon_id: string;
+  addon_version: string;
+  kind: SourceKind;
+  config: Record<string, unknown>;
+  config_schema_version: string;
+  credential_ref: string | null;
+  outbound_profile: OutboundProfile | null;
+  input_profile: InputProfile | null;
+  data_class: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The `GET /sources` envelope. */
+export interface SourceList {
+  sources: Source[];
+}
+
+/** `GET /sources/{id}/raw`: how much a source has collected. Counts, never payloads. */
+export interface RawSummary {
+  source_id: string;
+  envelope_count: number;
+  item_count: number;
+  last_retrieved_at: string | null;
+}
 
 /**
  * `POST /sources/{id}/credentials` request body (DP-034 D1). Write-only: there
@@ -188,11 +248,11 @@ export interface CredentialWriteRequest {
 }
 
 /**
- * A refusal shape from the credentials write route. Mirrors
- * `PlatformError.operator_view()` (`error_class`/`error_summary`), the same
- * shape `HealthUnhealthy` already carries — the plan does not fix this error
- * body itself, so this follows the one convention every other platform error
- * response in this codebase already uses.
+ * The credentials write route's `422` refusal shape:
+ * `ConfigurationInvalidError.operator_view()`, the same
+ * `error_class`/`error_summary` convention `HealthUnhealthy` already carries.
+ * A `404` (unregistered `source_id`) instead answers FastAPI's own
+ * `{detail}` envelope — see `DomainRefused` below.
  */
 export interface CredentialWriteRefusal {
   error_class: string;
@@ -208,12 +268,113 @@ export interface RawItem {
   payload: string;
 }
 
-/** The `GET /sources/{id}/raw/items?offset&limit` envelope. */
+/**
+ * The `GET /sources/{id}/raw/items?offset&limit` envelope. **No `matched`
+ * field** — `apps/domain/api.py`'s `read_raw_items` returns `returned` only;
+ * a caller cannot tell "this is the last page" from the count alone and must
+ * use `returned < limit` instead. (`platform_core.api.app`'s `GET /jobs`
+ * does return `matched`; this route does not — the two page envelopes are
+ * not the same shape, confirmed by reading `apps/domain/api.py` directly.)
+ */
 export interface RawItemPage {
   source_id: string;
   offset: number;
   limit: number;
   returned: number;
-  matched: number;
   items: RawItem[];
+}
+
+/** `schedule_view` (DP-033 D5). An unset schedule reads `enabled: false` with every timestamp `null` — not a 404. */
+export interface Schedule {
+  source_id: string;
+  interval_seconds: number | null;
+  enabled: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+}
+
+/** `PUT /sources/{id}/schedule` request body. */
+export interface ScheduleWrite {
+  interval_seconds: number;
+  enabled: boolean;
+}
+
+/**
+ * `snapshot_view`. `verifies` is computed on every read rather than stored: a
+ * screen that showed only "sealed" would make a tampered input look ready to
+ * run, and `problems` says which member failed because that is what an
+ * operator acts on (PoC Contract §8: verification state is its own column).
+ */
+export interface Snapshot {
+  snapshot_id: string;
+  source_id: string;
+  item_count: number;
+  manifest_sha256: string;
+  selection: Record<string, unknown>;
+  sealed_at: string | null;
+  created_at: string;
+  verifies: boolean;
+  problems: string[];
+}
+
+export interface SnapshotList {
+  snapshots: Snapshot[];
+}
+
+/** A `201` from `POST /snapshots/{id}/normalize`: the job it created and nothing else — the job stays `PENDING` until M3 registers an `addon:*` worker. */
+export interface NormalizeRunCreated {
+  job_id: string;
+  snapshot_id: string;
+}
+
+/** `result_view`: one normalized record, both version axes, and the lineage key. */
+export interface NormalizedResult {
+  id: string;
+  snapshot_id: string;
+  source_id: string;
+  addon_id: string;
+  addon_version: string;
+  output_contract_version: string;
+  source_item_key: string;
+  body: Record<string, unknown>;
+  body_sha256: string;
+  notes: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ResultList {
+  results: NormalizedResult[];
+}
+
+/** DP-030 D2's per-record fault-tolerance marker, when present in a result's `notes`. */
+export interface NormalizeError {
+  field: string;
+  reason: string;
+}
+
+/** `result.notes.normalize_error`, or `null` if this record normalized cleanly. */
+export function normalizeErrorOf(notes: Record<string, unknown>): NormalizeError | null {
+  const candidate = notes["normalize_error"];
+  if (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    typeof (candidate as Record<string, unknown>).field === "string" &&
+    typeof (candidate as Record<string, unknown>).reason === "string"
+  ) {
+    return candidate as NormalizeError;
+  }
+  return null;
+}
+
+/**
+ * A `404`/`409`/`422` domain refusal: FastAPI's own `HTTPException` envelope
+ * (`{detail}`), used by every domain write below except the credentials
+ * write's own `422` shape (`CredentialWriteRefusal`).
+ */
+export interface DomainRefused {
+  detail: string;
+}
+
+export function isDomainRefused(value: object): value is DomainRefused {
+  return "detail" in value;
 }

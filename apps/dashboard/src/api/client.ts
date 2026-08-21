@@ -11,13 +11,23 @@
 import type {
   AttemptPage,
   CredentialWriteRefusal,
+  DomainRefused,
   HealthResponse,
   Job,
   JobPage,
   JobState,
   MetricsResponse,
+  NormalizeRunCreated,
   RawItemPage,
+  RawSummary,
+  ResultList,
   RetryOutcome,
+  Schedule,
+  ScheduleWrite,
+  Snapshot,
+  SnapshotList,
+  Source,
+  SourceList,
 } from "./types";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:8000";
@@ -104,16 +114,34 @@ export function readMetrics(): Promise<MetricsResponse> {
 }
 
 // --------------------------------------------------------------------------- //
-// The domain surface (Lane A / M2). Neither route below is served yet — the
-// backend half of the credential endpoint moved to Lane A (domain API owns
-// source routes, controller ruling 2026-08-21), and the raw-item route is
-// M2's. Both shapes are already fixed (DP-034 D1; the batch plan's §신규 API),
-// so these are real client functions written against those fixed shapes, not
-// placeholders — batch 5d points them at the real backend once M2 merges.
-// Batch 5b/5c's own tests exercise them against a mocked `fetch`.
+// The domain surface (`apps/domain/api.py`, M2). Real and live as of batch
+// 5-final — every function below was reconciled against that file's actual
+// route signatures after `git merge dev`, not against the plan's prose
+// summary (which turned out to be wrong about `/export/results`'s format
+// options; see `buildExportUrl`'s own note and docs/p1/M5-RECORD.md).
+//
+// `POST /sources/{id}/collect` and `POST /sources/{id}/import` do not exist
+// in `apps/domain/api.py` at all — its own docstring names why: both would
+// create a job for an `addon:*` handler nothing can claim until M3 lands.
+// This client layer therefore has no `startCollection`/`startImport`
+// function; the dashboard shows a disabled action with a note instead of
+// calling a route that was never built.
 // --------------------------------------------------------------------------- //
 
-/** The env-file key name DP-034 D1 fixes: `COSMA_SRC_<SOURCE_ID>_<PURPOSE>`. */
+export function listSources(): Promise<SourceList> {
+  return getJson<SourceList>("/sources");
+}
+
+export function readSource(sourceId: string): Promise<Source> {
+  return getJson<Source>(`/sources/${encodeURIComponent(sourceId)}`);
+}
+
+/** `GET /sources/{id}/raw`: counts and a last-retrieved instant, never payloads. */
+export function readRawSummary(sourceId: string): Promise<RawSummary> {
+  return getJson<RawSummary>(`/sources/${encodeURIComponent(sourceId)}/raw`);
+}
+
+/** The env-file key name `apps/domain/api.py`'s `credential_ref_for` derives: `COSMA_SRC_<SOURCE_ID>_<PURPOSE>`. */
 function envSafe(value: string): string {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, "_");
 }
@@ -122,7 +150,7 @@ export function credentialRefName(sourceId: string, purpose: string): string {
   return `COSMA_SRC_${envSafe(sourceId)}_${envSafe(purpose)}`;
 }
 
-/** Thrown when the credentials write route refuses, carrying its `error_class`/`error_summary` — never the submitted value, which this type has no field for. */
+/** Thrown when the credentials write route refuses with the `422` `error_class`/`error_summary` shape — never the submitted value, which this type has no field for. */
 export class CredentialWriteFailure extends Error {
   readonly error_class: string;
   readonly error_summary: string;
@@ -151,7 +179,8 @@ function parseCredentialRefusal(bodyText: string): CredentialWriteRefusal | null
       return parsed as CredentialWriteRefusal;
     }
   } catch {
-    // Not JSON, or not the refusal shape — falls through to the generic failure below.
+    // Not JSON, or not the refusal shape (e.g. a 404's plain {detail}) —
+    // falls through to the generic failure below.
   }
   return null;
 }
@@ -180,8 +209,86 @@ export async function writeCredential(sourceId: string, purpose: string, value: 
   throw new ApiFailure(response.status, bodyText);
 }
 
-/** A page of one source's Raw items, newest-seq-first. DP-033 D2: `payload` is plain text, rendered as such and never as markup. */
+/**
+ * A page of one source's Raw items, ordered by `seq` ascending (oldest
+ * first — `apps/domain/api.py`'s `LIST_ITEMS` query, not a guess). DP-033
+ * D2: `payload` is plain text, rendered as such and never as markup.
+ */
 export function readRawItems(sourceId: string, offset: number, limit: number): Promise<RawItemPage> {
   const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   return getJson<RawItemPage>(`/sources/${encodeURIComponent(sourceId)}/raw/items?${query.toString()}`);
+}
+
+export function readSchedule(sourceId: string): Promise<Schedule> {
+  return getJson<Schedule>(`/sources/${encodeURIComponent(sourceId)}/schedule`);
+}
+
+/** `PUT /sources/{id}/schedule`: upserts. Restricted server-side to a `collector` source (`apps/domain/api.py`'s `write_schedule`). */
+export async function writeSchedule(sourceId: string, body: ScheduleWrite): Promise<Schedule> {
+  const response = await fetch(`${apiBase()}/sources/${encodeURIComponent(sourceId)}/schedule`, {
+    method: "PUT",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new ApiFailure(response.status, await response.text());
+  }
+  return (await response.json()) as Schedule;
+}
+
+export function listSnapshots(sourceId?: string): Promise<SnapshotList> {
+  const query = sourceId === undefined ? "" : `?source_id=${encodeURIComponent(sourceId)}`;
+  return getJson<SnapshotList>(`/snapshots${query}`);
+}
+
+export function readSnapshot(snapshotId: string): Promise<Snapshot> {
+  return getJson<Snapshot>(`/snapshots/${encodeURIComponent(snapshotId)}`);
+}
+
+/**
+ * Seal every Raw item of one source into a new snapshot (PoC Contract §8: a
+ * deliberate act, distinct from normalizing). A `404`/`409` refusal (no such
+ * source; wrong kind; disabled) is returned rather than thrown — the screen
+ * has to display it in full.
+ */
+export async function sealSnapshot(sourceId: string): Promise<Snapshot | DomainRefused> {
+  const response = await fetch(`${apiBase()}/sources/${encodeURIComponent(sourceId)}/snapshots`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (response.ok || response.status === 404 || response.status === 409) {
+    return (await response.json()) as Snapshot | DomainRefused;
+  }
+  throw new ApiFailure(response.status, await response.text());
+}
+
+/**
+ * Enqueue one normalize job over a sealed snapshot. `normalizerSourceId`
+ * names a registered **source of kind `normalizer`** — not an
+ * addon-id/version pair — because that is what `apps/domain/api.py`'s
+ * `start_normalization` actually takes (`{source_id}` in the body, looked up
+ * and required to be `kind == "normalizer"`). The job this creates stays
+ * `PENDING` until M3 registers an `addon:*` worker; a `201` here means "the
+ * job was created," not "it ran." A `404`/`409`/`422` refusal is returned
+ * rather than thrown, for the same reason `sealSnapshot` returns one.
+ */
+export async function createNormalizeRun(
+  snapshotId: string,
+  normalizerSourceId: string,
+): Promise<NormalizeRunCreated | DomainRefused> {
+  const response = await fetch(`${apiBase()}/snapshots/${encodeURIComponent(snapshotId)}/normalize`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ source_id: normalizerSourceId }),
+  });
+  if (response.ok || [404, 409, 422].includes(response.status)) {
+    return (await response.json()) as NormalizeRunCreated | DomainRefused;
+  }
+  throw new ApiFailure(response.status, await response.text());
+}
+
+/** Every normalized result over one snapshot, all versions unless `addonVersion` narrows it — coexistence is the point (PoC Contract §5). */
+export function readResults(snapshotId: string, addonVersion?: string): Promise<ResultList> {
+  const query = addonVersion === undefined ? "" : `?addon_version=${encodeURIComponent(addonVersion)}`;
+  return getJson<ResultList>(`/snapshots/${encodeURIComponent(snapshotId)}/results${query}`);
 }
