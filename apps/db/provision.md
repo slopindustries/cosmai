@@ -147,3 +147,20 @@ per-add-on worktrees share `cosmai_test_4` and run their add-on tests sequential
 `apps/tests/conftest.py`'s `TEST_DATABASE` now reads `COSMA_TEST_DB` (default `cosmai_test`), so
 a lane selects its database by setting that environment variable rather than by editing the
 fixture.
+
+## 2026-08-21 addendum — the shared server was replaced mid-M3/M6
+
+`[확인 사실]` The docker container `tubedepth-postgres` (127.0.0.1:5433) was removed outside this
+project's control and replaced by `shared-postgres` (postgres:18, **127.0.0.1:5434**, admin role
+`platform`, part of a new `shared-db` compose that also containerizes trend-radar). The old
+volume's cosmai databases did not survive.
+
+`[측정]` Re-provisioned on `shared-postgres` with the same one-shot procedure (parts A+B+C via
+`docker exec -i shared-postgres psql -U platform ...`), all five databases (`cosmai`,
+`cosmai_test`, `cosmai_test_2/3/4`), fresh passwords rotated into `~/.config/cosmai/env`
+(values never printed). Verified: role limits 12/2/-1, runtime DDL denied
+(`permission denied for schema cosmai`), TCP connect from the apps venv on :5434 with
+`search_path = cosmai, pg_catalog` and `statement_timeout 30s`.
+
+Every recipe in this repo that says `COSMA_DB_PORT=5433` should be read as `5434` from this
+date; per-document corrections land with the M7 sweep rather than by rewriting history here.
