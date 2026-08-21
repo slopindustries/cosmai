@@ -1,0 +1,71 @@
+# collector.trendradar.rest — adapter for trend-radar 1.0.0's read-only JSON API.
+#
+# Target fixed by DP-031 D3: http://127.0.0.1:8000/api/v1, unauthenticated. Endpoint
+# shapes and rules from `docs/api.md` and `src/trend_radar/dashboard/{api,queries}.py`
+# in the sibling `service/trend-radar` repository (read-only to this project), plus
+# this add-on's own live capture — see handler.py's module docstring and
+# apps/tests/fixtures/public/collector.trendradar.rest/MANIFEST.md for what was
+# measured rather than assumed, in particular the `captured_at` filter that 500s.
+
+[addon]
+id = "collector.trendradar.rest"
+version = "0.1.0"
+kind = "collector"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "tables"
+type = "string"
+required = false
+label = "Record tables"
+help = "Comma-separated subset of rank_snapshot,product,price_point,review,review_stats,review_answer,review_summary,review_topic,new_product. Empty/omitted = all nine."
+
+[[config.field]]
+name = "sources"
+type = "string"
+required = false
+label = "trend-radar sources"
+help = "Comma-separated trend-radar source names (e.g. daisomall,glowpick). Empty/omitted = discovered from GET /api/v1/sources at run time."
+
+[[config.field]]
+name = "boards"
+type = "string"
+required = false
+label = "rank_snapshot boards"
+help = "Comma-separated board values applied only to rank_snapshot, one request per (source, board) pair. Empty/omitted = one request per source, unfiltered by board."
+
+[[config.field]]
+name = "page_limit"
+type = "integer"
+required = false
+label = "Rows per page"
+help = "Sent as the API's `limit` query parameter, 1-1000 (the API's own cap, docs/api.md). Default 500."
+
+[[config.field]]
+name = "runs_lookback"
+type = "integer"
+required = false
+label = "Runs checked for new buckets"
+help = "How many rows of GET /api/v1/runs?limit=N to read when deciding whether a table+source has anything new to collect. Default 50, capped at the API's own 200."
+
+[declares]
+hosts = ["127.0.0.1"]
+endpoints = [
+    "runs",
+    "sources",
+    "records_rank_snapshot",
+    "records_product",
+    "records_price_point",
+    "records_review",
+    "records_review_stats",
+    "records_review_answer",
+    "records_review_summary",
+    "records_review_topic",
+    "records_new_product",
+]
+streams = ["buckets"]
+needs_credential = false
