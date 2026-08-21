@@ -251,6 +251,41 @@ class TestRedaction:
         assert redact_mapping(None) == {}
         assert redact_mapping({}) == {}
 
+
+class TestTheCredentialRefExemption:
+    """M2 batch 2c. `credential_ref` casefolds to `credentialref`, which contains
+    `credential` — so the containment rule in `TestRedaction` above masked it, even
+    though DP-018 D1 fixes what a `credential_ref` *is*: a secret-store key **name**,
+    never a value, safe for an operator to see (`docs/decisions/DP-018-credential-parts-
+    and-attachment.md`). The exemption is exact-match, not a second containment rule —
+    the tests below check both that it fires for the one key it names and that it
+    changes nothing else `TestRedaction` already pins.
+    """
+
+    def test_credential_ref_is_not_masked(self) -> None:
+        assert not is_redacted_key("credential_ref")
+        result = redact_mapping({"credential_ref": "COSMA_SRC_DEMO_TOKEN"})
+        assert result["credential_ref"] == "COSMA_SRC_DEMO_TOKEN"
+
+    def test_the_exemption_is_exact_not_a_second_containment_rule(self) -> None:
+        """The positive control: a key that merely *contains* `credential` alongside
+        other content stays fully covered — the exemption did not widen the match."""
+        assert is_redacted_key("api_credential_and_secret")
+        result = redact_mapping({"api_credential_and_secret": SENSITIVE_MARKER})
+        assert result["api_credential_and_secret"] == REDACTION_MARKER
+
+    def test_the_exemption_is_case_and_separator_insensitive_like_every_other_key(
+        self,
+    ) -> None:
+        """Consistent with `is_redacted_key`'s own matching, not a narrower rule."""
+        assert not is_redacted_key("CREDENTIAL_REF")
+        assert not is_redacted_key("Credential-Ref")
+
+    def test_every_other_contract_key_is_still_masked(self) -> None:
+        """The exemption is one key wide. Nothing else in `REDACTED_KEYS` lost coverage."""
+        for key in CONTRACT_REDACTED_KEYS:
+            assert is_redacted_key(key), f"{key!r} lost its coverage"
+
     @pytest.mark.parametrize(
         "text",
         [
