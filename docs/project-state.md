@@ -7,8 +7,9 @@
 - Next gate: P1 charter gate (charter not yet written; until it exists, the accepted
   [P1 reconstruction plan](architecture-synthesis/P1-RECONSTRUCTION-PLAN.md)'s M1–M7
   milestones govern). M1–M7 are now built and under adversarial review repair
-  (§1, "P1 M1–M7 status, 2026-08-21"); the two acts still pending are the owner's
-  `GO` on the repaired M2–M7 batch and the `main`/`v0.1.0` merge and tag.
+  (§1, "P1 M1–M7 status, 2026-08-21"); both closing acts happened on 2026-08-21: the owner
+  accepted the repaired M2–M7 batch `GO` in session, and `dev` merged to `main` tagged
+  `v0.1.0`.
 
 ## Delivery lifecycle
 
