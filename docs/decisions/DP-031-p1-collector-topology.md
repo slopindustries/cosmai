@@ -202,3 +202,13 @@ adopted here.
   (implementer's choice per spec §5.3), `collector.trendradar.rest`, and `collector.tubedepth.rest`
   against this packet's D2–D4; the private-network egress precondition DP-026 D4 already named
   applies to the two adapters, not to NAVER's direct calls.
+
+## 2026-08-21 addendum — D3's switch-on-release rule fires
+
+`[확인 사실]` yt-scrapper tagged `v1.0.0` on 2026-08-21, eight commits past the `5bce7f6`
+baseline this packet recorded (delta: the `watch` CLI, route-level api-reference-truth fixes,
+a Docker image and compose). Per D3's own rule — "switch to whatever release tag appears" —
+the tubedepth adapter's baseline is **`v1.0.0`** from this date. The owner approved recording
+this at M4 planning time (2026-08-21, in session). The artifacts-feed surface the adapter
+depends on (`/v1/artifacts?since` → cursor → `/v1/artifacts/{digest}`, `X-API-Key`) is
+unchanged between `5bce7f6` and `v1.0.0`; M4's adapter verifies against the live instance.
