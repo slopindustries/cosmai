@@ -86,16 +86,24 @@ any new file. Suite total after Task 9: 318/318; after Task 10 (adds one measure
 `[확인 사실]` REVIEW-M1 F2: this table's "Contract clause" column names rows of
 CONTRACT-JOB-0.1's "State transitions" table, counted top to bottom from its
 first data row (— → `PENDING`) as row 1, and JOB-004 exercises row 7
-(permanent failure, one
-attempt, `RUNNING` → `FAILED`) — a prior revision of this cell cited "rows
-3/6", which are the reclaim and retryable-exhaustion rows, not this scenario's.
-Those numbers were correct only against a *different* table: `JOB-004`'s own
-scenario document (`tests/acceptance/JOB-004-permanent-failure-is-not-retried.md:34-39`)
-numbers its **steps**, not contract rows, and step 3 is where both of this
-scenario's transitions happen — a second numbering scheme entirely, the same
-trap `SEC-00x` finding ids fell into elsewhere in this project. The defect was
-transplanting the scenario document's step number into a column headed
-Contract clause. The other ten cells in this table cite invariants (`I1`–`I5`)
+(permanent failure, one attempt, `RUNNING` → `FAILED`) — a prior revision of this cell cited "rows
+3/6", which are the reclaim and retryable-exhaustion rows in the *contract's*
+table, not this scenario's. `[측정]` Those two numbers are correct only against
+a *different* table: `JOB-004`'s own scenario document
+(`tests/acceptance/JOB-004-permanent-failure-is-not-retried.md:34-39`) has a
+six-row "Expected state transitions" table, and counted positionally from its
+first data row as row 1, row 3 is job A's `RUNNING → FAILED` terminal
+transition and row 6 is job B's — the two rows in that table this scenario
+actually cares about, both of them terminal transitions to `FAILED`. Every row
+in that document's own table is labeled `Step` `3` (its "Step" column names
+the *scenario's* step 3, not a row position), so the "3/6" cited here did not
+come from that Step label; it lines up with counting the table's own rows
+instead. The defect was citing row numbers from the scenario document's own
+transition table — under whichever counting produced "3/6" — in a column
+headed *Contract clause*, which names CONTRACT-JOB-0.1's transition table, a
+different table entirely with different row contents at those same two
+positions: the same shape of trap as the project's known `SEC-00N`
+scenario-id/requirement-id collision. The other ten cells in this table cite invariants (`I1`–`I5`)
 rather than transition-table rows and were checked against the contract's
 "Invariants" section while fixing this one; none of them mis-cite a row
 number.
@@ -292,9 +300,14 @@ retryable=True` — the three new session defaults (`statement_timeout`, `lock_t
 worker with the class CONTRACT-JOB@0.1 reserves for "no number of retries fixes it." `[결정]`
 Fixed: `platform_core.db.connection.classify` now maps `55P03` individually to
 `PlatformTransientError` (waiting on contention is a sensible response, the same reasoning
-already applied to classes `53`/`57`), with a no-DB unit test
+already applied to classes `53`/`57`), with a unit test
 (`apps/tests/test_db_connection.py`) asserting `55P03 → retryable=True` and, as the explicit
-boundary, `25P03 → retryable=False`. `25P03` (idle-in-transaction timeout) is deliberately **not**
+boundary, `25P03 → retryable=False`. The classification logic under test there needs no
+database — every case constructs a `psycopg.Error` directly and calls `classify()` — but running
+that file inside the ordinary suite still opens one, because `conftest.py`'s session-scoped,
+`autouse=True` `_reset_schema` fixture runs once per session regardless of which test triggers
+collection first — the same fact `apps/tests/conftest.py`'s own comment documents, corrected by
+this fix wave's F6 repair. `25P03` (idle-in-transaction timeout) is deliberately **not**
 reclassified: an idle transaction is a worker that stopped making progress, not contention with
 another transaction, and this fix wave does not claim that distinction is settled — it is carried
 as an open, dated line in `docs/open-questions/OQ-006-job-concurrency.md`. **What this deviation
@@ -381,9 +394,22 @@ operating-rules document's rule 0 reasoning DP-032 D1 carries forward ("rule 0's
 ### Re-verified after the REVIEW-M1 fix wave
 
 `[측정]` 2026-08-21. REVIEW-M1 F8: the command above, run exactly as written and with no
-`COSMA_DB_*` variables set, fails all 319 collected items with `ConfigurationInvalidError:
-cannot reach the platform database` — it was never actually a complete, standalone recipe, only
-a description of the one gate that was clean. The full recipe, unsandboxed (the sandbox shadows
+`COSMA_DB_*` variables set —
+
+```sh
+cd apps
+env -u COSMA_DB_HOST -u COSMA_DB_PORT -u COSMA_DB_NAME -u COSMA_DB_USER -u COSMA_SECRET_SOURCE \
+  ./.venv/bin/python -m pytest -q
+```
+
+— fails **328 errors** (not 319; the count as of this fix wave's own new tests, run against the
+same tree the count below cites), each raising `platform_core.errors.ConfigurationInvalidError:
+invalid platform configuration: COSMA_DB_HOST is required but is not set; COSMA_DB_PORT is
+required but is not set; COSMA_DB_NAME is required but is not set; COSMA_DB_USER is required but
+is not set` — the configuration loader's own message, quoted verbatim from a run against the
+final tree, not the connection-classifier's `cannot reach the platform database` a prior revision
+of this line quoted instead. It was never actually a complete, standalone recipe, only a
+description of the one gate that was clean. The full recipe, unsandboxed (the sandbox shadows
 `~/.config/cosmai/env` and blocks the loopback TCP connection to `127.0.0.1:5433`; see
 `docker exec`/TCP note in the fix-wave's own constraints):
 

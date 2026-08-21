@@ -28,11 +28,26 @@ all four representations, stop the API — and freezes the results. Each test is
 then a read-only assertion over the same set of artefacts. It is module-scoped
 and owns its own job row rather than a cloned database (P0 had one per test;
 DP-032 gives P1 one shared ``cosmai_test`` — see ``tests/conftest.py``'s module
-docstring), so its teardown deletes only the rows it created, by id, and never
-races the blanket ``_reset_job_tables`` another module's test might run: every
-test in *this* module reads the probe's frozen artefacts or touches no job
-table at all, so nothing here calls a blanket reset while the probe's row is
-still live.
+docstring), so its teardown deletes only the rows it created, by id, rather
+than the whole table.
+
+**This module does contain tests that request ``job_store`` and therefore
+trigger the blanket ``_reset_job_tables`` reset**
+(``test_sec_004_protected_does_not_mean_unredacted``, and the
+``POST /jobs/{id}/retry`` and ``/jobs`` list tests in the "API's own
+behavior" section, further down this file). Nothing here race-proofs that against
+``redaction_probe``'s row: what
+keeps them from colliding is **collection order** — every ``job_store``-using
+test in this file is positioned either entirely before ``redaction_probe`` is
+first requested or entirely after the last test that requests it, so pytest's
+module-scoped teardown has already deleted its row (or not yet created it)
+by the time a blanket reset runs. Move a `job_store` test to sit between two
+`redaction_probe` tests and this stops being true with no error raised — the
+later `redaction_probe`-consuming test would simply read rows the reset just
+deleted. This is also single-process reasoning: it depends on this file's
+tests running in one order in one process, which is the mode
+`docs/open-questions/OQ-006-job-concurrency.md`'s `-n 4` hazard already
+records as the only supported one for this suite (REVIEW-M1 D5).
 
 **Every marker is injected to be found.** The payload carries a distinctive
 value under every key in the contract's redaction set *and* one under an

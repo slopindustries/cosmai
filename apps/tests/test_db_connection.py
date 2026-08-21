@@ -1,4 +1,4 @@
-"""``platform_core.db.connection.classify`` — no database required.
+"""``platform_core.db.connection.classify`` — the classification logic needs no database.
 
 Every other test that touches ``db/connection.py`` goes through a real
 connection (``conftest.py``'s ``migrator_connection``/``runtime_connection``),
@@ -10,6 +10,15 @@ this branch untested: DP-032's ``provision.sql`` sets ``lock_timeout='5s'``
 for the first time, and `classify` did not know it. This file is the
 regression guard for that fix and its explicit boundary — ``25P03`` stays
 ``CONFIGURATION_INVALID``.
+
+**This is about the logic under test, not this file's own requirements.**
+Running *this file* inside the ordinary suite still opens a database
+connection: `conftest.py`'s session-scoped, `autouse=True` `_reset_schema`
+fixture runs once per session regardless of which test triggers collection
+first, so a live server is still required to run `pytest` at all here — the
+same fact the F6 fix documented in `conftest.py`'s own comment. No test
+*function* below opens a connection or requests a database fixture; the
+session-level cost is paid once, by the session, not by this file.
 """
 
 from __future__ import annotations

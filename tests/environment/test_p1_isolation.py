@@ -26,6 +26,14 @@ every file in ``apps/`` has one — is not itself a violation. Only an actual
 module counts; a relative import (``from . import experiments``, ``level``
 > 0) cannot reach the repository-root ``experiments/`` directory at all and is
 skipped, the same way ``test_addon_layer_direction.py`` skips its own.
+
+**What this guard does not catch.** It reads ``import``/``from ... import`` statements only —
+a dynamic reference built from a string (``importlib.import_module("experiments" + ...)``,
+``__import__``) or a path dependency named in ``pyproject.toml``/``uv.lock`` rather than a Python
+import statement would cross the same boundary invisibly to this guard. And it is not defensive
+against a file it cannot parse: a syntax error under ``apps/`` makes ``ast.parse`` raise, which
+this guard lets propagate as a test error rather than catching and reporting it as a violation —
+a broken file fails the run, but not with this guard's own message.
 """
 
 from __future__ import annotations

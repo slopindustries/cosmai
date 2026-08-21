@@ -20,9 +20,14 @@
 #
 # Usage (run from apps/, with the shared server reachable):
 #
-#   COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai \
+#   COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test \
 #     COSMA_DB_USER=cosmai_runtime ../scripts/with-secret-source.sh \
 #     tests/concurrency/run_measurements.sh
+#
+# COSMA_DB_NAME=cosmai_test, not the production `cosmai` an earlier revision of this line
+# named: tests/conftest.py's `platform_config` fixture forces `cosmai_test` regardless of what
+# the environment names, so the wrong value was harmless but unchecked, not correct (REVIEW-M1
+# F8, same correction made in docs/open-questions/OQ-006-job-concurrency.md's recipes).
 #
 # Every setting above is documented in docs/conventions/secret-setup.md and
 # apps/db/provision.md; nothing here reads or prints a credential value.
