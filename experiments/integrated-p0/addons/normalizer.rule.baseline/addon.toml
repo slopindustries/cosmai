@@ -1,0 +1,38 @@
+# normalizer.rule.baseline — deterministic data-quality rules over a sealed snapshot.
+#
+# Judges, does not reshape: for each snapshot item it reports which named rule fired,
+# against which field, what was expected, and what was there. It produces no document, no
+# trend point, and no score — see handler.py's module docstring for TASK-004's full
+# reasoning and its list of open documentation questions.
+#
+# No operator-tunable knob exists because every rule here is a fixed structural or
+# cross-field check; nothing in this add-on's judgment depends on a value an operator
+# would sensibly set per source.
+
+[addon]
+id = "normalizer.rule.baseline"
+version = "0.1.0"
+kind = "normalizer"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+# This add-on's own report shape, versioned independently of DP-019's `0.1` and DP-021's
+# `0.2` — the string collision with DP-019's Schema 0.1 is coincidental (both happen to be
+# an add-on's *first* version) and not a claim of compatibility. See handler.py's docstring,
+# "Another documentation gap, unrelated to input shape".
+output_contract_version = "0.1"
+
+[config]
+schema_version = "1"
+
+# `[declares]` asks for nothing: DP-008 D4 gives a normalizer a sealed input and nothing
+# else, and `addon_api`'s manifest parser refuses a normalizer that asks for a host, an
+# endpoint, a credential, or a cursor stream.
+#
+# `streams = []` and no `[declares]` block at all are the same thing to the loader —
+# `Declarations.from_toml` returns `()` for a missing key, so both produce `streams=()` and
+# `_check_kind_consistency` treats them identically. The empty list is written out for a
+# human reader and claims no mechanism beyond that; TASK-004's review measured the two
+# forms as byte-identical (F9), and an earlier version of this comment asserted a
+# distinction that does not exist.
+[declares]
+streams = []

@@ -47,7 +47,8 @@ what the contract calls it — the attempt budget consumed, not a row label.
 from __future__ import annotations
 
 import random
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final
@@ -235,7 +236,34 @@ opened as (
     join candidate c on c.id = s.id
     left join abandoned ab on ab.job_id = s.id
     returning id, job_id, attempt_no
+),
+-- Why the conflict answer is computed here and not in a second statement.
+--
+-- `candidate` skips locked rows silently, so a worker that takes nothing cannot
+-- tell an empty queue from one somebody else is holding. Asking afterwards used
+-- to answer that, but the worker's connection is autocommit: a second statement
+-- is a second transaction and therefore a second `now()`. A job becoming due in
+-- the gap was absent from the claim and present in the question, and got counted
+-- as a conflict that never happened. Measured at 3 in 400 trials with one job
+-- scheduled 1.2 ms ahead and nothing else running, and it made
+-- `test_job_002` fail 2 times in 30 runs of an unmutated tree.
+--
+-- Here there is no gap: one statement, one read view, one clock. A row that is
+-- claimable in this scan but was not taken above is one another transaction
+-- holds. The `not exists` guard keeps the scan off the hot path — when a row was
+-- claimed there is nothing to explain.
+conflict as (
+    select j.id, j.correlation_id
+    from job j
+    where not exists (select 1 from candidate)
+      and ((j.state = 'PENDING' and j.available_at <= now())
+        or (j.state = 'RUNNING' and j.lease_expires_at < now()))
+    order by j.available_at
+    limit 1
 )
+-- Driven from a one-row relation so the statement always returns exactly one row:
+-- the conflict answer has to come back even when nothing was claimed, and
+-- `job_id is null` is what "nothing was claimable" reads as.
 select c.id as job_id,
        c.state as from_state,
        c.handler, c.payload, c.correlation_id, c.max_attempts,
@@ -243,26 +271,18 @@ select c.id as job_id,
        o.id as attempt_id, o.attempt_no,
        ab.attempt_no as abandoned_attempt_no,
        extract(epoch from (now() - ab.expired_at)) * 1000 as recovery_latency_ms,
-       e.terminal_reason as exhausted_reason
-from candidate c
+       e.terminal_reason as exhausted_reason,
+       cf.id is not null as conflict_exists,
+       cf.correlation_id as conflict_correlation_id
+from (select 1) probe
+left join candidate c on true
 left join started s on s.id = c.id
 left join opened o on o.job_id = c.id
 left join abandoned ab on ab.job_id = c.id
 left join exhausted e on e.id = c.id
+left join conflict cf on true
 """
 
-# Purely observational, and only run when the claim above took nothing. A worker
-# that finds no row cannot tell an empty queue from a queue somebody else is
-# holding, because SKIP LOCKED is silent by design. Asking afterwards whether a
-# claimable row exists distinguishes the two well enough to count a conflict,
-# and it is a read that changes nothing.
-CLAIMABLE_EXISTS = """
-select exists (
-    select 1 from job
-    where (state = 'PENDING' and available_at <= now())
-       or (state = 'RUNNING' and lease_expires_at < now())
-) as claimable
-"""
 
 # The fence, shared by all three completion paths and identical in each.
 #
@@ -524,8 +544,8 @@ class JobStore:
         with self._cursor() as cursor:
             cursor.execute(CLAIM_NEXT, parameters)
             row = cursor.fetchone()
-        if row is None:
-            self._note_claim_conflict()
+        if row is None or row["job_id"] is None:
+            self._note_claim_conflict(row)
             return None
 
         if row["abandoned_attempt_no"] is not None:
@@ -757,6 +777,33 @@ class JobStore:
 
     # -------------------------------------------------------------- internals
 
+    def durable_scope(self) -> AbstractContextManager[None]:
+        """A transaction that a handler's writes and its completion share.
+
+        The P0-A Completion Gate recorded this as **the largest gap P0-A leaves**:
+        every duplicate-suppression result there rests on one row and one primary-key
+        conflict, while "a P0-B acquisition or normalization effect spans several
+        statements and probably several tables, where the question becomes
+        transactional". This is that transaction.
+
+        Why the completion has to be inside it, rather than following it: a worker that
+        stalled past its lease has had its work handed to someone else. If it commits its
+        writes and *then* meets the fence, the refusal comes too late — the rows are
+        already there and the other worker's are too. Inside one transaction the refusal
+        discards them, which is the only ordering that makes at-least-once delivery safe
+        for an effect the platform cannot deduplicate by key.
+
+        Nothing here is source-aware, and that is what keeps this module inside its own
+        boundary. A transaction is not a domain concept; it is the generic mechanism the
+        gate said P0-B would need.
+        """
+        return self._transaction()
+
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        with self._connection.transaction():
+            yield
+
     def _cursor(self) -> psycopg.Cursor[dict[str, Any]]:
         return self._connection.cursor(row_factory=dict_row)
 
@@ -881,14 +928,24 @@ class JobStore:
                 trigger="attempt budget spent",
             )
 
-    def _note_claim_conflict(self) -> None:
-        """Count a claim that found nothing while something was claimable."""
-        with self._cursor() as cursor:
-            cursor.execute(CLAIMABLE_EXISTS)
-            row = cursor.fetchone()
-        if row is not None and row["claimable"]:
-            self._metrics.record_claim_conflict()
-            self._logger.info("job.claim_conflict", reason="a claimable job is held elsewhere")
+    def _note_claim_conflict(self, row: Mapping[str, Any] | None) -> None:
+        """Count a claim that found nothing while something was claimable.
+
+        The answer arrives with the claim rather than after it, so it was read
+        from the same read view and the same clock — see `CLAIM_NEXT`.
+
+        The line carries the held job's `correlation_id` because I5 makes
+        correlation total and this line concerns a job. The row is readable: the
+        other transaction holds a write lock, which does not block this read.
+        """
+        if row is None or not row["conflict_exists"]:
+            return
+        self._metrics.record_claim_conflict()
+        self._logger.info(
+            "job.claim_conflict",
+            correlation_id=row["conflict_correlation_id"],
+            reason="a claimable job is held elsewhere",
+        )
 
     def _transition(
         self,

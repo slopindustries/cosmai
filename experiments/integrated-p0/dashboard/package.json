@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "text:build": "vite build --ssr src/detail-text.tsx --outDir dist-text --logLevel warn",
-    "text": "npm run --silent text:build && node dist-text/assets/detail-text.js"
+    "text": "npm run --silent text:build && node dist-text/assets/detail-text.js",
+    "domain:build": "vite build --ssr src/domain-text.tsx --outDir dist-domain-text --logLevel warn",
+    "domain": "npm run --silent domain:build && node dist-domain-text/assets/domain-text.js"
   },
   "dependencies": {
     "react": "^19.1.0",

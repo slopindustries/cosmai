@@ -1,0 +1,28 @@
+# The dataset half of P0-B B1, and the first add-on of its kind. DP-024.
+#
+# `[declares].inputs` names what this add-on asks to open. It is a request: the operator's
+# approved `source.input_profile` says which file each name is, and this file cannot say.
+
+[addon]
+id = "importer.local.jsonl"
+version = "0.1.0"
+kind = "importer"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "key_field"
+type = "string"
+required = true
+
+[[config.field]]
+name = "max_rows"
+type = "integer"
+required = false
+
+[declares]
+inputs = ["rows"]
+streams = ["rows"]

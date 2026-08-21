@@ -1,0 +1,111 @@
+# collector.naver.datalab — NAVER DataLab: Search Trend + Shopping Insight, one add-on.
+#
+# `[확인 사실]` Three POST endpoints on naverapihub.apigw.ntruss.com, documented at
+# https://api.ncloud-docs.com/docs/naver-api-hub-search-trend and
+# .../naver-api-hub-shopping-insight-categories and .../naver-api-hub-shopping-insight-keywords
+# (fetched 2026-08-19, re-checked 2026-08-21):
+#
+#   /search-trend/v1/search         search-keyword click trend            mode = search_trend
+#   /shopping/v1/categories         click trend per Shopping category     mode = shopping_categories
+#   /shopping/v1/category/keywords  click trend per keyword *within* one  mode = shopping_keywords
+#                                    category
+#
+# `[결정]` Combined into one add-on, extending the merge P0's `collector.naver.shoppinginsight`
+# already made for two of these three (spec §5.3's implementer choice). See handler.py's module
+# docstring and this add-on's README.md for the reasoning; recorded in
+# docs/superpowers/sdd/2026-08-21-m2-m7-batch/m4-naver-datalab-report.md.
+
+[addon]
+id = "collector.naver.datalab"
+version = "0.1.0"
+kind = "collector"
+entry = "handler:run"
+requires_contract = ">=1.1,<2.0"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "mode"
+type = "string"
+required = true
+label = "DataLab breakdown"
+help = "search_trend, shopping_categories, or shopping_keywords. There is no enum field type, so this is checked in code."
+
+[[config.field]]
+name = "start_date"
+type = "string"
+required = true
+label = "Window start"
+help = "yyyy-mm-dd. search_trend holds data from 2016-01-01, the Shopping modes from 2017-08-01. Ignored on a resumed run, which starts from the day after the cursor."
+
+[[config.field]]
+name = "end_date"
+type = "string"
+required = true
+label = "Window end"
+help = "yyyy-mm-dd, inclusive."
+
+[[config.field]]
+name = "time_unit"
+type = "string"
+required = true
+label = "Interval"
+help = "date, week, or month."
+
+[[config.field]]
+name = "keyword_groups"
+type = "string"
+required = false
+label = "Keyword groups (JSON) — search_trend only"
+help = "A JSON array of {groupName, keywords[]}. At most 5 groups of at most 20 keywords, which the API documents and this add-on checks before spending a call. A string because [config.field] has no array type."
+
+[[config.field]]
+name = "categories"
+type = "string"
+required = false
+label = "Categories (JSON) — shopping_categories only"
+help = "A JSON array of {name, param[]} of Naver Shopping cat_id values. At most 3, which the API documents."
+
+[[config.field]]
+name = "category"
+type = "string"
+required = false
+label = "Category id — shopping_keywords only"
+help = "One Naver Shopping cat_id the keywords are measured within."
+
+[[config.field]]
+name = "keywords"
+type = "string"
+required = false
+label = "Keywords (JSON) — shopping_keywords only"
+help = "A JSON array of {name, param[]} with exactly one term per param. At most 5."
+
+[[config.field]]
+name = "device"
+type = "string"
+required = false
+label = "Device"
+help = "pc or mo. Absent means all devices, which is not the same request as an empty value."
+
+[[config.field]]
+name = "gender"
+type = "string"
+required = false
+label = "Gender"
+help = "m or f. Absent means all."
+
+[[config.field]]
+name = "ages"
+type = "string"
+required = false
+label = "Age bands"
+help = "Comma-separated band numbers. search_trend uses 1-11; the Shopping modes use 10/20/30/40/50/60 — different vocabularies for the same idea. Absent means all."
+
+[declares]
+hosts = ["naverapihub.apigw.ntruss.com"]
+endpoints = ["trend", "categories", "category_keywords"]
+streams = ["window"]
+# The two NCP header values. Which headers they fill is the source profile's to say
+# (DP-018 D2); this is only the request for one.
+needs_credential = true

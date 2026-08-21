@@ -1,0 +1,37 @@
+# normalizer.naver.blog — Naver blog search results into `Normalized Schema 0.1`.
+#
+# Reads a sealed snapshot of `collector.naver.blog`'s Raw items and produces exactly one
+# document record per item (DP-030 D2: a record this add-on cannot fully normalize is
+# emitted with nulled fields and a `notes.normalize_error` entry, not skipped). The schema
+# is DP-019 D1's; the two rules this add-on applies when it can are markup removal and date
+# parsing, and both are reversible against the preserved Raw.
+#
+# `[declares]` is empty of hosts, endpoints, and credentials, and that is not an omission:
+# DP-008 D4 gives a normalizer a sealed input and nothing else, and `addon_api`'s manifest
+# parser refuses a normalizer that asks for any of them.
+#
+# Copy-adapted from `experiments/integrated-p0/addons/normalizer.naver.blog/addon.toml`
+# (M4 naver-blog worktree).
+
+[addon]
+id = "normalizer.naver.blog"
+version = "0.1.0"
+kind = "normalizer"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+# Moves when the *meaning* of the output changes, independently of `version`, which moves
+# when the code does. A reader comparing two result sets needs to know which happened.
+output_contract_version = "0.1"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "language"
+type = "string"
+required = false
+label = "Document language"
+help = "BCP-47 tag written into every record. Stated, never detected (DP-019 D2): a detected language is a guess in the same field as facts. Defaults to ko."
+
+[declares]
+streams = []

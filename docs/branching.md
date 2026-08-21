@@ -1,7 +1,7 @@
 # Branching and merge strategy
 
 - 문서 지위: 활성 프로젝트 convention
-- 최종 수정일: 2026-08-18
+- 최종 수정일: 2026-08-19
 
 ## 브랜치
 
@@ -88,6 +88,23 @@ dashboard/source-form
 `[추론]` 이름이 영역을 담으면 브랜치 목록이 곧 "지금 어느 영역이 움직이고 있는가"가
 된다. 여러 에이전트가 동시에 일할 때 그것이 충돌을 예측하는 가장 싼 방법이다.
 
+`[결정]` **개발 영역에 속하지 않는 작업이 하나 있다.** 2026-08-19에
+[DP-014](decisions/DP-014-agent-memory-scope-and-area-exception.md) R2로 수락됐다. 이 예외는
+소유자에게 묻지 않고 쓰였고 — **예시가 예외를 도입한 브랜치 자신이었다** — 그래서
+[OQ-011](open-questions/OQ-011-agent-memory-and-area-boundary.md)로 올려 답을 받았다.
+여섯 번째 영역을 만드는 대안은 기각됐다: 코드를 소유하지 않는 영역을 코드 영역 다섯 개 옆에 세우면
+`docs/areas/README.md`가 `[가설]`로 두고 P0-B가 판정하게 되어 있는 질문을 선점하기 때문이다.
+
+프로젝트 운영 방식 자체를 바꾸는 문서 — 이 파일, `docs/agent-workflow/`,
+`docs/conventions/project-memory.md` — 는 다섯 영역 중 어디에도 들어가지 않는다.
+`agent/operating-model`이 그 예이고, 규칙의 위반이라기보다 규칙이 다루지 않는 범위다.
+
+`[확인 사실]` 이 예외의 **범위를 판정하는 기준은 정해지지 않았다.** 초안에 "코드 디렉터리를
+바꾸는가"라는 판정 기준이 들어 있었으나 [OQ-011](open-questions/OQ-011-agent-memory-and-area-boundary.md)이
+소유자에게 물은 것이 아니어서 2026-08-19에 제거했다
+([REVIEW-TASK-001-R3](agent-workflow/reviews/REVIEW-TASK-001-R3.md) F5). 경계가 모호한 작업이
+실제로 나타나면 그때 묻는다.
+
 한 브랜치는 한 영역 안에 머문다. 영역을 넘는 변경은 보통 두 개의 변경이고, 가끔은
 경계가 잘못됐다는 신호다 — 후자라면 기록할 증거이지 우회할 대상이 아니다.
 
@@ -99,22 +116,29 @@ dashboard/source-form
 
 같은 파일을 건드릴 수밖에 없다면 git worktree로 격리한다.
 
-## 고립되어 보존 중인 브랜치
+## 흐름에서 빼 두었던 브랜치
 
-### `feat/agent-operating-model`
+### `feat/agent-operating-model` — 2026-08-19에 회수됨
 
 `[확인 사실]` 에이전트 운영 모델 — orchestrator / planner / worker / attacker 역할 분리,
 task packet과 attack report 템플릿, project-memory convention. 2026-08-18에 작성됐고
 한때 PR #1로 `main`에 병합되어 있었다.
 
 `[결정]` **관계자 합의 하에 `main`에서 되돌리고 이 브랜치로 고립시켰다.** 버려진 작업이
-아니다. 병합 전에 검토할 것이 남아 있어 흐름에서 잠시 빼둔 것이며, `dev`에도 병합되어
-있지 않다.
+아니었다.
 
-`[확인 사실]` 되돌릴 때 확인된 사실 하나: 그 브랜치의 Decision Packet 번호가
-`DP-006`이었고, 같은 번호를 [DP-006 — P0-A platform foundation choices](decisions/DP-006-p0a-platform-foundation.md)가
-이미 쓰고 있다. 후자가 하루 먼저(2026-08-17) 수락됐고 문서·코드 주석·게이트 기록 전반에서
-번호로 참조된다. **재병합 시 번호를 정리해야 한다.**
+`[확인 사실]` 2026-08-19에 `6d1e965` 위에 `agent/operating-model`로 `--no-ff` 병합했다.
+`b702c79`는 merge parent로 남아 있으므로 원래 제안이 무엇을 말했는지는 계속 읽을 수 있고,
+현재 프로젝트에 맞춘 변경은 [DP-013](decisions/DP-013-agent-workflow-and-project-memory.md)의
+"What changed from the proposal"에 항목별로 적혀 있다. **`main`으로 갈지는 별개의 수락이다** —
+`main`은 게이트와 수락된 Decision Packet에서만 움직이고, 되돌린 것이 합의였으므로 되돌리는
+것을 되돌리는 것도 합의여야 한다.
+
+`[확인 사실]` 병합 시 정리된 번호 충돌: 그 브랜치의 Decision Packet이 `DP-006`이었고 같은
+번호를 [DP-006 — P0-A platform foundation choices](decisions/DP-006-p0a-platform-foundation.md)가
+이미 쓰고 있었다. 후자가 하루 먼저(2026-08-17) 수락됐고 문서·코드 주석·게이트 기록 전반에서
+번호로 참조되므로 움직이지 않았다. 들어온 쪽이 `DP-013`이 됐다. `DP-009`는 이 저장소의 어느
+ref에도 없고 이유를 설명하는 커밋 메시지도 없어서, 채우지 않고 비워 뒀다.
 
 `[확인 사실]` GitHub의 PR #1은 여전히 "merged"로 표시되지만 그 커밋은 `main`에 없다.
 GitHub에서 지울 수 없는 기록상의 모순이며, 여기 적어 두는 것이 유일한 정정 수단이다.

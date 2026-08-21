@@ -1,0 +1,103 @@
+# collector.naver.shoppinginsight — NAVER DataLab Shopping Insight.
+#
+# `[확인 사실]` Two POST endpoints on naverapihub.apigw.ntruss.com, documented at
+# https://api.ncloud-docs.com/docs/naver-api-hub-shopping-insight-categories and
+# .../naver-api-hub-shopping-insight-keywords (fetched 2026-08-19):
+#
+#   /shopping/v1/categories        click trend per category
+#   /shopping/v1/category/keywords click trend per keyword *within* one category
+#
+# One add-on for both because they answer the same question at two depths and share every
+# other field. Which one a source uses is `mode` in its configuration; the operator's
+# profile still has to grant the endpoint, so a source configured for a mode it was not
+# granted is refused by the outbound guard rather than by this add-on.
+#
+# The vendor's Shopping Insight family has further age/gender/device breakdowns. They are
+# deliberately not here: nothing in P0-B needs them, and an add-on that declared endpoints
+# no source uses would be asking for a grant nobody reviewed.
+
+[addon]
+id = "collector.naver.shoppinginsight"
+version = "0.1.0"
+kind = "collector"
+entry = "handler:run"
+requires_contract = ">=1.1,<2.0"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "start_date"
+type = "string"
+required = true
+label = "Window start"
+help = "yyyy-mm-dd. The API holds data from 2017-08-01. Ignored on a resumed run."
+
+[[config.field]]
+name = "end_date"
+type = "string"
+required = true
+label = "Window end"
+help = "yyyy-mm-dd, inclusive."
+
+[[config.field]]
+name = "time_unit"
+type = "string"
+required = true
+label = "Interval"
+help = "date, week, or month."
+
+[[config.field]]
+name = "mode"
+type = "string"
+required = true
+label = "What to measure"
+help = "categories (click trend per category) or keywords (click trend per keyword within one category)."
+
+[[config.field]]
+name = "categories"
+type = "string"
+required = false
+label = "Categories (JSON)"
+help = "categories mode only. A JSON array of {name, param[]} of Naver Shopping cat_id values. At most 3, which the API documents."
+
+[[config.field]]
+name = "category"
+type = "string"
+required = false
+label = "Category id"
+help = "keywords mode only. One Naver Shopping cat_id the keywords are measured within."
+
+[[config.field]]
+name = "keywords"
+type = "string"
+required = false
+label = "Keywords (JSON)"
+help = "keywords mode only. A JSON array of {name, param[]} with exactly one term per param. At most 5."
+
+[[config.field]]
+name = "device"
+type = "string"
+required = false
+label = "Device"
+help = "pc or mo. Absent means all."
+
+[[config.field]]
+name = "gender"
+type = "string"
+required = false
+label = "Gender"
+help = "m or f. Absent means all."
+
+[[config.field]]
+name = "ages"
+type = "string"
+required = false
+label = "Age bands"
+help = "Comma-separated 10, 20, 30, 40, 50, or 60. Absent means all. Note these are not the Search Trend bands, which are 1-11 — the two APIs use different vocabularies for the same idea."
+
+[declares]
+hosts = ["naverapihub.apigw.ntruss.com"]
+endpoints = ["categories", "category_keywords"]
+streams = ["window"]
+needs_credential = true

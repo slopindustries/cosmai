@@ -65,6 +65,6 @@ Recorded so that work does not start in the wrong place by default.
 - **A P1 application.** Nothing lives under `apps/` and nothing may until the P0-B P1
   Entry Gate accepts `PoC Contract 0.1`, the artifact disposition, and the
   reconstruction plan. See [DP-005](../decisions/DP-005-two-part-pre-p1-execution.md).
-- **Analysis services** such as a trend analyser. These are candidates, not commitments;
-  see the [service register](../service-register.md) for what each would need and what
-  currently blocks it.
+- **A long-lived analysis service.** DP-011 accepts a disposable P0 trend evaluator and an
+  evidence-card output, not a new permanent area or add-on kind. P0-B must measure the
+  boundary before P1 promotes one; see the [service register](../service-register.md).

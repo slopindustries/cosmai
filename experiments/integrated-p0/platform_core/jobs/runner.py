@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from platform_core.errors import PlatformError, PlatformPermanentError
-from platform_core.jobs.registry import HandlerRegistry, JobContext
+from platform_core.jobs.registry import DurableWork, HandlerRegistry, JobContext
 from platform_core.jobs.state import JobState
 from platform_core.jobs.store import ClaimedJob, Completion, JobStore
 from platform_core.obs.correlation import correlation_context
@@ -55,6 +55,14 @@ class RunOutcome:
     @property
     def accepted(self) -> bool:
         return self.completion.accepted
+
+
+class _CompletionRefused(Exception):
+    """Internal: unwinds the durable scope when the fence refuses.
+
+    Never leaves this module. It exists because a rollback needs an exception and a
+    refusal is not an error — ``run_once`` still reports the refusal as a value.
+    """
 
 
 class JobRunner:
@@ -92,8 +100,10 @@ class JobRunner:
             # claim exactly as the contract's "Unknown" rule requires.
             return RunOutcome(claimed, self._record(claimed, unknown), unknown)
 
+        enlisted: list[DurableWork] = []
         context = JobContext(
             job_id=claimed.job_id,
+            attempt_id=claimed.attempt_id,
             payload=claimed.payload,
             attempt_no=claimed.attempt_no,
             attempt_count=claimed.attempt_count,
@@ -101,16 +111,73 @@ class JobRunner:
             correlation_id=claimed.correlation_id,
             worker_id=claimed.worker_id,
             apply_effect=self._effect_applier(claimed),
+            enlist_durable_work=enlisted.append,
         )
+        # The settle is inside this `try` and not after it. Enlisted work is handler
+        # code — it was written by the handler and it fails the way handler code fails —
+        # so its exception is classified here rather than escaping into `worker._one_pass`,
+        # which reads an escaping exception as a *driver* failure. See `_settle`.
         try:
             with self._store.metrics.measure_attempt():
                 handler(context)
+            completion = self._settle(claimed, enlisted)
         except PlatformError as failure:
             return RunOutcome(claimed, self._record(claimed, failure), failure)
         except Exception as unexpected:  # noqa: BLE001 - classified, then recorded
             classified = self._unclassified(unexpected)
             return RunOutcome(claimed, self._record(claimed, classified), classified)
-        return RunOutcome(claimed, self._record(claimed, None), None)
+        return RunOutcome(claimed, completion, None)
+
+    def _settle(self, claimed: ClaimedJob, enlisted: list[DurableWork]) -> Completion:
+        """Commit the handler's enlisted work and its completion together, or neither.
+
+        A handler that enlisted nothing takes the same path it always did — one
+        statement, one transaction — so P0-A's evidence is untouched by this.
+
+        With work enlisted, both go inside one transaction and **the completion goes
+        last**. A worker that stalled past its lease is refused by the fence, and the
+        refusal must discard the writes rather than follow them: by the time it stalled,
+        another worker had already been given the same work, so writes that survived
+        would be a duplicate the platform cannot deduplicate by key. Raising is how a
+        refusal becomes a rollback; it is caught immediately below and reported as the
+        refusal it is, because ``run_once`` reports what the store told it rather than
+        failing.
+
+        **Enlisted work that raises unwinds the transaction, and the error is then
+        classified like any other handler failure.** `[측정]` It was not, until 2026-08-18:
+        `_execute` wrapped only `handler(context)` and the call to this method sat outside
+        that `try`, so the job stayed `RUNNING` with its attempt open and its lease held,
+        and in the real worker `classify` turned the raw database error into
+        `ConfigurationInvalidError` — the process exiting with "cannot reach the platform
+        database" for what was an add-on's output defect.
+        `ADVERSARIAL-REVIEW-2026-08-18.md` F2 measured that; `_execute` now encloses the
+        settle and `test_durable_scope.py::TestEnlistedWorkThatFails` asserts each half.
+
+        **The failure is recorded once, and that rests on the rollback rather than on a
+        flag.** The completion this method writes is the *last* statement inside the
+        transaction, so any exception — from the work, from that statement, or from the
+        commit — discards it along with the writes. The attempt is therefore still open
+        when `_execute` records the failure against it, and the fence accepts that
+        completion because nothing about the lease changed. There is no path on which two
+        completions survive: at most one of them is ever committed.
+        """
+        if not enlisted:
+            return self._record(claimed, None)
+
+        refusal: Completion | None = None
+        try:
+            with self._store.durable_scope():
+                for work in enlisted:
+                    work()
+                completion = self._record(claimed, None)
+                if not completion:
+                    refusal = completion
+                    raise _CompletionRefused
+        except _CompletionRefused:
+            assert refusal is not None
+            return refusal
+        return completion
+
 
     def _effect_applier(self, claimed: ClaimedJob) -> Callable[[str, Any], bool]:
         def apply(effect_key: str, payload: Any = None) -> bool:

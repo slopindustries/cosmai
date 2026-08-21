@@ -19,3 +19,9 @@ The initial `SEC` scenarios are defined by the [P0 Security Baseline](../../docs
 Each scenario should name its input fixture, preconditions, action, expected state transitions, durable effects, telemetry, and failure classification.
 
 Create each scenario from [SCENARIO-TEMPLATE.md](SCENARIO-TEMPLATE.md). Scenario IDs use the family prefix and a stable number, such as `RAW-001` or `SEC-003`.
+
+⚠️ `[확인 사실]` **A `SEC-00N` here is not the `SEC-00N` in the
+[P0 Security Baseline](../../docs/conventions/p0-security.md).** Two numbering schemes share
+the prefix and none of the four overlapping numbers agree — this file's `SEC-002` is the
+baseline's `SEC-005`, and this file's `SEC-004` is the baseline's `SEC-001`. The baseline
+carries the full mapping table. Cite through it rather than by number alone.

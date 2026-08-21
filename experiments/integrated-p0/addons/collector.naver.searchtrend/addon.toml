@@ -1,0 +1,76 @@
+# collector.naver.searchtrend — NAVER DataLab Search Trend.
+#
+# `[확인 사실]` POST /search-trend/v1/search on naverapihub.apigw.ntruss.com, documented at
+# https://api.ncloud-docs.com/docs/naver-api-hub-search-trend (fetched 2026-08-19). The
+# request is a JSON body, which is why DP-020 exists: before it the platform sent GET and
+# nothing else, and two thirds of the selected source was unreachable.
+#
+# Quota: 50,000 calls a month for the Data Lab category, counted per element. One run of
+# this makes exactly one call.
+
+[addon]
+id = "collector.naver.searchtrend"
+version = "0.1.0"
+kind = "collector"
+entry = "handler:run"
+requires_contract = ">=1.1,<2.0"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "start_date"
+type = "string"
+required = true
+label = "Window start"
+help = "yyyy-mm-dd. The API holds data from 2016-01-01. Ignored on a resumed run, which starts from the day after the cursor."
+
+[[config.field]]
+name = "end_date"
+type = "string"
+required = true
+label = "Window end"
+help = "yyyy-mm-dd, inclusive."
+
+[[config.field]]
+name = "time_unit"
+type = "string"
+required = true
+label = "Interval"
+help = "date, week, or month. There is no enum field type, so this is checked in code."
+
+[[config.field]]
+name = "keyword_groups"
+type = "string"
+required = true
+label = "Keyword groups (JSON)"
+help = "A JSON array of {groupName, keywords[]}. At most 5 groups of at most 20 keywords, which the API documents and this add-on checks before spending a call. A string because [config.field] has no array type."
+
+[[config.field]]
+name = "device"
+type = "string"
+required = false
+label = "Device"
+help = "pc or mo. Absent means all devices, which is not the same request as an empty value."
+
+[[config.field]]
+name = "gender"
+type = "string"
+required = false
+label = "Gender"
+help = "m or f. Absent means all."
+
+[[config.field]]
+name = "ages"
+type = "string"
+required = false
+label = "Age bands"
+help = "Comma-separated band numbers 1-11. Absent means all."
+
+[declares]
+hosts = ["naverapihub.apigw.ntruss.com"]
+endpoints = ["trend"]
+streams = ["window"]
+# The two NCP header values. Which headers they fill is the source profile's to say
+# (DP-018 D2); this is only the request for one.
+needs_credential = true

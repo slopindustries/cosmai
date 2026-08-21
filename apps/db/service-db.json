@@ -1,0 +1,32 @@
+{
+  "manifest_version": 1,
+  "service": "cosmai",
+  "database": "cosmai",
+  "schema": "cosmai",
+  "server": "docker container shared-postgres, 127.0.0.1:5434, PostgreSQL 18 (replaced tubedepth-postgres/5433 on 2026-08-21 - see provision.md addendum)",
+  "roles": {
+    "owner": "cosmai_owner",
+    "migrator": "cosmai_migrator",
+    "runtime": "cosmai_runtime"
+  },
+  "cross_service_dependencies": [],
+  "required_extensions": [],
+  "external_object_stores": [],
+  "connection_budget": {
+    "total": 16,
+    "runtime_connection_limit": 12,
+    "runtime_breakdown": {
+      "api": 4,
+      "worker": 4,
+      "scheduler_reserved": 2,
+      "headroom": 2
+    },
+    "migrator_connection_limit": 2,
+    "reserve": 2
+  },
+  "session_defaults": {
+    "statement_timeout": "30s",
+    "lock_timeout": "5s",
+    "idle_in_transaction_session_timeout": "15s"
+  }
+}

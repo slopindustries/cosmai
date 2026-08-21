@@ -182,11 +182,21 @@ def test_job_001_produces_exactly_one_durable_effect(job_001_run: ScenarioRun) -
 #: What migration `0001` creates, plus the applier's own ledger.
 PLATFORM_TABLES = frozenset({"job", "job_attempt", "platform_effect", "schema_migrations"})
 
-#: What migration `0002_domain.sql` creates (DP-008 D5). Listed rather than derived so
-#: that a new domain table makes the test below fail and be read, instead of being
-#: absorbed silently into a wildcard.
+#: What the domain migrations create — `0002_domain.sql` (DP-008 D5) and
+#: `0003_normalized_result.sql` (DP-019 D3). Listed rather than derived so that a new
+#: domain table makes the test below fail and be read, instead of being absorbed silently
+#: into a wildcard. `[측정]` It worked: adding `normalized_result` on 2026-08-18 failed this
+#: and the entry below was added after reading why.
 DOMAIN_TABLES = frozenset(
-    {"source", "source_cursor", "raw_envelope", "raw_item", "snapshot", "snapshot_item"}
+    {
+        "source",
+        "source_cursor",
+        "raw_envelope",
+        "raw_item",
+        "snapshot",
+        "snapshot_item",
+        "normalized_result",
+    }
 )
 
 
@@ -459,6 +469,98 @@ def test_a_claim_that_finds_an_empty_queue_is_not_counted_as_a_conflict(
     assert metrics.read().claim_conflicts == 0
 
 
+class _CountingCursor:
+    """A cursor that records the statements executed through it."""
+
+    def __init__(self, inner: Any, executed: list[str]) -> None:
+        self._inner = inner
+        self._executed = executed
+
+    def execute(self, query: Any, params: Any = None, **kwargs: Any) -> Any:
+        self._executed.append(str(query))
+        return self._inner.execute(query, params, **kwargs)
+
+    def __enter__(self) -> _CountingCursor:
+        self._inner.__enter__()
+        return self
+
+    def __exit__(self, *exc: Any) -> Any:
+        return self._inner.__exit__(*exc)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+class _CountingConnection:
+    """A connection that counts the statements one store call issues.
+
+    Test-side only. The store takes the caller's connection, so counting needs
+    no seam in the store itself.
+    """
+
+    def __init__(self, inner: psycopg.Connection[Any]) -> None:
+        self._inner = inner
+        self.executed: list[str] = []
+
+    def cursor(self, **kwargs: Any) -> Any:
+        return _CountingCursor(self._inner.cursor(**kwargs), self.executed)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def test_a_claim_that_finds_nothing_decides_the_conflict_from_one_look(
+    connection: psycopg.Connection[Any], database: PlatformConfig, metrics: MetricsRegistry
+) -> None:
+    """Whether a conflict happened must be decided from a single observation.
+
+    Two statements are two transactions on an autocommit connection, so they read
+    two different ``now()``. A job that becomes due in the gap is absent from the
+    first and present in the second, and gets counted as a conflict that never
+    happened. One statement has no gap to fall into.
+    """
+    counting = _CountingConnection(connection)
+    store = JobStore(counting, database, metrics=metrics)  # type: ignore[arg-type]
+
+    assert store.claim_next(WORKER, lease_seconds=LEASE_SECONDS) is None
+
+    assert len(counting.executed) == 1, (
+        f"a claim that found nothing looked at the queue {len(counting.executed)} times"
+    )
+
+
+def test_a_claim_conflict_names_the_job_it_could_not_take(
+    store: JobStore, metrics: MetricsRegistry, database: PlatformConfig, log_stream: StringIO
+) -> None:
+    """CONTRACT-JOB@0.1 I5: every log line concerning a job carries its correlation_id.
+
+    The conflicting job is readable — another transaction holds a write lock on
+    it, not a read lock — so the line has an identity available to it.
+    """
+    store.create_job("succeed", None, max_attempts=MAX_ATTEMPTS, correlation_id="corr-held")
+
+    with connected(database) as holding:
+        with holding.cursor(row_factory=dict_row) as cursor:
+            cursor.execute(
+                CLAIM_NEXT,
+                {
+                    "worker_id": "worker-holding",
+                    "lease_seconds": LEASE_SECONDS,
+                    "abandoned_summary": "held open by an uncommitted transaction",
+                },
+            )
+            assert cursor.fetchone() is not None
+
+        assert store.claim_next(WORKER, lease_seconds=LEASE_SECONDS) is None
+        assert metrics.read().claim_conflicts == 1
+
+        holding.rollback()
+
+    conflicts = events_named(log_stream, "job.claim_conflict")
+    assert len(conflicts) == 1, "the conflict must be logged exactly once"
+    assert conflicts[0]["correlation_id"] == "corr-held"
+
+
 def test_a_job_scheduled_for_later_is_not_claimable_yet(store: JobStore) -> None:
     store.create_job("succeed", None, max_attempts=MAX_ATTEMPTS, available_in_seconds=600)
     assert store.claim_next(WORKER, lease_seconds=LEASE_SECONDS) is None
@@ -551,6 +653,7 @@ def test_an_effect_key_does_not_depend_on_the_attempt_number() -> None:
         effect_key_for(
             JobContext(
                 job_id=UUID(int=7),
+                attempt_id=UUID(int=70),
                 payload=payload,
                 attempt_no=number,
                 attempt_count=number,
@@ -568,6 +671,7 @@ def test_an_effect_key_does_not_depend_on_the_attempt_number() -> None:
 def test_a_job_without_a_stated_key_derives_one_from_its_identity() -> None:
     context = JobContext(
         job_id=UUID(int=7),
+        attempt_id=UUID(int=70),
         payload=None,
         attempt_no=2,
         attempt_count=2,

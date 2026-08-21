@@ -2,3 +2,5 @@ node_modules/
 dist/
 dist-text/
 .text-build.lock
+dist-domain-text/
+.domain-build.lock

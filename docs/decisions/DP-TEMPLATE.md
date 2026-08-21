@@ -3,6 +3,7 @@
 - Status: `DRAFT | ACCEPTED_FOR_POC | CONTRACTED | SUPERSEDED`
 - Date:
 - Owners:
+- Owner confirmation: `AWAITING_USER | CONFIRMED (who, when) | NOT_REQUIRED (why)`
 - Related Open Questions:
 - Affected contracts:
 - Affected acceptance tests:
@@ -39,6 +40,8 @@ Use the definitions in [Evidence Labels](../conventions/evidence-labels.md). Sep
 `[결정]`
 
 State the selected option, scope, status, and effective version.
+
+For a consequential direction, do not use `ACCEPTED_FOR_POC` or `CONTRACTED` until the project owner's explicit answer is recorded above.
 
 ## Rejected alternatives
 

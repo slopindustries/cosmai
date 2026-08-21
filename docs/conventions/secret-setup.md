@@ -4,6 +4,10 @@
 - 적용 범위: P0-A secret-store location guard와 P0-B source credential 로컬 실행
 - 최종 수정일: 2026-08-17
 
+P1 scope amendment: dashboard write-only credential entry and the security disposition are decided in [DP-034](../decisions/DP-034-p1-credential-entry.md).
+
+P1 scope amendment: `COSMA_DB_*` database-credential keys — a second key family outside this document's `COSMA_SRC_<SOURCE_ID>_<PURPOSE>` naming rule, held for a connection pool's lifetime rather than a single request's — are decided in [DP-032](../decisions/DP-032-p1-database-placement.md) D4.
+
 [P0 Security Baseline](p0-security.md)이 정의한 credential 제약을 실제로 적용하는 절차다. 제약과 절차가 충돌하면 `p0-security.md`를 따른다.
 
 ## 지켜야 할 불변조건

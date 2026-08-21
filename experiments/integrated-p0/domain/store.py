@@ -59,9 +59,11 @@ from psycopg.types.json import Jsonb
 __all__ = [
     "CURSOR_STREAM_DEFAULT",
     "DomainStore",
+    "NormalizedResultRow",
     "RawItemRow",
     "SnapshotMember",
     "SourceRow",
+    "canonical_body",
     "digest_of",
 ]
 
@@ -95,6 +97,10 @@ class SourceRow:
     config_schema_version: str = "1"
     credential_ref: str | None = None
     outbound_profile: Mapping[str, Any] | None = None
+    #: DP-024. What an importer is allowed to read, as the operator approved it. The
+    #: schema refuses this on any other kind, mirroring `outbound_profile`'s refusal on a
+    #: normalizer.
+    input_profile: Mapping[str, Any] | None = None
     data_class: str = "local"
     enabled: bool = True
 
@@ -110,6 +116,38 @@ class RawItemRow:
 
 
 @dataclass(frozen=True)
+class NormalizedResultRow:
+    """One normalized record on its way to ``normalized_result``.
+
+    ``source_item_key`` is the lineage link the P0 Charter's exit criteria ask for by name.
+    ``body`` is Schema 0.1 (DP-019 D1) and is checked against the add-on's declared output
+    contract by the host, not here.
+    """
+
+    source_item_key: str
+    body: Mapping[str, Any]
+    notes: Mapping[str, Any] = field(default_factory=dict)
+
+
+def canonical_body(body: Mapping[str, Any]) -> bytes:
+    """The one serialization a result's digest is taken over (DP-019 D4).
+
+    Determinism is required of a normalizer — ``NormalizeContext``'s own docstring says the
+    same snapshot must produce byte-identical results — and "byte-identical" is only a
+    testable claim once the bytes are fixed by something other than each writer's habits.
+    So: sorted keys, no whitespace, and ``ensure_ascii=False``.
+
+    The last one is not cosmetic. This source's documents are Korean; escaping them to
+    ``\uc81c`` would make every digest depend on a serializer setting nobody stated, and a
+    later change of that setting would look like a normalizer that stopped being
+    deterministic.
+    """
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
+
+
+@dataclass(frozen=True)
 class SnapshotMember:
     """One sealed snapshot member, in the order the snapshot fixes."""
 
@@ -122,24 +160,24 @@ class SnapshotMember:
 INSERT_SOURCE = """
 insert into source (
     source_id, addon_id, addon_version, kind, config, config_schema_version,
-    credential_ref, outbound_profile, data_class, enabled
+    credential_ref, outbound_profile, input_profile, data_class, enabled
 ) values (
     %(source_id)s, %(addon_id)s, %(addon_version)s, %(kind)s, %(config)s,
     %(config_schema_version)s, %(credential_ref)s, %(outbound_profile)s,
-    %(data_class)s, %(enabled)s
+    %(input_profile)s, %(data_class)s, %(enabled)s
 )
 """
 
 READ_SOURCE = """
 select source_id, addon_id, addon_version, kind, config, config_schema_version,
-       credential_ref, outbound_profile, data_class, enabled, created_at, updated_at
+       credential_ref, outbound_profile, input_profile, data_class, enabled, created_at, updated_at
 from source
 where source_id = %(source_id)s
 """
 
 LIST_SOURCES = """
 select source_id, addon_id, addon_version, kind, config, config_schema_version,
-       credential_ref, outbound_profile, data_class, enabled, created_at, updated_at
+       credential_ref, outbound_profile, input_profile, data_class, enabled, created_at, updated_at
 from source
 order by source_id
 """
@@ -192,6 +230,55 @@ insert into snapshot_item (snapshot_id, ordinal, item_key, payload, content_type
 values (%(snapshot_id)s, %(ordinal)s, %(item_key)s, %(payload)s, %(content_type)s, %(digest)s)
 """
 
+# The selection DP-019 D5 fixes, as one statement. `distinct on` with the descending
+# `emitted_at` tiebreak is what collapses a duplicate key to its latest row; the outer
+# order is by key alone, so the result does not depend on when anything arrived.
+SELECT_SNAPSHOT_MEMBERS = """
+select item_key, payload, content_type
+from (
+    select distinct on (item_key) item_key, payload, content_type, emitted_at
+    from raw_item
+    where source_id = %(source_id)s
+    order by item_key, emitted_at desc, id desc
+) latest
+order by item_key
+"""
+
+INSERT_RESULT = """
+insert into normalized_result (
+    id, snapshot_id, source_id, addon_id, addon_version, output_contract_version,
+    source_item_key, body, body_sha256, notes
+) values (
+    %(id)s, %(snapshot_id)s, %(source_id)s, %(addon_id)s, %(addon_version)s,
+    %(output_contract_version)s, %(source_item_key)s, %(body)s, %(body_sha256)s, %(notes)s
+)
+"""
+
+READ_RESULTS = """
+select id, snapshot_id, source_id, addon_id, addon_version, output_contract_version,
+       source_item_key, body, body_sha256, notes, created_at
+from normalized_result
+where snapshot_id = %(snapshot_id)s
+  and (%(addon_version)s::text is null or addon_version = %(addon_version)s::text)
+order by source_item_key, addon_version, output_contract_version
+"""
+
+RAW_SUMMARY = """
+select (select count(*) from raw_envelope where source_id = %(source_id)s) as envelope_count,
+       (select count(*) from raw_item where source_id = %(source_id)s) as item_count,
+       (select max(retrieved_at) from raw_envelope where source_id = %(source_id)s)
+           as last_retrieved_at
+"""
+
+# Newest first, because the snapshot an operator wants is almost always the one just
+# sealed. `id` breaks ties so paging is stable when two are sealed in one instant.
+LIST_SNAPSHOTS = """
+select id, source_id, item_count, manifest_sha256, selection, sealed_at, created_at
+from snapshot
+where %(source_id)s::text is null or source_id = %(source_id)s::text
+order by created_at desc, id desc
+"""
+
 READ_SNAPSHOT = """
 select id, source_id, item_count, manifest_sha256, selection, sealed_at, created_at
 from snapshot
@@ -211,6 +298,22 @@ class DomainStore:
 
     def __init__(self, connection: psycopg.Connection[Any]) -> None:
         self._connection = connection
+
+    @property
+    def connection(self) -> psycopg.Connection[Any]:
+        """The connection these writes go out on. Readable so the requirement above
+        can be *checked* rather than described.
+
+        `ADVERSARIAL-REVIEW-2026-08-18.md` F3 is why this exists. This module's docstring
+        says a collection must be wrapped by its caller in one transaction with the fenced
+        completion, and until 2026-08-18 that requirement was carried by a fixture
+        docstring: put on its own autocommit connection, this store still never committed —
+        and Raw, items, and the cursor all survived a refused completion anyway, because
+        *"never commits" and "is inside the fence's transaction" are different properties*.
+        A caller cannot check the second one without being able to ask which connection
+        this is, so it asks.
+        """
+        return self._connection
 
     # -------------------------------------------------------------- sources
 
@@ -238,6 +341,11 @@ class DomainStore:
                         None
                         if source.outbound_profile is None
                         else Jsonb(dict(source.outbound_profile))
+                    ),
+                    "input_profile": (
+                        None
+                        if source.input_profile is None
+                        else Jsonb(dict(source.input_profile))
                     ),
                     "data_class": source.data_class,
                     "enabled": source.enabled,
@@ -438,6 +546,115 @@ class DomainStore:
                     },
                 )
         return snapshot_id
+
+    def record_results(
+        self,
+        snapshot_id: UUID,
+        source_id: str,
+        addon_id: str,
+        addon_version: str,
+        output_contract_version: str,
+        results: Sequence[NormalizedResultRow],
+    ) -> None:
+        """Persist one run's results. Raises on a rerun of the same version over the same
+        snapshot, which the unique index makes a duplicate rather than a version."""
+        with self._cursor() as cursor:
+            for result in results:
+                serialized = canonical_body(result.body)
+                cursor.execute(
+                    INSERT_RESULT,
+                    {
+                        "id": uuid4(),
+                        "snapshot_id": snapshot_id,
+                        "source_id": source_id,
+                        "addon_id": addon_id,
+                        "addon_version": addon_version,
+                        "output_contract_version": output_contract_version,
+                        "source_item_key": result.source_item_key,
+                        "body": Jsonb(dict(result.body)),
+                        "body_sha256": digest_of(serialized),
+                        "notes": Jsonb(dict(result.notes)),
+                    },
+                )
+
+    def read_results(
+        self, snapshot_id: UUID, addon_version: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Every result over one snapshot, or one add-on version's.
+
+        Unfiltered by default because coexistence is the point: a reader comparing two
+        normalizer versions asks for both and narrows afterwards.
+        """
+        with self._cursor() as cursor:
+            cursor.execute(
+                READ_RESULTS, {"snapshot_id": snapshot_id, "addon_version": addon_version}
+            )
+            return list(cursor.fetchall())
+
+    def seal_snapshot_from_raw(self, source_id: str) -> UUID:
+        """Materialize and seal every ``raw_item`` of one source, ordered by ``item_key``.
+
+        DP-019 D5, and the narrowest selection that can exist. OQ-004 owns what a selection
+        should generally be, and a richer one here would answer that by implication.
+
+        **Ordered by the key rather than by arrival.** A re-collection that produced
+        identical items must produce an identical snapshot, so the ordering has to be a
+        property of the data and not of when collection happened.
+
+        **A duplicate key collapses to the latest.** ``raw_item`` deliberately carries no
+        uniqueness constraint — duplicate policy is an open question — while
+        ``snapshot_item`` requires one row per key, so something has to choose. Taking the
+        most recent is a `[결정]`, recorded in DP-019 D5 rather than implied here.
+        """
+        with self._cursor() as cursor:
+            cursor.execute(SELECT_SNAPSHOT_MEMBERS, {"source_id": source_id})
+            rows = cursor.fetchall()
+        members = [
+            SnapshotMember(
+                ordinal=ordinal,
+                item_key=row["item_key"],
+                payload=bytes(row["payload"]),
+                content_type=row["content_type"],
+            )
+            for ordinal, row in enumerate(rows)
+        ]
+        return self.seal_snapshot(
+            source_id,
+            members,
+            selection={
+                "source_id": source_id,
+                "rule": "every raw_item of one source, ordered by item_key",
+                "duplicate_key": "latest emitted_at wins",
+                "decided_by": "DP-019 D5",
+            },
+        )
+
+    def raw_summary(self, source_id: str) -> dict[str, Any]:
+        """How much this source has collected. Counts, never payloads.
+
+        A page of Raw bodies on an operator screen is a page of unreviewed external text,
+        and nothing in P0-B needs one to answer "did the collection do anything". The last
+        instant is included because a count alone cannot distinguish a source that
+        collected once a month ago from one that is collecting now.
+        """
+        with self._cursor() as cursor:
+            cursor.execute(RAW_SUMMARY, {"source_id": source_id})
+            row = cursor.fetchone()
+        assert row is not None
+        return {
+            "source_id": source_id,
+            "envelope_count": int(row["envelope_count"]),
+            "item_count": int(row["item_count"]),
+            "last_retrieved_at": (
+                None if row["last_retrieved_at"] is None else row["last_retrieved_at"].isoformat()
+            ),
+        }
+
+    def list_snapshots(self, source_id: str | None = None) -> list[dict[str, Any]]:
+        """Sealed snapshots, newest first, optionally for one source."""
+        with self._cursor() as cursor:
+            cursor.execute(LIST_SNAPSHOTS, {"source_id": source_id})
+            return list(cursor.fetchall())
 
     def read_snapshot(self, snapshot_id: UUID) -> dict[str, Any] | None:
         with self._cursor() as cursor:
