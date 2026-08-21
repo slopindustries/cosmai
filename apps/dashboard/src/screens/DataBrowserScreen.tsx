@@ -33,16 +33,7 @@ import type { JSX } from "react";
 import { useState } from "react";
 
 import { useRawItemsQuery } from "../api/queries";
-
-interface MockBrowsableSource {
-  sourceId: string;
-  label: string;
-}
-
-const MOCK_SOURCE_OPTIONS: readonly MockBrowsableSource[] = [
-  { sourceId: "naver-blog-main", label: "naver.blog" },
-  { sourceId: "trendradar-main", label: "trendradar" },
-];
+import { MOCK_SOURCE_OPTIONS } from "../mocks/sources";
 
 const LIMIT = 50;
 
