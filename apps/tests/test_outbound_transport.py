@@ -588,6 +588,10 @@ class TestLoopbackIsOnlyReachableByFlag:
             Path("apps/domain/outbound.py"),
             Path("apps/tests/test_outbound_policy.py"),
             Path("apps/tests/test_outbound_transport.py"),
+            # M2 batch 2d's domain API: the same read-only display role
+            # ``experiments/integrated-p0/addon_host/api.py`` already holds above —
+            # ``profile_view`` reads the flag back to an operator and never sets one.
+            Path("apps/domain/api.py"),
         }
         assert set(found) <= permitted, f"allow_loopback appeared in {set(found) - permitted}"
         # The control: the scan can find things. An empty result would satisfy the subset

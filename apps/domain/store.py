@@ -366,6 +366,19 @@ COUNT_ITEMS_OF_SOURCE = (
     "select count(*) as total from cosmai.raw_item where source_id = %(source_id)s"
 )
 
+# M2 batch 2d, new in P1: the raw-item browser's read path (spec §신규 API,
+# `GET /sources/{id}/raw/items?offset&limit`; DP-033 D2). Ordered by `seq` — the same
+# per-row identity column DP-029 D2 added for snapshot tie-breaking — so paging is stable
+# across calls even while collection is still appending rows, which `emitted_at` (a
+# transaction timestamp, possibly shared by many rows) could not guarantee.
+LIST_ITEMS = """
+select item_key, seq, emitted_at, content_type, payload
+from cosmai.raw_item
+where source_id = %(source_id)s
+order by seq
+offset %(offset)s limit %(limit)s
+"""
+
 INSERT_SNAPSHOT = """
 insert into cosmai.snapshot (id, source_id, item_count, manifest_sha256, selection, sealed_at)
 values (%(id)s, %(source_id)s, %(item_count)s, %(manifest_sha256)s, %(selection)s, now())
@@ -652,6 +665,17 @@ class DomainStore:
             cursor.execute(COUNT_ITEMS_OF_SOURCE, {"source_id": source_id})
             row = cursor.fetchone()
         return 0 if row is None else int(row["total"])
+
+    def list_items(self, source_id: str, offset: int, limit: int) -> list[dict[str, Any]]:
+        """A page of one source's `raw_item` rows, oldest first by `seq`.
+
+        M2 batch 2d, new in P1: the data-browser read path (DP-033 D2). Returns the raw
+        row shape — `payload` is still `bytes` — because rendering it as plain text
+        (never markup) is the API view's job, not the store's; see `apps/domain/api.py`.
+        """
+        with self._cursor() as cursor:
+            cursor.execute(LIST_ITEMS, {"source_id": source_id, "offset": offset, "limit": limit})
+            return list(cursor.fetchall())
 
     # ------------------------------------------------------------- snapshots
 
