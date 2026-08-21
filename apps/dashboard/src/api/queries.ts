@@ -22,6 +22,8 @@ import {
   readSource,
   requestRetry,
   sealSnapshot,
+  startCollection,
+  startImport,
   writeCredential,
   writeSchedule,
 } from "./client";
@@ -136,6 +138,34 @@ export function useScheduleWriteMutation(sourceId: string) {
     mutationFn: (body: ScheduleWrite) => writeSchedule(sourceId, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["schedule", sourceId] });
+    },
+  });
+}
+
+/**
+ * B12 (docs/agent-workflow/reviews/REVIEW-M2-M7.md): `POST /sources/{id}/collect`
+ * has existed since M3 merged `addon_host.api`; this hook and `useStartImportMutation`
+ * below are what wire the collector-domain and importer-domain screens' actions to it.
+ * Invalidates the jobs list so the enqueued job shows up in job history without a
+ * manual reload — the same convention `useRetryMutation` and `useSealMutation` use.
+ */
+export function useStartCollectionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sourceId: string) => startCollection(sourceId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+}
+
+/** The importer's mirror of `useStartCollectionMutation`. */
+export function useStartImportMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sourceId: string) => startImport(sourceId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
 }

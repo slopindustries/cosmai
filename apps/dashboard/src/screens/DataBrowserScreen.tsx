@@ -140,7 +140,7 @@ export function DataBrowserScreen(): JSX.Element {
                           detail pane below renders in full — sliced, never
                           parsed, so a tag in the payload still reads as text
                           here too. */}
-                      <TableCell>{preview(item.payload)}</TableCell>
+                      <TableCell data-testid="payload-preview">{preview(item.payload)}</TableCell>
                     </TableRow>
                   ))
                 )}

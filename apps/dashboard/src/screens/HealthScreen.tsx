@@ -100,8 +100,10 @@ export function HealthScreen(): JSX.Element {
           scheduler
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          No scheduler process exists yet. DP-033 D5's scheduler and its due/enabled status land in
-          M6; this box is the reserved place for it once it does.
+          The scheduler process exists (apps/scheduler, M6) and polls cosmai.schedule, but no
+          route on this API reports its own status — only a schedule row's next_run_at and
+          last_run_at, shown per source on the collectors screen. This box is the reserved place
+          for a scheduler-process status once a route exists to serve one.
         </Typography>
       </Paper>
     </Box>
