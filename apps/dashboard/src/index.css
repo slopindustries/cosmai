@@ -1,0 +1,10 @@
+/* Minimal reset. MUI's `CssBaseline` (mounted in `App.tsx`) handles the rest —
+   this file only removes the default margin so the app fills the viewport. */
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100vh;
+}
