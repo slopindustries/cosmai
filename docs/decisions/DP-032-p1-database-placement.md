@@ -250,6 +250,26 @@ side, is M1 implementation work, not decided here.
   cadence sections are not repeated here because the brief scoped this packet to rules 0, 1, 5,
   6, 9, 10, 11, and 4).
 
+### 2026-08-21 discharge (M1)
+
+`[확인 사실]` The first Remaining-uncertainty bullet above ("the shared server's actual address...
+unconfirmed") is discharged for M1's scope. The server is docker container `tubedepth-postgres`
+(image `postgres:18-alpine`, PostgreSQL 18.6), reachable at `127.0.0.1:5433`; administrative work
+runs as its `fleet` superuser over `docker exec` (container-internal trust, no password),
+confirmed live with `docker ps` before provisioning. Provisioning was executed against it, not
+merely designed: databases `cosmai`/`cosmai_test` (owner `cosmai_owner`), roles `cosmai_owner`
+(NOLOGIN), `cosmai_migrator` (LOGIN, `CONNECTION LIMIT` 2), `cosmai_runtime` (LOGIN,
+`CONNECTION LIMIT` 12), schema `cosmai` in each database, `CREATE` revoked from `PUBLIC` on
+`public`. A negative test (`SET ROLE cosmai_runtime; CREATE TABLE cosmai.must_fail(...)` →
+permission denied) and an authenticated loopback-TCP-with-password connection from `apps/` both
+ran successfully against the live server — the "working authenticated connection, negative tests
+refusing insufficient privilege" D4 named as still-owed evidence. Full evidence, including the
+role-limit query output and the connection test's exact result, is recorded in
+[M1-RECORD §a](../p1/M1-RECORD.md#a-provisioning-evidence); this discharge does not re-open or
+narrow any of the remaining bullets above (the `max_connections`/reserved-connection settings,
+whether 16 connections is enough, installed-extension conflicts, and the FDW hazard all remain
+as recorded, unconfirmed by M1).
+
 ## Required changes
 
 - Project State: record DP-032's D1–D4 as the P1 database-placement decision, alongside DP-002's
