@@ -51,6 +51,7 @@ import pytest
 from domain.outbound import (
     DEFAULT_LIMITS,
     OutboundProfile,
+    PreparedRequest,
     Refusal,
     RefusalReason,
     resolve,
@@ -301,6 +302,38 @@ def trusting(certificate: tuple[Path, Path]) -> SocketTransport:
     _, cert = certificate
     context = ssl.create_default_context(cafile=str(cert))
     return SocketTransport(context)
+
+
+@pytest.fixture(scope="session")
+def http_stub() -> Iterator[int]:
+    """A plain-HTTP server on loopback, no TLS at all — the shape a live loopback-only
+    target like tubedepth actually serves (its own `docs/api.md`: "There is no TLS
+    here"). M4x gap 1. `StubHandler` is reused unchanged; only the transport wrapping the
+    `stub` fixture applies is left off.
+    """
+    server = ThreadingHTTPServer(("127.0.0.1", 0), StubHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield int(server.server_address[1])
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def a_loopback_http_profile(port: int, **overrides: Any) -> OutboundProfile:
+    values: dict[str, Any] = {
+        "hosts": ["127.0.0.1"],
+        "endpoints": {"items": "/v1/items"},
+        "port": port,
+        "scheme": "http",
+        "allow_loopback": True,
+    }
+    values.update(overrides)
+    read = OutboundProfile.from_row(values)
+    assert read is not None
+    return read
 
 
 def a_profile(port: int, **overrides: Any) -> OutboundProfile:
@@ -850,3 +883,83 @@ class TestTheRequestWriteIsUnderTheDeadlineToo:
 
         assert not isinstance(outcome, Refusal)
         assert outcome.status == 200
+
+
+# --------------------------------------------------------------------------- #
+# M4x gap 1 — plain HTTP, granted only to a destination the transport itself
+# resolved and checked as loopback.
+# --------------------------------------------------------------------------- #
+
+
+class TestPlainHttpForLoopback:
+    """The transport-time half of the belt-and-suspenders rule.
+    `tests/test_outbound_policy.py::TestScheme` holds the other half —
+    `domain.outbound.resolve` refusing `scheme="http"` for a profile with no
+    `allow_loopback`. This class is that flag's counterpart to
+    `TestLoopbackIsOnlyReachableByFlag` above: a positive control that plain HTTP to a
+    real loopback server actually works, and the refusal it would otherwise pass
+    vacuously against.
+    """
+
+    def test_loopback_http_reaches_a_real_plain_server(self, http_stub: int) -> None:
+        profile = a_loopback_http_profile(http_stub)
+        request = resolve("items", profile)
+        assert isinstance(request, PreparedRequest)
+        assert request.scheme == "http"
+        assert request.url.startswith("http://")
+
+        response = SocketTransport().send(request, profile)
+
+        assert not isinstance(response, Refusal), response
+        assert response.status == 200
+        assert json.loads(response.body)["next"] == 3
+
+    def test_a_protected_header_is_still_stripped_over_plain_http(
+        self, http_stub: int
+    ) -> None:
+        """The credential-hygiene guarantee does not depend on TLS being the transport;
+        `strip_protected_headers` runs on every response regardless of scheme."""
+        profile = a_loopback_http_profile(http_stub)
+        request = resolve("items", profile)
+        assert isinstance(request, PreparedRequest)
+
+        response = SocketTransport().send(request, profile)
+
+        assert not isinstance(response, Refusal)
+        assert not any(k.lower() == "set-cookie" for k in response.headers)
+
+    def test_a_non_loopback_address_is_refused_by_the_transport_even_if_the_profile_says_yes(
+        self,
+    ) -> None:
+        """The belt this gap adds. `allow_loopback = True` on the profile is a claim the
+        profile makes before any name is resolved; this checks it against the address
+        `resolve_addresses` actually returned, for a hand-built request that bypasses
+        `domain.outbound.resolve` the same way `test_the_stub_would_have_noticed_a_body_
+        on_a_get` above bypasses it to reach the transport directly. No network I/O:
+        `93.184.216.34` is a literal address, so `getaddrinfo` resolves it locally and the
+        refusal fires before any connection is attempted.
+        """
+        profile = a_loopback_http_profile(80, hosts=["93.184.216.34"])
+        request = PreparedRequest(
+            url="http://93.184.216.34:80/v1/items",
+            host="93.184.216.34",
+            port=80,
+            endpoint_ref="items",
+            scheme="http",
+        )
+
+        outcome = SocketTransport().send(request, profile)
+
+        assert isinstance(outcome, Refusal)
+        assert outcome.reason is RefusalReason.SCHEME_NOT_ALLOWED
+
+    def test_https_to_the_same_kind_of_loopback_target_is_unaffected(
+        self, stub: int, trusting: SocketTransport
+    ) -> None:
+        """The control for the whole gap: the existing TLS stub and fixture, untouched by
+        anything above, still round-trip exactly as `TestARealRoundTrip` already proves."""
+        profile = a_profile(stub)
+        response = trusting.send(prepared(profile), profile)
+
+        assert not isinstance(response, Refusal)
+        assert response.status == 200

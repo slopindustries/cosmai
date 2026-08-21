@@ -18,6 +18,8 @@ skipped.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from domain.outbound import (
@@ -721,3 +723,231 @@ class TestAnEndpointWithoutAPathCannotWidenTheRange:
         )
         result = check_redirect("https://api.example.com/v1/items/42", widened, hops=1)
         assert isinstance(result, PreparedRequest), result
+
+
+# --------------------------------------------------------------------------- #
+# M4x — the two platform gaps two live adapters named: loopback HTTP by an explicit
+# per-source flag, and a path parameter validated by a declared regex.
+# --------------------------------------------------------------------------- #
+
+
+class TestScheme:
+    """Gap 1's validation half. `SocketTransport` holds the transport-time half against
+    the address DNS actually resolved — `tests/test_outbound_transport.py`."""
+
+    def test_https_is_the_default_and_nothing_here_changes_it(self) -> None:
+        """The control every case below needs: the ordinary path is unaffected."""
+        request = resolve("items", a_profile())
+        assert isinstance(request, PreparedRequest)
+        assert request.scheme == "https"
+        assert request.url.startswith("https://")
+        assert frozenset({"https"}) == ALLOWED_SCHEMES
+
+    def test_http_is_refused_without_allow_loopback(self) -> None:
+        profile = a_profile(scheme="http")
+        assert profile.allow_loopback is False
+        refusal = resolve("items", profile)
+        assert isinstance(refusal, Refusal)
+        assert refusal.reason is RefusalReason.SCHEME_NOT_ALLOWED
+
+    def test_http_is_granted_once_allow_loopback_is_also_set(self) -> None:
+        """The positive control. A rule that refused `http` unconditionally would pass
+        the case above and make loopback collection impossible either way."""
+        profile = a_profile(scheme="http", allow_loopback=True, hosts=("127.0.0.1",))
+        request = resolve("items", profile)
+        assert isinstance(request, PreparedRequest)
+        assert request.scheme == "http"
+        assert request.url == "http://127.0.0.1:443/v1/items"
+
+    def test_an_unrecognised_scheme_is_refused_even_with_the_flag_set(self) -> None:
+        profile = a_profile(scheme="ftp", allow_loopback=True)
+        refusal = resolve("items", profile)
+        assert isinstance(refusal, Refusal)
+        assert refusal.reason is RefusalReason.SCHEME_NOT_ALLOWED
+
+    def test_a_profile_read_from_a_row_defaults_to_https(self) -> None:
+        row = OutboundProfile.from_row({"hosts": ["h"], "endpoints": {"items": "/v1/items"}})
+        assert row is not None
+        assert row.scheme == "https"
+
+    def test_a_row_can_state_http(self) -> None:
+        row = OutboundProfile.from_row(
+            {
+                "hosts": ["127.0.0.1"],
+                "endpoints": {"items": "/v1/items"},
+                "scheme": "http",
+                "allow_loopback": True,
+            }
+        )
+        assert row is not None
+        assert row.scheme == "http"
+        request = resolve("items", row)
+        assert isinstance(request, PreparedRequest)
+        assert request.url.startswith("http://")
+
+
+def a_templated_profile(**overrides: Any) -> OutboundProfile:
+    """A profile approving one endpoint whose path needs a `digest` filled in.
+
+    `^[0-9a-f]{64}$` is the exact pattern DP-031's tubedepth adapter declares for its own
+    `artifact_payload` endpoint — this file's fixture, not an invented one.
+    """
+    values: dict[str, Any] = {
+        "hosts": ["api.example.com"],
+        "endpoints": {
+            "artifact": {
+                "path": "/v1/artifacts/{digest}",
+                "method": "GET",
+                "path_params": {"digest": r"^[0-9a-f]{64}$"},
+            },
+        },
+        "port": 443,
+    }
+    values.update(overrides)
+    row = OutboundProfile.from_row(values)
+    assert row is not None
+    return row
+
+
+class TestPathTemplates:
+    """Gap 2. An approved path may carry a `{name}` placeholder; the add-on fills it
+    through `fetch`'s existing `params` — never composing the path itself — and the value
+    is checked against the profile's own declared regex before it becomes part of a
+    request.
+    """
+
+    VALID_DIGEST = "0be813a5998c93b6936521fd8b312734d0dc14b9def6f9c5976df1101fd2f557"
+
+    def test_a_valid_value_substitutes_and_the_result_passes_containment(self) -> None:
+        profile = a_templated_profile()
+        request = resolve("artifact", profile, {"digest": self.VALID_DIGEST})
+        assert isinstance(request, PreparedRequest)
+        assert request.url == f"https://api.example.com:443/v1/artifacts/{self.VALID_DIGEST}"
+
+    def test_a_value_failing_the_declared_pattern_is_refused(self) -> None:
+        profile = a_templated_profile()
+        refusal = resolve("artifact", profile, {"digest": "not-a-hex-digest"})
+        assert isinstance(refusal, Refusal)
+        assert refusal.reason is RefusalReason.PATH_PARAMETER_INVALID
+
+    def test_a_traversal_attempt_is_refused_by_validation_against_the_real_pattern(
+        self,
+    ) -> None:
+        """The validation layer, on its own: `digest`'s declared `^[0-9a-f]{64}$` already
+        refuses this value before a path is ever built."""
+        profile = a_templated_profile()
+        refusal = resolve("artifact", profile, {"digest": "../../admin"})
+        assert isinstance(refusal, Refusal)
+        assert refusal.reason is RefusalReason.PATH_PARAMETER_INVALID
+
+    def test_a_traversal_attempt_is_separately_refused_by_containment(self) -> None:
+        """The second belt, isolated: a profile permissive enough to let the value past
+        validation still cannot get a traversal segment through the same segment-by-segment
+        containment every approved path has always been checked with — now run against the
+        path the template actually resolved to.
+        """
+        profile = a_templated_profile(
+            endpoints={
+                "artifact": {
+                    "path": "/v1/artifacts/{digest}",
+                    "method": "GET",
+                    "path_params": {"digest": r"^.*$"},
+                }
+            }
+        )
+        refusal = resolve("artifact", profile, {"digest": "../../admin"})
+        assert isinstance(refusal, Refusal)
+        assert refusal.reason is RefusalReason.PATH_NOT_ALLOWED
+
+    def test_a_missing_template_parameter_is_refused(self) -> None:
+        profile = a_templated_profile()
+        refusal = resolve("artifact", profile, {})
+        assert isinstance(refusal, Refusal)
+        assert refusal.reason is RefusalReason.PATH_PARAMETER_MISSING
+
+    def test_no_params_at_all_is_also_a_missing_parameter(self) -> None:
+        profile = a_templated_profile()
+        refusal = resolve("artifact", profile, None)
+        assert isinstance(refusal, Refusal)
+        assert refusal.reason is RefusalReason.PATH_PARAMETER_MISSING
+
+    def test_an_endpoint_with_no_template_is_unaffected(self) -> None:
+        """The control for the whole gap: an ordinary endpoint resolves exactly as it did
+        before path templates existed."""
+        request = resolve("items", a_profile(), {"q": "kimchi"})
+        assert isinstance(request, PreparedRequest)
+        assert request.url == "https://api.example.com:443/v1/items?q=kimchi"
+
+    def test_a_parameter_beyond_the_template_still_becomes_a_query_string(self) -> None:
+        profile = a_templated_profile()
+        request = resolve("artifact", profile, {"digest": self.VALID_DIGEST, "verbose": "1"})
+        assert isinstance(request, PreparedRequest)
+        assert request.url == (
+            f"https://api.example.com:443/v1/artifacts/{self.VALID_DIGEST}?verbose=1"
+        )
+
+    def test_the_refusal_never_quotes_the_offending_value(self) -> None:
+        """The same rule every other `Refusal` in this module already keeps: a value an
+        add-on controls is never written into a summary or a detail."""
+        profile = a_templated_profile()
+        refusal = resolve("artifact", profile, {"digest": "s3cret-looking-value"})
+        assert isinstance(refusal, Refusal)
+        assert "s3cret-looking-value" not in refusal.summary
+        assert "s3cret-looking-value" not in str(refusal.detail)
+
+
+class TestPathTemplateDeclaration:
+    """Read-time validation, the same style as `TestAnEndpointWithoutAPathCannotWidenTheRange`:
+    a malformed row is refused when it is written, not on the add-on's first `fetch`."""
+
+    def test_a_placeholder_with_no_declared_regex_is_refused_at_read_time(self) -> None:
+        with pytest.raises(ValueError, match="path_params"):
+            OutboundProfile.from_row(
+                {
+                    "hosts": ["h"],
+                    "endpoints": {"artifact": {"path": "/v1/artifacts/{digest}"}},
+                }
+            )
+
+    def test_a_declared_regex_with_no_matching_placeholder_is_refused_at_read_time(
+        self,
+    ) -> None:
+        with pytest.raises(ValueError, match="path_params"):
+            OutboundProfile.from_row(
+                {
+                    "hosts": ["h"],
+                    "endpoints": {
+                        "items": {"path": "/v1/items", "path_params": {"digest": "^.*$"}}
+                    },
+                }
+            )
+
+    def test_an_invalid_regex_is_refused_at_read_time(self) -> None:
+        with pytest.raises(ValueError, match="regular expression"):
+            OutboundProfile.from_row(
+                {
+                    "hosts": ["h"],
+                    "endpoints": {
+                        "artifact": {
+                            "path": "/v1/artifacts/{digest}",
+                            "path_params": {"digest": "[unclosed"},
+                        }
+                    },
+                }
+            )
+
+    def test_a_bare_string_endpoint_with_a_placeholder_is_refused_at_read_time(self) -> None:
+        """The bare-string shape has nowhere to declare a regex, so a placeholder there is
+        one nothing would ever validate — refused rather than silently unvalidated."""
+        with pytest.raises(ValueError, match="path_params"):
+            OutboundProfile.from_row(
+                {"hosts": ["h"], "endpoints": {"artifact": "/v1/artifacts/{digest}"}}
+            )
+
+    def test_an_endpoint_with_no_placeholder_needs_no_path_params_entry(self) -> None:
+        """The control: nothing about ordinary endpoints changed."""
+        row = OutboundProfile.from_row(
+            {"hosts": ["h"], "endpoints": {"items": {"path": "/v1/items", "method": "GET"}}}
+        )
+        assert row is not None
+        assert row.path_params_of("items") == {}

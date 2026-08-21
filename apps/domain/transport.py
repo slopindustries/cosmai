@@ -48,11 +48,24 @@ That is how a test reaches a stub with its own certificate authority without any
 row, profile field, or environment variable being able to widen the policy — a
 *per-process* trust anchor rather than a *per-source* one. `tests/test_outbound_transport.py`
 holds the positive control: the same stub under the default context fails to verify.
+
+**M4x, plain HTTP — the second half of the belt-and-suspenders rule.** `domain.outbound`
+grants `request.scheme == "http"` only when the profile set `allow_loopback`, and that
+grant is stated before a socket ever opens. It cannot be the whole rule: `allow_loopback`
+is a flag a profile *states*, and the address it is actually about to connect to is only
+known after `resolve_addresses` runs — the same DNS gap `outbound.py`'s own docstring
+names for `check_resolved_addresses`. So this module holds the second check: before it
+will open a plain-HTTP connection, every address `send` resolved must itself be loopback,
+regardless of what the profile claims. A name that answered loopback once and something
+else the second time is exactly the rebinding hole this module's own opening paragraph
+already refuses to create for TLS; the same connect-to-what-was-checked discipline applies
+here without a certificate to fall back on.
 """
 
 from __future__ import annotations
 
 import http.client
+import ipaddress
 import socket
 import ssl
 import time
@@ -202,8 +215,52 @@ def resolve_addresses(host: str, port: int) -> tuple[str, ...]:
 _CHUNK: Final = 64 * 1024
 
 
+def _refuse_http_off_loopback(
+    request: PreparedRequest, addresses: Sequence[str]
+) -> Refusal | None:
+    """The transport-time half of the plain-HTTP rule. `None` means proceed.
+
+    `domain.outbound.resolve` already refused a plain-HTTP request unless the profile set
+    `allow_loopback` — but that is a claim about the profile, made before any name was
+    resolved. This is the claim checked against what `getaddrinfo` actually returned, which
+    is the only place either half of the belt-and-suspenders rule can be checked against
+    reality: `check_resolved_addresses` runs immediately before this and already requires
+    `allow_loopback` for any address in it that is loopback, but a non-loopback address is
+    never blocked by that rule at all (`p0-security.md` blocks *private* ranges, not every
+    non-loopback host) — so without this, a source with `allow_loopback = true` and `scheme
+    = "http"` in its profile could ask for a request to a hostname resolving anywhere
+    public, and there would be no `SocketTransport`-level check left to refuse it.
+    """
+    for raw in addresses:
+        try:
+            address = ipaddress.ip_address(raw)
+        except ValueError:
+            return Refusal(
+                RefusalReason.ADDRESS_RANGE_BLOCKED,
+                f"{request.host!r} resolved to something that is not an IP address",
+                {"host": request.host},
+            )
+        if not address.is_loopback:
+            return Refusal(
+                RefusalReason.SCHEME_NOT_ALLOWED,
+                f"plain HTTP was refused for {request.endpoint_ref!r}: {request.host!r} "
+                f"resolved to {address!s}, which is not a loopback address",
+                {"endpoint_ref": request.endpoint_ref, "host": request.host,
+                 "address": str(address)},
+            )
+    return None
+
+
 class SocketTransport:
-    """The real one. HTTPS only, one hop, and it never looks a name up twice."""
+    """The real one. HTTPS by default, one hop, and it never looks a name up twice.
+
+    Plain HTTP is the one exception, and only when `request.scheme == "http"` — which
+    `domain.outbound.resolve` sets only for a profile that declared `allow_loopback`, and
+    which `send` re-checks against the addresses this module itself resolved before it
+    ever reaches `_connect`. Every other property this docstring already claimed is
+    unchanged for that path: one hop, no redirect followed, one deadline for the whole
+    request.
+    """
 
     def __init__(self, context: ssl.SSLContext | None = None) -> None:
         self._context = context or ssl.create_default_context()
@@ -224,6 +281,10 @@ class SocketTransport:
         refusal = check_resolved_addresses(request.host, addresses, profile)
         if refusal is not None:
             return refusal
+        if request.scheme == "http":
+            refusal = _refuse_http_off_loopback(request, addresses)
+            if refusal is not None:
+                return refusal
         return self._hop(request, addresses, headers or {}, bounds)
 
     def _hop(
@@ -286,14 +347,23 @@ class SocketTransport:
 
     def _connect(
         self, request: PreparedRequest, addresses: Sequence[str], bounds: TransportLimits
-    ) -> http.client.HTTPSConnection:
-        """Open a socket to a checked address, with TLS verified against the approved name.
+    ) -> http.client.HTTPSConnection | http.client.HTTPConnection:
+        """Open a socket to a checked address, with TLS verified against the approved name
+        — or, for the loopback-only exception M4x adds, no TLS at all.
 
-        The socket is built here and handed to `HTTPSConnection` already wrapped, rather
-        than letting it dial: `HTTPSConnection` would use one string for the address, the
-        SNI, and the `Host` header, and those are the same value only when no address
-        check happened. Assigning `.sock` is what makes it skip its own `connect()`.
+        The socket is built here and handed to the connection already wrapped (or, for
+        plain HTTP, already connected), rather than letting the connection dial: letting
+        `HTTPSConnection` dial would use one string for the address, the SNI, and the
+        `Host` header, and those are the same value only when no address check happened.
+        Assigning `.sock` is what makes either connection class skip its own `connect()`.
+
+        `request.scheme` reaching here at all means `send` already ran both belts:
+        `domain.outbound.resolve` granted `"http"` only alongside the profile's
+        `allow_loopback`, and `_refuse_http_off_loopback` has already confirmed every
+        address in `addresses` actually is loopback. Nothing here re-decides that policy —
+        it only chooses which connection class to build.
         """
+        plain = request.scheme == "http"
         last: Exception | None = None
         for address in addresses:
             # Per address, so a name resolving to several unreachable addresses used to
@@ -311,18 +381,29 @@ class SocketTransport:
                 raw = socket.create_connection(
                     (address, request.port), timeout=min(bounds.connect_timeout_s, remaining)
                 )
-                secured = self._context.wrap_socket(raw, server_hostname=request.host)
-                secured.settimeout(bounds.read_timeout_s)
+                if plain:
+                    sock: socket.socket = raw
+                else:
+                    sock = self._context.wrap_socket(raw, server_hostname=request.host)
+                sock.settimeout(bounds.read_timeout_s)
             except (TimeoutError, OSError, ssl.SSLError) as error:
                 last = error
                 if raw is not None:
                     raw.close()
                 continue
-            connection = http.client.HTTPSConnection(
-                request.host, request.port, timeout=bounds.read_timeout_s, context=self._context
-            )
-            connection.sock = secured
-            return connection
+            if plain:
+                http_connection: http.client.HTTPSConnection | http.client.HTTPConnection = (
+                    http.client.HTTPConnection(
+                        request.host, request.port, timeout=bounds.read_timeout_s
+                    )
+                )
+            else:
+                http_connection = http.client.HTTPSConnection(
+                    request.host, request.port, timeout=bounds.read_timeout_s,
+                    context=self._context,
+                )
+            http_connection.sock = sock
+            return http_connection
         raise TransportUnavailable(
             f"no checked address for {request.host!r} accepted a connection",
             {"host": request.host, "addresses": list(addresses),
