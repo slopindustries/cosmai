@@ -50,3 +50,4 @@ result-*
 /tests/fixtures/private/
 *.log
 .tmp-*
+.worktrees/
