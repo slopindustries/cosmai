@@ -26,6 +26,17 @@ testpaths = ["tests"]
 
 [tool.mypy]
 strict = true
+# `addons/` is excluded for the same reason `pyproject.toml`'s own root exclusion is
+# (`^experiments/integrated-p0/addons/`, see that file's comment and
+# `docs/conventions/addon-authoring.md`'s "검사하는 방법"): every add-on's entry file is
+# conventionally `handler.py`, and add-ons are independent roots loaded by path rather
+# than imported by name (DP-008 D2), so `mypy --strict .` reports "Duplicate module named
+# handler" the moment a second add-on exists under this directory — which
+# `collector.naver.blog` and `normalizer.naver.blog` both landing here at once now makes
+# immediate rather than hypothetical. Each add-on is checked on its own by
+# `scripts/check-addons.sh`, which is the invocation the layout actually means; a
+# tree-wide exclude that checked nothing would be worse than not excluding at all.
+exclude = ["^addons/"]
 
 [tool.ruff]
 line-length = 100

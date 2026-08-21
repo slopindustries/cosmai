@@ -1,0 +1,52 @@
+# collector.naver.blog — Naver API Hub blog search collector.
+#
+# Sources for the shape below:
+#   https://api.ncloud-docs.com/docs/naver-api-hub-search-blog (endpoint, params, response, errors)
+#   https://guide.ncloud-docs.com/docs/apihub-overview (RPS limiting, auth headers, quotas)
+# both fetched 2026-08-18. See handler.py for the assumptions the docs leave open.
+#
+# Copy-adapted from `experiments/integrated-p0/addons/collector.naver.blog/addon.toml`
+# (M4 naver-blog worktree). The shape is unchanged; P0's actual name and logic is the
+# spec, per the M2-M7 plan's controller ruling 3.
+
+[addon]
+id = "collector.naver.blog"
+version = "0.1.0"
+kind = "collector"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "query"
+type = "string"
+required = true
+label = "Search query"
+help = "UTF-8 search term, sent as the API's required `query` parameter"
+
+[[config.field]]
+name = "display"
+type = "integer"
+required = false
+label = "Results per page"
+help = "Sent as `display`. The API accepts 1-100 and defaults to 10; out-of-range is rejected here before any request is made, since [config.field] has no range type to enforce it"
+
+[[config.field]]
+name = "sort"
+type = "string"
+required = false
+label = "Sort order"
+help = "Sent as `sort`. The API accepts only \"sim\" (relevance, default) or \"date\"; there is no enum field type, so this is enforced in code, not by the schema"
+
+# `client_id` and `client_secret` are not declared as config fields here. DP-018 puts a
+# two-part credential in the source's outbound profile, which the operator approves;
+# `needs_credential` below is this add-on's request for one. See DP-018 and the P0
+# handler.py docstring for the history of that decision.
+
+[declares]
+hosts = ["naverapihub.apigw.ntruss.com"]
+endpoints = ["blog"]
+streams = ["items"]
+needs_credential = true
