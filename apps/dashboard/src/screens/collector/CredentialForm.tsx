@@ -1,22 +1,23 @@
 // DP-034 D1's write-only credential field. Two inputs (purpose, value), one
 // write (`POST /sources/{id}/credentials`), and nothing that reads a value
-// back — the screen shows only the derived ref name and whether it is
-// configured, never the value itself.
+// back — the screen shows only the derived ref name and whether *this
+// session* wrote it, never the value itself and never a durable "configured"
+// truth from the server.
 //
-// The backend route is Lane A's (controller ruling 2026-08-21: the domain API
-// owns source routes) and is not served yet; this component's tests mock the
-// write. `configuredPurposes` is likewise mocked from source detail until
-// M2's domain API lands — batch 5d wires both for real.
+// Real as of batch 5-final (`apps/domain/api.py`'s `write_source_credential`,
+// merged from `dev`). **Mismatch found and fixed reconciling against the
+// real route:** batch 5b/5c's version took a `configuredPurposes` prop and
+// showed "configured"/"not configured" against it, implying a queryable
+// server-known status. DP-034 D1's own text is explicit that the route is
+// write-only and never reads a value back — there is no `GET` anywhere that
+// reports whether a purpose is configured, so `configuredPurposes` was
+// mocking information the real system cannot provide, not standing in for a
+// route that just hadn't landed yet. Removed; the badge now reads "written
+// this session" (this component's own `justConfigured` state, already
+// present) or "not written this session" — never a claim about server state
+// this component cannot see.
 
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Stack,
-  TextField,
-  Typography,
-} from "@mui/material";
+import { Alert, Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
 import type { FormEvent, JSX } from "react";
 import { useState } from "react";
 
@@ -25,11 +26,9 @@ import { useCredentialWriteMutation } from "../../api/queries";
 
 export interface CredentialFormProps {
   sourceId: string;
-  /** Purposes this source already has a value configured for (mocked from source detail). */
-  configuredPurposes: readonly string[];
 }
 
-export function CredentialForm({ sourceId, configuredPurposes }: CredentialFormProps): JSX.Element {
+export function CredentialForm({ sourceId }: CredentialFormProps): JSX.Element {
   const [purpose, setPurpose] = useState("");
   const [value, setValue] = useState("");
   const [justConfigured, setJustConfigured] = useState<string | null>(null);
@@ -37,9 +36,7 @@ export function CredentialForm({ sourceId, configuredPurposes }: CredentialFormP
 
   const trimmedPurpose = purpose.trim();
   const ref = trimmedPurpose === "" ? null : credentialRefName(sourceId, trimmedPurpose);
-  const configured =
-    trimmedPurpose !== "" &&
-    (configuredPurposes.includes(trimmedPurpose) || justConfigured === trimmedPurpose);
+  const writtenThisSession = trimmedPurpose !== "" && justConfigured === trimmedPurpose;
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -62,8 +59,9 @@ export function CredentialForm({ sourceId, configuredPurposes }: CredentialFormP
   return (
     <Box component="form" onSubmit={onSubmit} sx={{ mt: 1 }}>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Write-only: a submitted value is never read back or displayed. Only its ref name and
-        whether it is configured are shown.
+        Write-only: a submitted value is never read back or displayed, and the platform exposes no
+        way to ask afterward whether a purpose is configured — only whether this screen wrote one
+        this session.
       </Typography>
       <Stack direction="row" spacing={1} sx={{ mb: 1 }} flexWrap="wrap" useFlexGap alignItems="center">
         <TextField
@@ -95,8 +93,8 @@ export function CredentialForm({ sourceId, configuredPurposes }: CredentialFormP
           </Typography>
           <Chip
             size="small"
-            label={configured ? "configured" : "not configured"}
-            color={configured ? "success" : "default"}
+            label={writtenThisSession ? "written this session" : "not written this session"}
+            color={writtenThisSession ? "success" : "default"}
           />
         </Stack>
       )}
