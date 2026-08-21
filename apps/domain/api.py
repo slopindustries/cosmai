@@ -12,11 +12,11 @@ persistence. Nothing here needs ``addon_api`` at all: every route below reads or
 none of them dispatch to an add-on's own code. So this module lives at ``domain.api``
 instead — ``domain`` importing ``platform_core`` is the direction
 ``tests/environment/test_addon_layer_direction.py`` already permits, and no new layer had
-to be invented to hold it. **This placement is provisional and named as such in
-``docs/p1/M2-RECORD.md``**: M3 builds ``addon_host`` and must decide whether to import
-``extend_with_domain`` from here and wrap it with the addon-dispatched routes, or move this
-module's routes into ``addon_host.api`` outright and retire this one. Either is a small
-change; nothing downstream should assume this file's location survives M3.
+to be invented to hold it. **M3 decided (batch 3b): reuse, not relocate.** ``addon_host.api``
+imports :func:`extend_with_domain` from here and composes it with the two addon-dispatched
+routes M2 deferred (``collect``, ``import``) — see ``addon_host.api``'s own module
+docstring for the reasoning. This module's routes and location are therefore final, not
+provisional: every route below still serves unchanged under ``python -m addon_host``.
 
 **Scope narrowing.** P0's surface had seven writes: register (not an endpoint, per its own
 docstring), collect, import, seal, normalize, and (added by this batch) a credential write.
