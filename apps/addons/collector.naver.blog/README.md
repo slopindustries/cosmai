@@ -29,8 +29,9 @@ is resolved inside `fetch`, and this add-on never sees its value.
 - Bump `[addon].version` whenever this add-on's behavior changes. A new version
   makes results coexist rather than silently replace the old ones.
 - Bump `[config].schema_version` whenever `[[config.field]]` changes shape. A
-  source configured under an older schema is marked `NEEDS_MIGRATION` and refuses
-  to run until an operator reconfigures it.
+  source whose stored `config_schema_version` no longer matches this add-on's is
+  refused at load/dispatch time — `CONFIGURATION_INVALID`, naming both the stored
+  and the required version — and does not run until an operator reconfigures it.
 - `requires_contract` states which `addon_api.CONTRACT_VERSION` values this add-on
   supports. A host running an incompatible contract version refuses the load at
   process start, before any job runs.

@@ -62,6 +62,19 @@ never does).
   conditions a read already does (unset, missing, inside the repository, wrong mode), rather
   than inventing a second, divergent location-resolution path. Writes are atomic
   (temp-file-plus-`os.replace`) and preserve the store's existing file mode.
+  **`[등록, 2026-08-21, m7-fixwave, M-S3]`** `apps/platform_core/obs/redaction.py`'s
+  `REDACTED_KEYS` does not include the credential route's own body field name
+  (`value`) — `redact({"value": "THE-SECRET"})` is unmasked. `POST
+  /sources/{id}/credentials` never routes that field through `redact` at all
+  (`write_credential`'s value is a local variable for the call's duration, never
+  logged, never returned — see `apps/domain/api.py`'s own docstring), so the
+  route's write-only property holds by the code's own discipline, not by the
+  redaction contract. B2's fix wave gave the *response* path a second,
+  independent backstop — the platform-wide `RequestValidationError` handler that
+  strips FastAPI's own `input` echo — which now also stands behind this route,
+  but the redaction contract itself still does not know `value` is sensitive.
+  Registered per M-S3, `docs/agent-workflow/reviews/REVIEW-M2-M7.md`; no code
+  change accompanies this note.
 - **`apps/domain/api.py`'s placement is provisional.** P0 put the domain API extension in
   `addon_host/api.py`, the one layer allowed to import `domain` + `platform_core` +
   `addon_api` together. Nothing M2 built needs `addon_api` at all (no route dispatches to an
@@ -155,6 +168,20 @@ read-back-in-fixed-order, tamper detection via recomputed digests, and manifest-
 across reseals. What is **not** re-run here is the specific purge/later-collection/collation-migration
 timeline P0 measured against a live schema evolution. This is recorded as a gap for M7 to weigh,
 not resolved by this batch.
+
+**`[등록, 2026-08-21, m7-fixwave, M-R15]`** M7 never weighed this gap — no M6-RECORD,
+M7-DEMO-RECORD, or closure review before this fix wave mentions it. Weighed now: the
+gap is not closable by a later milestone's *testing*, because this batch's own
+migration consolidation removed the structural precondition P0's scenario needed — "no
+later domain migration to withhold and apply after the fact" (above) is still true of
+the merged M2–M7 tree; `apps/platform_core/db/migrations/` holds one domain migration,
+not a sequence a test could apply partway through. Closing this gap for real would mean
+either reintroducing a multi-step domain migration sequence for no reason but testability,
+or accepting that DP-029 D1's materialization property is exercised at the ordinary-case
+level this record already names (`test_domain_store.py`/`test_normalized_results.py`)
+and not against a live schema-evolution timeline. This record's disposition, made
+explicit rather than left implicit: the gap is registered as permanently out of scope
+under the current migration shape, not pending on a future milestone.
 
 ## (f) Files touched, by batch
 

@@ -316,3 +316,34 @@ was.
 - Implementation handoff: M5 builds the six screens including the Raw browser against D1–D2; M6
   builds streaming export against D3 and the scheduler against D5; both build the frontend against
   D4's adopted stack rather than DP-006 D6's bare foundation.
+
+## Post-decision corrections
+
+Appended, not a rewrite of the sections above — `docs/conventions/project-memory.md`'s
+own rule for a packet already accepted.
+
+- **`[정정, 2026-08-21, m7-fixwave, M-X5]` H5's falsification condition names the
+  wrong mechanism.** H5 above is framed entirely on `CONTRACT-JOB@0.1`'s
+  `effect_key` idempotency ("without changing the job or effect-key model...
+  already fixes"). What M6 actually built for duplicate suppression
+  (`apps/scheduler/store.py`'s `non_terminal_job_exists`, a lock-held check for
+  a `PENDING`/`RUNNING` job with the same handler and `source_id`) is
+  unrelated to `effect_key` — that mechanism lives at
+  `apps/platform_core/jobs/store.py:376-379` and fences the *effects of one
+  running job's own attempts*, not whether a second job gets created at all.
+  `grep -rn effect_key docs/p1/` finds no mention connecting the two. H5 was
+  therefore never actually evaluated against the mechanism M6 built — the
+  scheduler's suppression is real and tested (M6-RECORD's own evidence
+  section), but nothing in this record or M6-RECORD checked it against H5's
+  stated condition, because that condition describes a different mechanism.
+  Separately, this section's own "Remaining uncertainty" bullet above asked M6
+  to record whether the OQ-008 case (re-executing already-succeeded work)
+  actually arises once scheduling is real, rather than this packet asserting
+  it does not. `docs/p1/M6-RECORD.md:107-111` holds that answer without
+  naming OQ-008: `test_a_terminal_job_does_not_suppress_the_next_pass`
+  confirms a `SUCCEEDED` job does **not** suppress the next scheduled pass —
+  meaning a scheduled run against a source whose previous run already
+  succeeded for an overlapping period **does** create a new collect job. That
+  is exactly the case OQ-008 asks about; M6's own evidence answers it (the
+  case arises), and this note is the connection that was missing. See M-X5,
+  `docs/agent-workflow/reviews/REVIEW-M2-M7.md`.

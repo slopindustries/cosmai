@@ -50,6 +50,16 @@ under `/tmp/claude-1000/m7-demo/`:
 | Addon-host worker | `COSMA_ADDON_DIR=<abs path>/apps/addons uv run python -m addon_host.worker` | no port; claims jobs, hosts all 8 add-ons |
 | Scheduler | `uv run python -m scheduler` | no port; polls `cosmai.schedule` |
 
+**`[정정, 2026-08-21, M-X2 fix wave]`** `COSMA_API_PORT=8100` above was set explicitly and
+without a stated reason at the time this record was written — `platform_core.config`'s own
+`COSMA_API_PORT` default was `8000`, which collides with trend-radar's live dashboard
+(DP-031 D3: `http://127.0.0.1:8000/api/v1`, also reached during this same demo, `:70`
+below). Loud 404s rather than silent wrong data, but unregistered until B6 (M-X2,
+`docs/agent-workflow/reviews/REVIEW-M2-M7.md`) found it. `platform_core.config`'s
+`COSMA_API_PORT` default (and the dashboard client's matching `DEFAULT_API_BASE`) are now
+`8100`, so this demo's command line is what a fresh checkout does with no environment set,
+not an unexplained override.
+
 `[측정]` A relative `COSMA_ADDON_DIR=apps/addons` resolves against the process's own
 cwd (`apps/`), giving `apps/apps/addons` — nonexistent. First worker start refused
 with `CONFIGURATION_INVALID` (`addon_host.worker.refused`, exit `78`), exactly the
@@ -103,9 +113,16 @@ scheduler.job_created  source_id=trendradar  handler=addon:collector.trendradar.
 
 The worker claimed and ran it: `addon.collect.run_complete` `items_emitted=900,
 pages_fetched=20, tables_processed=["rank_snapshot"], more_available=true` →
-`job.transition … SUCCEEDED`. The scheduler fired a second time before the schedule
-was disabled (10s interval): a second collect job, `items_emitted=892`, also
-`SUCCEEDED`. Schedule then set to `enabled:false` to stop further firing.
+`job.transition … SUCCEEDED`. **`[정정, 2026-08-21, m7-fixwave, B9]`** The two
+sentences that followed this one previously narrated only a second firing; the
+scheduler actually fired a **third** time before the schedule was disabled (10s
+interval, `COSMA_POLL_MS=200ms` — three firings inside one 10-second window is the
+poll interval doing exactly what it is for). `[측정]` re-derived from
+`scheduler.log`/`worker.log` at `/tmp/claude-1000/m7-demo/`, still present on disk:
+three distinct `scheduler.job_created` events (`job_id`s `3f610ae2…`, `81960e7b…`,
+`7d66a053…`), three `addon.collect.run_complete`/`SUCCEEDED` completions —
+`items_emitted` **900, 900, 892** in firing order (2692 total). Schedule then set to
+`enabled:false` to stop further firing.
 
 **This collect itself is notable independent of the scheduler mechanism**: `[확인
 사실]` `m4-trendradar-report.md` recorded trend-radar's live collect as blocked
@@ -129,7 +146,15 @@ smoke set to `1` explicitly), which this session did not override, so it default
 stopped_reason="max_pages"` — a clean, graceful stop at the budget, not a failure.
 **Recorded as a deviation from the task's literal "(1 page)" rather than silently
 matched**: the collector's own internal budget tracking stopped it correctly: this is
-more data than intended, not a control failure.
+more data than intended, not a control failure. **`[정정, 2026-08-21, m7-fixwave,
+B11]`** Named plainly, not only as a page-count deviation: 20 pages against an
+intended 1 is **~20× the intended quota pulled from a live third party** (NAVER's
+API Hub) **under a real credential**, not a synthetic or sandboxed target. The
+result was benign here (a public search endpoint, no rate-limit or ToS breach
+observed), but the same unbounded-default shape against a stricter or metered
+upstream would not be — `limits.max_pages` defaulting to 20 rather than requiring
+an explicit value is a real operational risk this demo surfaced and did not
+previously say out loud.
 
 **naver.datalab: SUCCEEDED as intended.** One `search_trend` window
 (2026-08-14..2026-08-20): `addon.collect.window_complete mode=search_trend, points=7`
@@ -143,10 +168,16 @@ path downstream).
 **tubedepth: FAILED, every attempt — a genuine finding, not a platform bug.**
 `[측정]` First attempt at the default `limits.max_pages=20` (the README's own example
 profile has no override) refused: `"this source grants 20 pages per run and the
-collector asked for 21"` — `PLATFORM_PERMANENT`. Raised to `300` (the M4x live smoke's
-own scale: 5 list pages + 224 dereferences ≈ 229 requests): refused again, `"grants
-300 … asked for 301"`. Raised to `2000`: refused again, `"grants 2000 … asked for
-2001"`. Restricted `config.kinds` to `"video.metadata"` alone and raised to `8000`:
+collector asked for 21"` — `PLATFORM_PERMANENT` (`job_id=989b2034…`). Raised to `300`
+(the M4x live smoke's own scale: 5 list pages + 224 dereferences ≈ 229 requests):
+refused again, `"grants 300 … asked for 301"` (`caa3b54d…`). Raised to `2000`: refused
+again, `"grants 2000 … asked for 2001"` (`ca905843…`). **`[정정, 2026-08-21,
+m7-fixwave, B9]` A fourth attempt at `500`, omitted from the narration below, was also
+refused on the same budget check**: `"grants 500 … asked for 501"` — `PLATFORM_PERMANENT`
+(`job_id=f8720ced…`, `[측정]` re-derived from `worker.log` at
+`/tmp/claude-1000/m7-demo/`, still present on disk; this is the sixth of the six
+`FAILED` jobs §10's own tally already counts, the one no sentence in this section had
+named). Restricted `config.kinds` to `"video.metadata"` alone and raised to `8000`:
 this time the platform's own page-budget check was satisfied, but three attempts each
 ended `RETRYABLE_FAILURE`/`PLATFORM_TRANSIENT` ("the request to 'artifact_payload'/
 'artifacts_list' did not complete") before exhausting `max_attempts=3` →
@@ -215,11 +246,12 @@ All against `naver.blog` (the source with both raw and normalized data):
 |---|---|---|
 | `GET /export/raw?source_id=naver.blog&format=jsonl` | 200 | 200 lines, first line parses as JSON |
 | `GET /export/raw?source_id=naver.blog&format=csv` | 200 | 201 lines (200 + header), 5 columns: `item_key, seq, emitted_at, content_type, payload` |
-| `GET /export/results?source_id=naver.blog&format=csv` | 200 | 198 lines (197 + header), 10 columns incl. `body_sha256`, `notes`, `body` |
-| `GET /export/raw?source_id=naver.blog&format=jsonl&from_=…&to=…` (range filter) | 200 | 200 lines — the whole set fell inside the tested window, since all 200 items were collected in one burst; the filter accepted the parameters and streamed without error |
+| `GET /export/results?source_id=naver.blog&format=csv` | 200 | 198 lines (197 + header), 11 columns incl. `body_sha256`, `notes`, `body` (`[정정, 2026-08-21, m7-fixwave, M-R10]` was "10 columns" — `RESULT_HEADER` in `apps/domain/export.py` has 11) |
+| `GET /export/raw?source_id=naver.blog&format=jsonl&from_=…&to=…` (range filter) | 200 | **`[정정, 2026-08-21, m7-fixwave, B10]` vacuous, not a real range-filter check.** The wire parameter name is `from`, not `from_` (`apps/domain/api.py`'s `_FROM_QUERY: Any = Query(alias="from")`) — FastAPI ignores an unknown query parameter, so `from_=…` bound to nothing and the filter never ran. The 200-of-200 result this row reported is exactly what "no filter applied" also produces, so it cannot distinguish the two. The underlying code is fine — `buildExportUrl.ts` sends `from`, and `test_export.py::TestRawExportScopeFilters` covers the real parameter with a real assertion — only this row's own probe used the wrong name and its PASS should have read BLOCKED-VACUOUS, not PASS |
 
 `csv.reader` parsed every file without error; every JSONL line parsed as JSON.
-Content non-empty in all four calls. **PASS.**
+Content non-empty in all four calls. **PASS**, except the range-filter row above,
+which this fix wave downgrades to vacuous rather than counting it as verified.
 
 ## 9. Dashboard
 
@@ -258,8 +290,9 @@ file server stopped the same way. Ports verified closed afterward:
 this task's instruction. It carries: 7 sources, 14 jobs (8 `SUCCEEDED`, 6 `FAILED` —
 all 6 failures are the tubedepth attempts in §5, named there), 2 sealed snapshots, 200
 `normalizer.naver.blog`-eligible raw items (197 after dedup), 3 importer raw items, 7
-DataLab raw items, 2692 trend-radar raw items, 200 normalized blog results, 3
-normalized product results.
+DataLab raw items, 2692 trend-radar raw items, 197 normalized blog results
+(`[정정, 2026-08-21, m7-fixwave, M-R10]` was 200 — contradicts §6/§8's own 197, the
+post-dedup count `worker.log` confirms), 3 normalized product results.
 
 ## What was NOT demonstrated — named honestly
 

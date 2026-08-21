@@ -27,8 +27,10 @@ copy-adapt of `experiments/integrated-p0/dashboard/`. The P0-A dashboard (three 
 router, no query cache, no component library — DP-006 D6) was read as a reference for API
 consumption shapes (`src/api.ts`) and for what the job screens showed (`src/view.tsx`), per the
 task brief; nothing from that tree is imported, matching AGENTS.md's "P0 code must not become a
-runtime or package dependency of P1" and `tests/environment/test_apps_never_imports_experiments.py`
-(that guard is Python-only — `.py` files under `apps/` — and does not scan TypeScript, but no
+runtime or package dependency of P1" and `test_apps_never_imports_experiments`
+(`[정정, 2026-08-21, m7-fixwave, M-R9]` a function inside
+`tests/environment/test_p1_isolation.py`, not its own file — that guard is Python-only —
+`.py` files under `apps/` — and does not scan TypeScript, but no
 TypeScript import path names `experiments` either).
 
 ### What was built
@@ -41,8 +43,14 @@ TypeScript import path names `experiments` either).
 - `apps/dashboard/src/api/client.ts`: typed `fetch` wrappers (`listJobs`, `readJob`,
   `readAttempts`, `requestRetry`, `readHealth`, `readMetrics`). `apiBase()` defaults to
   `http://127.0.0.1:8000` and refuses a `VITE_API_BASE` naming a non-loopback host, carrying
-  forward the loopback-only rule `experiments/integrated-p0/dashboard/src/api.ts` and
-  `vite.config.ts` both apply, for the same SEC-002 reason.
+  forward the loopback-only rule `experiments/integrated-p0/dashboard/src/api.ts` applies, for
+  the same SEC-002 reason. `[정정, 2026-08-21, m7-fixwave, M-R9]` Not "and `vite.config.ts`
+  both apply" — `[측정]` `apps/dashboard/vite.config.ts` in this tree has no loopback check
+  at all (only `react()`/`vitest` setup); that rule exists only in P0's
+  `experiments/integrated-p0/dashboard/vite.config.ts`, never carried into P1's. The real
+  check this tree has, `apiBase()` in `client.ts:37-48`, had no test asserting it refuses a
+  non-loopback `VITE_API_BASE` before this fix wave's B12/M-X2 work touched this file; still
+  none exists dedicated to that refusal specifically.
 - `apps/dashboard/src/api/queries.ts`: TanStack Query hooks over the client
   (`useJobsQuery`, `useJobQuery`, `useAttemptsQuery`, `useRetryMutation`, `useHealthQuery`,
   `useMetricsQuery`). The retry mutation invalidates the job, its attempts, and every jobs-list
@@ -394,7 +402,10 @@ in full (every route's actual signature and view function), `apps/domain/export.
    without checking the raw-items route had the same one). Fixed: `matched` removed from the
    type; `DataBrowserScreen`'s "Next" button now disables on `returned < limit` — the only signal
    available without a total count.
-2. **`GET/POST /export/results` accepts `jsonl` or `csv`, not CSV-only.** The plan's own prose
+2. **`GET /export/results` accepts `jsonl` or `csv`, not CSV-only.**
+   (`[정정, 2026-08-21, m7-fixwave, M-R9]` was written "GET/POST" — `[측정]`
+   `apps/domain/api.py` binds `/export/results` with `@app.get(...)` only, no `POST`
+   route exists at that path.) The plan's own prose
    ("정규화 결과는 CSV 평탄화") and batch 5d's `buildExportUrl` both read `/export/results` as
    CSV-only and forced `format=csv` whenever "normalized results" was selected. Reading
    `apps/domain/api.py`'s `export_results` and `apps/domain/export.py`'s `stream_results`
@@ -550,14 +561,21 @@ normalize job also stays `PENDING` until M3; the UI's success message says so ex
 ### Verification
 
 `[측정]` `npm run build` (`tsc -b && vite build`), 2026-08-21: clean, no TypeScript errors. Bundle
-~589 kB / 179 kB gzip (up from batch 5d's ~549 kB / 166 kB — the domain type/client surface grew
+~589 kB / 179 kB gzip (up from batch 5d's ~548 kB / 166 kB — `[정정, 2026-08-21,
+m7-fixwave, M-R9]` was written 549, contradicting line 349 above's own 548 (actual
+548.40, rounds to 548) — the domain type/client surface grew
 substantially; still one chunk, still over Vite's 500 kB warning threshold, still unaddressed).
 
-`[측정]` `npm test` (`vitest run`), 2026-08-21: **37 passed, 0 failed** — the same 37 from batch
-5d, with `CredentialForm.test.tsx`, `DataBrowserScreen.test.tsx`, `CollectorDomainScreen.test.tsx`,
-`NormalizeManagementScreen.test.tsx`, and `DownloadScreen.test.tsx` all rewritten to mock the real
-response shapes (derived from `apps/domain/api.py`'s view functions, not from batch 5b/5c/5d's
-earlier guesses) rather than the old mock-source-list shapes.
+`[측정]` `npm test` (`vitest run`), 2026-08-21: **37 passed, 0 failed**.
+`[정정, 2026-08-21, m7-fixwave, M-R8]` Not "the same 37 from batch 5d" — batch 5d
+(line 345 above) reported **34**, not 37, and they are not the same tests: this pass
+added 9 and removed 6 (net +3). Six assertions were deleted along with the mock-shape
+rewrite this paragraph describes, and the earlier phrasing hid that a net gain of 3
+included a loss of 6. `CredentialForm.test.tsx`, `DataBrowserScreen.test.tsx`,
+`CollectorDomainScreen.test.tsx`, `NormalizeManagementScreen.test.tsx`, and
+`DownloadScreen.test.tsx` were all rewritten to mock the real response shapes (derived
+from `apps/domain/api.py`'s view functions, not from batch 5b/5c/5d's earlier
+guesses) rather than the old mock-source-list shapes.
 
 `[측정]` `npm run lint` (`oxlint`), 2026-08-21: clean, no findings.
 

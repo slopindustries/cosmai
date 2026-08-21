@@ -2,8 +2,11 @@
 
 M4's five per-source lanes (NAVER blog, NAVER DataLab, trend-radar, tubedepth, the
 importer/obfuscation-normalizer pair) each ran in its own worktree and kept its own
-batch report under `.superpowers/sdd/2026-08-21-m2-m7-batch/`; those five reports are
-the primary evidence and are not reproduced here in full. This file consolidates them
+batch report, originally under `.superpowers/sdd/2026-08-21-m2-m7-batch/` (gitignored,
+machine-local) and now also committed at `docs/p1/lane-reports/` (B8,
+`docs/agent-workflow/reviews/REVIEW-M2-M7.md` — copied, not moved, after a secret-shape
+scan found nothing to redact); those five reports are the primary evidence and are not
+reproduced here in full. This file consolidates them
 into one per-addon summary (§Per-addon summaries), plus the **platform-gaps section**
 M4x's task packet asked to be registered here (§Gap 1, §Gap 2 — the two architecture
 gaps `collector.tubedepth.rest`'s own README and its finder's report named as blocking
@@ -13,12 +16,14 @@ recheck (§Shared-infrastructure reconciliation, §Duplicated-helpers scan).
 
 - M4x worktree: `/home/user1/github_prj/Main/service/cosmai/.worktrees/m4x`, branch
   `p1/m4-platform-gaps`, cut from `dev` after `p1/m4-tubedepth` merged (`a87ff08`).
-- Controlling evidence: `.superpowers/sdd/2026-08-21-m2-m7-batch/m4-tubedepth-report.md`
-  ("Live verification, and two platform-level findings"); `apps/addons/collector.tubedepth.rest/README.md`
+- Controlling evidence: `docs/p1/lane-reports/m4-tubedepth-report.md`
+  ("Live verification, and two platform-level findings"; committed copy of
+  `.superpowers/sdd/2026-08-21-m2-m7-batch/m4-tubedepth-report.md`, B8); `apps/addons/collector.tubedepth.rest/README.md`
   (same section, now updated); [DP-031](../decisions/DP-031-p1-collector-topology.md) D3
   and its 2026-08-21 addendum (why these two capabilities are owed to the two adapter
   targets DP-031 fixed).
-- Full evidence and commit hashes: `.superpowers/sdd/2026-08-21-m2-m7-batch/m4x-platform-gaps-report.md`.
+- Full evidence and commit hashes: `docs/p1/lane-reports/m4x-platform-gaps-report.md`
+  (committed copy of `.superpowers/sdd/2026-08-21-m2-m7-batch/m4x-platform-gaps-report.md`, B8).
 
 ## Per-addon summaries
 
@@ -28,15 +33,26 @@ deviations live in the source report named per section, not repeated here.
 ### `collector.naver.blog` + `normalizer.naver.blog`
 
 - Worktree/branch: `.worktrees/m4-naver-blog`, `p1/m4-naver-blog`. Commit `e87a00e`.
-- Tests: 41 collector + 27 normalizer (68 addon-specific), full `apps` suite **860
-  passed, 2 failed** (the pre-existing worktree-scan failures, §Duplicated below is
-  unrelated — see the Concerns note each lane repeats and Commit 1(a) of this sweep).
+- Tests: `[정정, 2026-08-21, m7-fixwave, B7]` "41 collector + 27 normalizer (68
+  addon-specific), full apps suite 860 passed" was wrong, and self-contradictory:
+  68 addon-specific over an 800-baseline lane suite implies 868, not 860. `[측정]`
+  at `e87a00e`: `test_collector_naver_blog.py` collects 37, `test_normalizer_naver_blog.py`
+  collects 25 — **62 addon-specific**, lane suite 862 (800+62). See B7,
+  `docs/agent-workflow/reviews/REVIEW-M2-M7.md`. `[측정]` Re-derived again at this fix
+  wave's own post-edit tree (B1 added two fixture tests to
+  `test_normalizer_naver_blog.py`): 37 collector / 27 normalizer, **64 addon-specific**.
   Root guard 87 passed.
 - **LIVE smoke: SUCCEEDED.** One real NAVER API Hub call through the full host-worker
   path (`JobRunner`+`addon_host`+`SocketTransport`), query `수분크림`/`sort=date`/
   `display=10` (same parameters as P0's own `test_naver_real_data.py`). Collect job
   `SUCCEEDED`, 1 raw envelope, **10 raw items**; normalize job `SUCCEEDED`, 10
-  normalized results, 0 carrying `normalize_error`.
+  normalized results, 0 carrying `normalize_error`. `[등록, 2026-08-21, m7-fixwave,
+  M-R6]` This `[측정]` carries no capture time, API version, sample hash, or usage
+  basis — AGENTS.md §Evidence requires all four and this bullet (unlike the tubedepth
+  live-verification block below, which does this correctly) does not name them. This
+  batch's own commit date (2026-08-21, this file's header) is the only recoverable
+  capture-time signal; the API version and usage basis were never captured and cannot
+  be reconstructed after the fact. Registered as a gap, not fabricated.
 - Deviation: DP-030 D2's per-record fallback distinguishes two failure shapes (payload
   not JSON/not an object → every derived field null; payload parses but lacks a usable
   `link` → keep every derivable field, null only `external_id`/`url`) — a local schema
@@ -52,9 +68,23 @@ deviations live in the source report named per section, not repeated here.
   `mode`s (`search_trend`/`shopping_categories`/`shopping_keywords`), table-driven in
   `_MODES`. This is the reason §Duplicated-helpers scan below stays `SKIPPED` even on
   the fully merged tree.
-- Tests: 74 addon-specific (39 collector, 26 normalizer, 9 host-loading/conformance).
-  Full `apps` suite **872 passed, 2 failed** (same pre-existing pair). Root guard 87
-  passed, including the addon-layer-direction check.
+- Tests: 74 addon-specific (`[정정, 2026-08-21, m7-fixwave, M-R1]` "39 collector, 26
+  normalizer, 9 host-loading/conformance" was wrong component-by-component even
+  though the 74 total was right: `[측정]` at the M4-naver-datalab lane's own commit
+  (`dfdd0e9`), `test_collector_naver_datalab.py` collects 35, `test_normalizer_naver_trend.py`
+  collects 33, and this lane's own host-loading/conformance file — its report names
+  it explicitly, `apps/tests/test_naver_datalab_addon_layer.py` — collects 6 (35+33+6=74).
+  The original "9" was `test_addon_conformance_m4.py`(5)+`test_addon_host_loading_m4.py`(4),
+  files the *importer-obf* lane wrote, not this one — a cross-lane mixup, not a count
+  error. `[측정]` Re-derived again at this fix wave's own post-edit tree (B1 added two
+  fixture tests to `test_normalizer_naver_trend.py`): 35 collector / 35 normalizer / 6
+  host-loading-conformance, 76 total. See M-R1, `docs/agent-workflow/reviews/REVIEW-M2-M7.md`.
+  Full `apps` suite **872 passed, 2 failed** (same pre-existing pair; a historical
+  count as of `dfdd0e9`, not re-derived here — the m7-fixwave report carries the
+  current apps-suite total). Root guard 87
+  passed, including the add-on layer-direction check —
+  `tests/environment/test_p1_isolation.py`, not `test_addon_layer_direction.py`
+  (M-C2, same review; that file scans only `experiments/integrated-p0/`).
 - **LIVE smoke: SUCCEEDED across 2 endpoints.** Credential reuse confirmed
   `[확인 사실]` the NCP APIGW key pair is account-level (the already-provisioned
   `naver.blog` credential also authorized DataLab). Pass 1 — `search_trend` mode →
@@ -101,12 +131,19 @@ deviations live in the source report named per section, not repeated here.
 - `[가설]→[확인 사실]` Live instance measured running `1.0.3`, not the task's stated
   `v1.0.0` baseline; DP-031 D3's own "adapter follows a new tag that appears during the
   work" rule applied on measured evidence — the one behavior change that matters
-  (1.0.3 requires an RFC 3339-offset `since`/`until`) needed no add-on change since
-  every timestamp this add-on constructs is already `Z`-suffixed.
+  (1.0.3 requires an RFC 3339-offset `since`/`until`) needed no add-on change.
+  `[정정, 2026-08-21, m7-fixwave, M-R5]` Not because "every timestamp this add-on
+  constructs is already `Z`-suffixed" — `[측정]` `addons/collector.tubedepth.rest/handler.py`
+  imports neither `datetime` nor `time` and constructs no timestamp at all; it
+  round-trips the provider's own `since`/`until`/`fetched_at` values verbatim. The
+  actual reason no change was needed: nothing in this add-on formats a timestamp, so
+  there was no format for the offset requirement to break.
 - Tests: full addon-specific suite + conformance (`CONFORMANT`: manifest, contract
   range, entry resolvability, kind-capability, cursor-resume) + host-loading, all part
-  of the 818-passed full-suite run at the time (`COSMA_DB_NAME=cosmai_test_5`, same
-  pre-existing 2-failure pair). Root guard 87 passed.
+  of the 818-passed full-suite run at the time (`[정정, 2026-08-21, m7-fixwave, M-R4]`
+  `COSMA_DB_NAME=cosmai_test_5` — `apps/tests/conftest.py`'s `TEST_DATABASE` reads
+  `COSMA_TEST_DB`, not `COSMA_DB_NAME`; the lane report carried both spellings and this
+  record kept the inert one), same pre-existing 2-failure pair. Root guard 87 passed.
 - Key-minting: succeeded live (not blocked) — `tubedepth key create` run against the
   live deployment's real database over its published port; minted key written directly
   to `~/.config/cosmai/env`, verified with two direct `curl` calls, never printed.
@@ -146,6 +183,15 @@ deviations live in the source report named per section, not repeated here.
   not repaired: `record_results` has no UPDATE path at all, so the coexistence claim is
   unfalsifiable through `DomainStore` without a store-level UPDATE method nothing else
   in this codebase needs.
+- **`[등록, 2026-08-21, m7-fixwave, M-R7]`** `normalizer.obf.product`'s per-field
+  fallback (DP-030 D2) needs a genuinely unanticipated field-extraction failure to
+  test honestly, and no real payload shape this add-on's own tests produce fails —
+  `apps/tests/test_normalizer_obf_product.py`'s `TestPerRecordFallback` discloses this
+  directly and thoroughly in its own docstrings: a sentinel value
+  (`_TRIGGER_BRANDS`) and a substitute `_brands` helper (`_broken_brands`) that fails
+  only for that sentinel, used in place of an honestly-unreachable failure, with the
+  reasoning written out at the point of use rather than assumed. This record did not
+  mention that disclosure anywhere before this note.
 
 ## Shared-infrastructure reconciliation
 
@@ -226,12 +272,29 @@ for the plain-HTTP path.
   endpoint and HTTPS for another is not representable; every fixed adapter target this
   platform has hosted so far speaks one scheme for every route it serves, so this was
   not a reduction against a named uncertainty.
-- Plain HTTP never leaves loopback, by construction: the validation half requires
-  `allow_loopback`, and the transport half re-checks the resolved address regardless of
-  what the profile says. There is no path by which `scheme: "http"` reaches a
-  non-loopback address — a public or private-range host with `scheme: "http"` is
-  refused at `resolve` (no `allow_loopback` needed to be missing) and, if it somehow
-  reached the transport anyway, refused again there.
+- **`[정정, 2026-08-21, B4 fix wave]`** The paragraph originally here claimed
+  depth-in-defense at 2 — refusal "at `resolve`" and again at the transport. `[측정]`
+  that is false of `resolve`: `resolve`'s check (`domain/outbound.py`) is `scheme ==
+  "http" and not profile.allow_loopback` — a claim about the *profile's configuration*,
+  not about any address. `resolve` performs no DNS lookup and no address check at all,
+  so `OutboundProfile.from_row({"hosts": ["evil.example.com"], "scheme": "http",
+  "allow_loopback": True, ...})` passed to `resolve` produces a plain `PreparedRequest`
+  for `http://evil.example.com`, not a `Refusal`. Depth is 1, not 2, and it lives
+  entirely at the transport. `domain/transport.py`'s own docstring on
+  `_refuse_http_off_loopback` (quoted verbatim) says as much: *"`domain.outbound.resolve`
+  already refused a plain-HTTP request unless the profile set `allow_loopback` — but
+  that is a claim about the profile, made before any name was resolved. This is the
+  claim checked against what `getaddrinfo` actually returned, which is the only place
+  either half of the belt-and-suspenders rule can be checked against reality... a
+  non-loopback address is never blocked by [`check_resolved_addresses`] at all... so
+  without this, a source with `allow_loopback = true` and `scheme = "http"` in its
+  profile could ask for a request to a hostname resolving anywhere public, and there
+  would be no `SocketTransport`-level check left to refuse it."* Not a live egress hole
+  — `_refuse_http_off_loopback` does hold, order-independent, and is itself real and
+  well tested (see `test_outbound_transport.py`) — but the claim that a public host with
+  `scheme: "http"` is "refused at `resolve`" is not true of the code, and this record
+  said it was. See B4, `docs/agent-workflow/reviews/REVIEW-M2-M7.md`. No code change;
+  this paragraph is corrected, not the mechanism.
 - A redirect from a plain-HTTP endpoint is not specially handled: `check_redirect`
   still only allows `ALLOWED_SCHEMES = {"https"}`, so any redirect off a loopback-HTTP
   endpoint is refused outright rather than re-validated as a same-scheme hop. Untested
@@ -302,12 +365,20 @@ refuse it as a path even if the regex had not.
   stub server reached over loopback; credential stripping still applies; a hand-built
   request to a non-loopback address refused by the transport even with `allow_loopback`
   set on the profile; the existing HTTPS path unaffected).
-- `[측정]` Full `apps` suite: 1003 passed, 2 pre-existing failures unrelated to this
-  diff (`test_outbound_transport.py::TestLoopbackIsOnlyReachableByFlag`, both cases —
-  `REPO_ROOT`'s `.worktrees` path-segment collision when run from inside a worktree,
-  first recorded by `m4-tubedepth-report.md` and reproduced identically here, confirmed
-  by re-running the same two cases before this task's diff). `mypy --strict` and
-  `ruff check` clean on the whole `apps/` tree. Root guard: 87 passed.
+- `[측정]` Full `apps` suite, at this task's own diff: 1003 passed, 2 pre-existing
+  failures unrelated to this diff (`test_outbound_transport.py::TestLoopbackIsOnlyReachableByFlag`,
+  both cases — `REPO_ROOT`'s `.worktrees` path-segment collision when run from inside a
+  worktree, first recorded by `m4-tubedepth-report.md` and reproduced identically here,
+  confirmed by re-running the same two cases before this task's diff). `mypy --strict`
+  and `ruff check` clean on the whole `apps/` tree. Root guard: 87 passed.
+  **`[정정, 2026-08-21, m7-fixwave, M-R2]`** These 2 failures are pre-existing only up
+  to the M7 sweep commit — its own worktree-scan narrowing (the `.worktrees` exclusion
+  matching `path.relative_to(REPO_ROOT).parts`, cited under "What HELD" in
+  `docs/agent-workflow/reviews/REVIEW-M2-M7.md`) fixes both. `[측정]` re-derived on
+  this fix wave's own tree: `TestLoopbackIsOnlyReachableByFlag` — **3 passed, 0
+  failed**. No `docs/p1/*.md` document previously recorded that these 2 failures were
+  closed (`grep -rn 1082 docs/` found nothing before this correction), leaving a reader
+  of this section believing the tree was still red.
 - `[측정]` Live smoke, 2026-08-21: one bounded `collect()` through the real host worker
   against the live tubedepth instance (`127.0.0.1:8080`, now `1.1.0` — moved again since
   `m4-tubedepth-report.md`'s `1.0.3` finding, artifacts-feed surface unchanged).

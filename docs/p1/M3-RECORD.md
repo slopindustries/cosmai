@@ -69,6 +69,23 @@ credential attachment — and those were added (15 tests: `TestThePageLimitIsEnf
 `TestANonSuccessStatusCannotBeIgnored`, `TestTheCredentialReachesTheRequestAndNothingElse`,
 `TestACredentialPartMustNameAProtectedHeader`, `TestASecondRunResumesFromTheFirstsCursor`).
 
+**`[정정, 2026-08-21, B6 fix wave]`** The sentence above is wrong about which behavior
+`TestANonSuccessStatusCannotBeIgnored` credits. Contract 1.3 invariants 4 and 5 are
+different rules: invariant 4 is refusal-swallowing (an outbound/input refusal the
+add-on caught and ran past — `capabilities.py`'s `_check_no_refusal_was_swallowed`,
+collector `:848`/called `:377`, importer `:1139`/called `:949`); invariant 5 is an
+undecided non-success status (`_check_every_status_was_decided`). `TestANonSuccess
+StatusCannotBeIgnored` is invariant 5 — the section banner in
+`apps/tests/test_addon_capabilities.py` that introduced it was itself mistitled
+"Refusal-swallowing" until this fix wave. Invariant 4 was not carried by batch 3c
+despite the task packet naming it, and was not listed in "Still not carried, and why"
+below — B6 (`docs/agent-workflow/reviews/REVIEW-M2-M7.md`) found it, named it
+material (M2-RECORD/M3-RECORD's own gap-handoff to M7, see M-R15 in the same
+review), and it is now carried: `TestARefusalCannotBeSwallowed` in
+`apps/tests/test_addon_capabilities.py`, ported from
+`experiments/integrated-p0/tests/test_capabilities.py:519` for the collector path
+(with its positive control) and extended with a new importer-path pair P0 never had.
+
 **Still not carried, and why:** the redirect-budget class
 (`TestTheRequestBudgetSpansTheRedirectChain` — a deadline-sharing structural
 assertion; `test_outbound_transport.py` already covers the wall-clock half over a

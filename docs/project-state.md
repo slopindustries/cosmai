@@ -6,7 +6,9 @@
 - Phase: P1 — Clean Reconstruction
 - Next gate: P1 charter gate (charter not yet written; until it exists, the accepted
   [P1 reconstruction plan](architecture-synthesis/P1-RECONSTRUCTION-PLAN.md)'s M1–M7
-  milestones govern)
+  milestones govern). M1–M7 are now built and under adversarial review repair
+  (§1, "P1 M1–M7 status, 2026-08-21"); the two acts still pending are the owner's
+  `GO` on the repaired M2–M7 batch and the `main`/`v0.1.0` merge and tag.
 
 ## Delivery lifecycle
 
@@ -38,6 +40,7 @@ and all four B5 outputs were written on 2026-08-19.
 | Package | State |
 |---|---|
 | B0 add-on layer | complete |
+
 | B1 source exploration and selection | complete — REST real; **dataset real since 2026-08-20** ([DP-027](decisions/DP-027-dataset-standard-and-share-alike.md)), replacing the recorded structural substitution this row carried |
 | B2 decision use and domain contracts | complete — folded into [`PoC Contract 0.1`](../contracts/experimental/POC-CONTRACT-0.1.md) by owner decision |
 | B3 concrete implementation | complete — 3 collectors, 1 importer, 3 normalizers, dashboard |
@@ -90,6 +93,37 @@ still-unimplemented deferral (`SR-005`).
 started against DP-011's added product scope, and unaccepted as a stage**. The distinction
 matters: `apps/` stays empty, and `SEC-006`'s waiver
 ([DP-023](decisions/DP-023-sec-006-waived-for-p0.md)) has not yet expired.
+
+### P1 M1–M7 status, 2026-08-21
+
+`[측정]` **M1–M7 are all built.** Following the P1 Entry Gate `GO` above, the seven
+milestones the accepted [P1 reconstruction plan](architecture-synthesis/P1-RECONSTRUCTION-PLAN.md)
+names have each run and produced a record:
+
+| Milestone | Record | Scope |
+|---|---|---|
+| M1 | [`p1/M1-RECORD.md`](p1/M1-RECORD.md) | Platform core: config, jobs, secrets, connection, observability |
+| M2 | [`p1/M2-RECORD.md`](p1/M2-RECORD.md) | Domain surface: sources, raw, snapshots, credentials |
+| M3 | [`p1/M3-RECORD.md`](p1/M3-RECORD.md) | Add-on layer: contract, host, capability binding |
+| M4 | [`p1/M4-RECORD.md`](p1/M4-RECORD.md) | Eight add-ons (5 lanes) plus the two platform gaps they named and closed |
+| M5 | [`p1/M5-RECORD.md`](p1/M5-RECORD.md) | Operator dashboard (six screens) |
+| M6 | [`p1/M6-RECORD.md`](p1/M6-RECORD.md) | Scheduler and streaming export |
+| M7 | [`p1/M7-DEMO-RECORD.md`](p1/M7-DEMO-RECORD.md) | Sweep and end-to-end demo against the live database |
+
+`[측정]` **Two independent adversarial reviews have run against this batch.**
+[`REVIEW-M1.md`](agent-workflow/reviews/REVIEW-M1.md) reviewed M1 alone (`FAIL`, 3
+blocking + 11 minor at the time; M2 onward proceeded from the repaired tree).
+[`REVIEW-M2-M7.md`](agent-workflow/reviews/REVIEW-M2-M7.md) reviewed the whole M2–M7
+batch (`FAIL`, 12 blocking + ~40 minor) and is the review this fix wave
+(`.superpowers/sdd/2026-08-21-m2-m7-batch/m7-fixwave-report.md`) answers, finding by
+finding.
+
+`[확인 사실]` **Two acts remain before `main` and a `v0.1.0` tag, and neither is a
+document.** Both are the project owner's, the same division `AGENTS.md` states for
+every gate: the owner reviews the repaired tree and this fix wave's own report, then
+(1) accepts `GO` on the M2–M7 batch (or returns it for further rework), and (2)
+authorizes the merge to `main` and the `v0.1.0` tag. Neither has happened as of this
+section's own date.
 
 ## 2. P0 product decision and long-term goal
 
