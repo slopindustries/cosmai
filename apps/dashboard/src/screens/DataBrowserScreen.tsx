@@ -7,10 +7,16 @@
 // never as an executed or even parsed element — see
 // `__tests__/DataBrowserScreen.test.tsx`'s dedicated test.
 //
-// The read this screen makes (`GET /sources/{id}/raw/items?offset&limit`) is
-// real, against the shape the M2-M7 batch plan's §신규 API fixes — no backend
-// serves it yet, so this batch's tests mock it. The *source selector*'s
-// options are still local mock data pending M2's `GET /sources`.
+// Real as of batch 5-final: both the raw-item page (`GET
+// /sources/{id}/raw/items?offset&limit`) and the source selector's options
+// (`GET /sources`) come from `apps/domain/api.py`, merged from `dev`.
+//
+// **Mismatch found and fixed reconciling against the real route:** the page
+// envelope has no `matched` field (`apps/domain/api.py`'s `read_raw_items`
+// returns `returned` only, unlike `platform_core.api.app`'s `GET /jobs`,
+// which does). Pagination below can no longer disable "Next" against a known
+// total; it disables when `returned < limit`, the only signal a caller
+// without `matched` has for "this was the last page."
 
 import {
   Alert,
@@ -32,8 +38,7 @@ import {
 import type { JSX } from "react";
 import { useState } from "react";
 
-import { useRawItemsQuery } from "../api/queries";
-import { MOCK_SOURCE_OPTIONS } from "../mocks/sources";
+import { useRawItemsQuery, useSourcesQuery } from "../api/queries";
 
 const LIMIT = 50;
 
@@ -42,7 +47,11 @@ function preview(payload: string, maxLength = 80): string {
 }
 
 export function DataBrowserScreen(): JSX.Element {
-  const [sourceId, setSourceId] = useState(MOCK_SOURCE_OPTIONS[0]?.sourceId ?? "");
+  const sourcesQuery = useSourcesQuery();
+  const sources = sourcesQuery.data?.sources ?? [];
+
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const sourceId = selectedSourceId ?? sources[0]?.source_id ?? "";
   const [offset, setOffset] = useState(0);
   const [selectedItemKey, setSelectedItemKey] = useState<string | null>(null);
 
@@ -50,7 +59,7 @@ export function DataBrowserScreen(): JSX.Element {
   const selectedItem = data?.items.find((item) => item.item_key === selectedItemKey) ?? null;
 
   function onSourceChange(next: string): void {
-    setSourceId(next);
+    setSelectedSourceId(next);
     setOffset(0);
     setSelectedItemKey(null);
   }
@@ -61,20 +70,31 @@ export function DataBrowserScreen(): JSX.Element {
         Data Browser
       </Typography>
 
-      <TextField
-        select
-        size="small"
-        label="source"
-        value={sourceId}
-        onChange={(event) => onSourceChange(event.target.value)}
-        sx={{ mb: 2, minWidth: 220 }}
-      >
-        {MOCK_SOURCE_OPTIONS.map((option) => (
-          <MenuItem key={option.sourceId} value={option.sourceId}>
-            {option.label}
-          </MenuItem>
-        ))}
-      </TextField>
+      {sourcesQuery.isError ? (
+        <Alert severity="error">
+          {sourcesQuery.error instanceof Error ? sourcesQuery.error.message : String(sourcesQuery.error)}
+        </Alert>
+      ) : null}
+      {sourcesQuery.data && sources.length === 0 ? (
+        <Alert severity="info">No source is registered yet.</Alert>
+      ) : null}
+
+      {sources.length > 0 ? (
+        <TextField
+          select
+          size="small"
+          label="source"
+          value={sourceId}
+          onChange={(event) => onSourceChange(event.target.value)}
+          sx={{ mb: 2, minWidth: 220 }}
+        >
+          {sources.map((option) => (
+            <MenuItem key={option.source_id} value={option.source_id}>
+              {option.source_id} ({option.kind})
+            </MenuItem>
+          ))}
+        </TextField>
+      ) : null}
 
       {isLoading ? <CircularProgress size={24} /> : null}
       {isError ? (
@@ -84,7 +104,8 @@ export function DataBrowserScreen(): JSX.Element {
       {data ? (
         <>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            showing {data.returned} of {data.matched} matched
+            showing {data.returned} item{data.returned === 1 ? "" : "s"}, starting at offset{" "}
+            {data.offset}
           </Typography>
           <TableContainer component={Paper}>
             <Table size="small">
@@ -130,7 +151,7 @@ export function DataBrowserScreen(): JSX.Element {
             <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - LIMIT))}>
               Previous
             </Button>
-            <Button disabled={offset + LIMIT >= data.matched} onClick={() => setOffset(offset + LIMIT)}>
+            <Button disabled={data.returned < LIMIT} onClick={() => setOffset(offset + LIMIT)}>
               Next
             </Button>
           </Stack>

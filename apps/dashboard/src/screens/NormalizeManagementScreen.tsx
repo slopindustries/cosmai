@@ -11,20 +11,32 @@
 // below has a dedicated `verifies` column rather than folding it into, say, a
 // combined status chip.
 //
-// Every write here (seal, create run) is a **local mock** — neither action
-// has a route this batch's brief or the plan fixes yet (unlike the
-// credential and raw-item calls batch 5b/5c wired for real against fixed
-// shapes). Batch 5-final wires both to the real M2 domain routes
-// (`extend_with_domain`'s reproduction of P0's `addon_host/api.py`,
-// specifically its `sealSnapshot`/`startNormalization` shapes) once M2
-// merges. The snapshot list, normalizer list, and results are likewise mock
-// data pending `GET /sources`/`GET /snapshots`/`GET /snapshots/{id}/results`.
+// Real as of batch 5-final: sealing (`POST /sources/{id}/snapshots`),
+// listing snapshots (`GET /snapshots?source_id`), creating a normalize run
+// (`POST /snapshots/{id}/normalize`), and reading results (`GET
+// /snapshots/{id}/results`) all come from `apps/domain/api.py`, merged from
+// `dev`.
+//
+// **Mismatch found and fixed reconciling against the real route:** batch 5d's
+// "create run" picker offered a mocked `{addon_id, version}` pair. The real
+// route (`start_normalization`) takes `{source_id}` — a registered **source
+// of kind `normalizer`**, not an addon/version pair — because a normalizer
+// is itself a registered source row with its own `addon_id`/`addon_version`
+// already fixed at registration. Fixed: the picker below lists registered
+// `kind === "normalizer"` sources instead.
+//
+// The created normalize job stays `PENDING` until M3 registers an `addon:*`
+// worker (`apps/domain/api.py`'s own docstring), so a `201` here reads as
+// "the job was created," not "it ran" — the results pane will show nothing
+// for a fresh run until M3 lands, which is expected and not a bug in this
+// screen.
 
 import {
   Alert,
   Box,
   Button,
   Chip,
+  CircularProgress,
   MenuItem,
   Paper,
   Stack,
@@ -40,166 +52,82 @@ import {
 import type { JSX } from "react";
 import { useState } from "react";
 
-import { MOCK_SOURCE_OPTIONS } from "../mocks/sources";
-
-interface MockSnapshot {
-  snapshot_id: string;
-  source_id: string;
-  item_count: number;
-  manifest_sha256: string;
-  sealed_at: string | null;
-  verifies: boolean;
-  problems: readonly string[];
-}
-
-interface MockNormalizerOption {
-  addon_id: string;
-  version: string;
-}
-
-/** One record's normalization outcome. `normalize_error` mirrors DP-030 D2's `notes.normalize_error {field, reason}`. */
-interface MockNormalizedRecord {
-  id: string;
-  source_item_key: string;
-  body_preview: string;
-  normalize_error: { field: string; reason: string } | null;
-}
-
-/** One (addon, version, output_contract_version) group — one side of "versions coexist" (PoC Contract §5). */
-interface MockResultGroup {
-  addon_id: string;
-  addon_version: string;
-  output_contract_version: string;
-  records: readonly MockNormalizedRecord[];
-}
-
-const SEEDED_SNAPSHOT_ID = "22222222-1111-1111-1111-111111111111";
-
-const INITIAL_SNAPSHOTS: Readonly<Record<string, readonly MockSnapshot[]>> = {
-  "naver-blog-main": [
-    {
-      snapshot_id: SEEDED_SNAPSHOT_ID,
-      source_id: "naver-blog-main",
-      item_count: 42,
-      manifest_sha256: "a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff",
-      sealed_at: "2026-08-20T10:00:00Z",
-      verifies: true,
-      problems: [],
-    },
-  ],
-  "trendradar-main": [],
-};
-
-const MOCK_NORMALIZERS: readonly MockNormalizerOption[] = [
-  { addon_id: "normalizer.naver.blog", version: "0.1.0" },
-  { addon_id: "normalizer.naver.blog", version: "0.2.0" },
-  { addon_id: "normalizer.obf.product", version: "0.1.0" },
-];
-
-/** Two versions over the one seeded snapshot — the version-coexistence case this screen has to render side by side. */
-const MOCK_RESULTS: Readonly<Record<string, readonly MockResultGroup[]>> = {
-  [SEEDED_SNAPSHOT_ID]: [
-    {
-      addon_id: "normalizer.naver.blog",
-      addon_version: "0.1.0",
-      output_contract_version: "0.2",
-      records: [
-        {
-          id: "result-0.1.0-post-1",
-          source_item_key: "post-1",
-          body_preview: '{"title":"hello"}',
-          normalize_error: null,
-        },
-        {
-          id: "result-0.1.0-post-2",
-          source_item_key: "post-2",
-          body_preview: '{"title":null}',
-          normalize_error: { field: "published_at", reason: "unparseable date" },
-        },
-      ],
-    },
-    {
-      addon_id: "normalizer.naver.blog",
-      addon_version: "0.2.0",
-      output_contract_version: "0.3",
-      records: [
-        {
-          id: "result-0.2.0-post-1",
-          source_item_key: "post-1",
-          body_preview: '{"title":"hello","record_type":"document"}',
-          normalize_error: null,
-        },
-        {
-          id: "result-0.2.0-post-2",
-          source_item_key: "post-2",
-          body_preview: '{"title":"second post","record_type":"document"}',
-          normalize_error: null,
-        },
-      ],
-    },
-  ],
-};
+import { useCreateNormalizeRunMutation, useResultsQuery, useSealMutation, useSnapshotsQuery, useSourcesQuery } from "../api/queries";
+import type { NormalizedResult } from "../api/types";
+import { isDomainRefused, normalizeErrorOf } from "../api/types";
 
 function shortDigest(sha256: string): string {
   return sha256.slice(0, 12);
 }
 
-let mockSnapshotSequence = 0;
+/** One (addon, version, output_contract_version) group — one side of "versions coexist" (PoC Contract §5). */
+interface ResultGroup {
+  addon_id: string;
+  addon_version: string;
+  output_contract_version: string;
+  records: NormalizedResult[];
+}
 
-/** Mock seal: no fixed route exists yet for this batch — see the file header. */
-function mockSealSnapshot(sourceId: string): MockSnapshot {
-  mockSnapshotSequence += 1;
-  return {
-    snapshot_id: `mock-snapshot-${mockSnapshotSequence}`,
-    source_id: sourceId,
-    item_count: 0,
-    manifest_sha256: "0".repeat(64),
-    sealed_at: new Date().toISOString(),
-    verifies: true,
-    problems: [],
-  };
+function groupResults(results: readonly NormalizedResult[]): ResultGroup[] {
+  const groups = new Map<string, ResultGroup>();
+  for (const result of results) {
+    const key = `${result.addon_id}@${result.addon_version}@${result.output_contract_version}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.records.push(result);
+    } else {
+      groups.set(key, {
+        addon_id: result.addon_id,
+        addon_version: result.addon_version,
+        output_contract_version: result.output_contract_version,
+        records: [result],
+      });
+    }
+  }
+  return [...groups.values()];
 }
 
 export function NormalizeManagementScreen(): JSX.Element {
-  const [sourceId, setSourceId] = useState(MOCK_SOURCE_OPTIONS[0]?.sourceId ?? "");
-  const [snapshotsBySource, setSnapshotsBySource] =
-    useState<Readonly<Record<string, readonly MockSnapshot[]>>>(INITIAL_SNAPSHOTS);
-  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
-  const firstNormalizer = MOCK_NORMALIZERS[0];
-  const [normalizerChoice, setNormalizerChoice] = useState(
-    firstNormalizer === undefined ? "" : `${firstNormalizer.addon_id}@${firstNormalizer.version}`,
+  const sourcesQuery = useSourcesQuery();
+  const sealableSources = (sourcesQuery.data?.sources ?? []).filter(
+    (source) => source.kind === "collector" || source.kind === "importer",
   );
-  const [sealNotice, setSealNotice] = useState<string | null>(null);
-  const [runNotice, setRunNotice] = useState<string | null>(null);
+  const normalizerSources = (sourcesQuery.data?.sources ?? []).filter((source) => source.kind === "normalizer");
 
-  const snapshots = snapshotsBySource[sourceId] ?? [];
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const sourceId = selectedSourceId ?? sealableSources[0]?.source_id ?? "";
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
+  const [normalizerChoice, setNormalizerChoice] = useState<string | null>(null);
+  const normalizerSourceId = normalizerChoice ?? normalizerSources[0]?.source_id ?? "";
+
+  const snapshotsQuery = useSnapshotsQuery(sourceId);
+  const snapshots = snapshotsQuery.data?.snapshots ?? [];
   const selectedSnapshot = snapshots.find((snap) => snap.snapshot_id === selectedSnapshotId) ?? null;
-  const resultGroups = selectedSnapshotId === null ? [] : (MOCK_RESULTS[selectedSnapshotId] ?? []);
+
+  const resultsQuery = useResultsQuery(selectedSnapshotId ?? "");
+  const resultGroups = groupResults(resultsQuery.data?.results ?? []);
+
+  const sealMutation = useSealMutation(sourceId);
+  const createRunMutation = useCreateNormalizeRunMutation();
 
   function onSourceChange(next: string): void {
-    setSourceId(next);
+    setSelectedSourceId(next);
     setSelectedSnapshotId(null);
-    setRunNotice(null);
   }
 
   function onSeal(): void {
-    const created = mockSealSnapshot(sourceId);
-    setSnapshotsBySource((previous) => ({
-      ...previous,
-      [sourceId]: [...(previous[sourceId] ?? []), created],
-    }));
-    setSealNotice(`Sealed snapshot ${created.snapshot_id} (mocked — no request was sent).`);
+    sealMutation.mutate();
   }
 
   function onCreateRun(): void {
-    if (selectedSnapshot === null) {
+    if (selectedSnapshot === null || normalizerSourceId === "") {
       return;
     }
-    setRunNotice(
-      `Normalize run requested for ${selectedSnapshot.snapshot_id.slice(0, 8)} with ` +
-        `${normalizerChoice} (mocked — no request was sent).`,
-    );
+    createRunMutation.mutate({ snapshotId: selectedSnapshot.snapshot_id, normalizerSourceId });
   }
+
+  const sealOutcome = sealMutation.data;
+  const runOutcome = createRunMutation.data;
 
   return (
     <Box sx={{ p: 3 }}>
@@ -207,34 +135,53 @@ export function NormalizeManagementScreen(): JSX.Element {
         Normalization
       </Typography>
 
-      <TextField
-        select
-        size="small"
-        label="source"
-        value={sourceId}
-        onChange={(event) => onSourceChange(event.target.value)}
-        sx={{ mb: 2, minWidth: 220 }}
-      >
-        {MOCK_SOURCE_OPTIONS.map((option) => (
-          <MenuItem key={option.sourceId} value={option.sourceId}>
-            {option.label}
-          </MenuItem>
-        ))}
-      </TextField>
+      {sourcesQuery.isError ? (
+        <Alert severity="error">
+          {sourcesQuery.error instanceof Error ? sourcesQuery.error.message : String(sourcesQuery.error)}
+        </Alert>
+      ) : null}
+
+      {sealableSources.length > 0 ? (
+        <TextField
+          select
+          size="small"
+          label="source"
+          value={sourceId}
+          onChange={(event) => onSourceChange(event.target.value)}
+          sx={{ mb: 2, minWidth: 220 }}
+        >
+          {sealableSources.map((option) => (
+            <MenuItem key={option.source_id} value={option.source_id}>
+              {option.source_id} ({option.kind})
+            </MenuItem>
+          ))}
+        </TextField>
+      ) : sourcesQuery.data ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          No collector or importer source is registered yet — sealing needs one of those kinds.
+        </Alert>
+      ) : null}
 
       {/* Pane A: sealed snapshots — one operator act (seal), its own button. */}
       <Paper sx={{ p: 2, mb: 2 }} data-testid="snapshots-pane">
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
           <Typography variant="subtitle1">sealed snapshots</Typography>
-          <Button variant="outlined" onClick={onSeal} data-testid="seal-button">
+          <Button variant="outlined" onClick={onSeal} disabled={sourceId === "" || sealMutation.isPending} data-testid="seal-button">
             Seal snapshot
           </Button>
         </Stack>
-        {sealNotice === null ? null : (
-          <Alert severity="success" sx={{ mb: 1 }}>
-            {sealNotice}
-          </Alert>
-        )}
+        {sealOutcome ? (
+          isDomainRefused(sealOutcome) ? (
+            <Alert severity="error" sx={{ mb: 1 }}>
+              Seal refused: {sealOutcome.detail}
+            </Alert>
+          ) : (
+            <Alert severity="success" sx={{ mb: 1 }}>
+              Sealed snapshot {sealOutcome.snapshot_id.slice(0, 8)} ({sealOutcome.item_count} items).
+            </Alert>
+          )
+        ) : null}
+        {snapshotsQuery.isLoading ? <CircularProgress size={20} /> : null}
         <TableContainer>
           <Table size="small">
             <TableHead>
@@ -289,6 +236,8 @@ export function NormalizeManagementScreen(): JSX.Element {
         </Typography>
         {selectedSnapshot === null ? (
           <Alert severity="info">Select a sealed snapshot above to create a normalize run.</Alert>
+        ) : normalizerSources.length === 0 ? (
+          <Alert severity="info">No normalizer source is registered yet.</Alert>
         ) : (
           <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
             <Typography variant="body2">
@@ -298,34 +247,38 @@ export function NormalizeManagementScreen(): JSX.Element {
               select
               size="small"
               label="normalizer"
-              value={normalizerChoice}
+              value={normalizerSourceId}
               onChange={(event) => setNormalizerChoice(event.target.value)}
-              sx={{ minWidth: 260 }}
+              sx={{ minWidth: 300 }}
             >
-              {MOCK_NORMALIZERS.map((normalizer) => {
-                const key = `${normalizer.addon_id}@${normalizer.version}`;
-                return (
-                  <MenuItem key={key} value={key}>
-                    {normalizer.addon_id} @ {normalizer.version}
-                  </MenuItem>
-                );
-              })}
+              {normalizerSources.map((normalizer) => (
+                <MenuItem key={normalizer.source_id} value={normalizer.source_id}>
+                  {normalizer.addon_id} @ {normalizer.addon_version} ({normalizer.source_id})
+                </MenuItem>
+              ))}
             </TextField>
             <Button
               variant="contained"
               onClick={onCreateRun}
               data-testid="create-run-button"
-              disabled={!selectedSnapshot.verifies}
+              disabled={!selectedSnapshot.verifies || createRunMutation.isPending}
             >
               Create run
             </Button>
           </Stack>
         )}
-        {runNotice === null ? null : (
-          <Alert severity="success" sx={{ mt: 1 }}>
-            {runNotice}
-          </Alert>
-        )}
+        {runOutcome ? (
+          isDomainRefused(runOutcome) ? (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              Run refused: {runOutcome.detail}
+            </Alert>
+          ) : (
+            <Alert severity="success" sx={{ mt: 1 }}>
+              Normalize run enqueued as job {runOutcome.job_id.slice(0, 8)}. It stays PENDING until
+              M3 registers a worker for it.
+            </Alert>
+          )
+        ) : null}
       </Paper>
 
       {/* Pane C: results — versions coexist, side by side, per-record error badge. */}
@@ -335,6 +288,8 @@ export function NormalizeManagementScreen(): JSX.Element {
         </Typography>
         {selectedSnapshot === null ? (
           <Alert severity="info">Select a sealed snapshot above to view its normalized results.</Alert>
+        ) : resultsQuery.isLoading ? (
+          <CircularProgress size={20} />
         ) : resultGroups.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             No normalize run has completed for this snapshot yet.
@@ -342,10 +297,10 @@ export function NormalizeManagementScreen(): JSX.Element {
         ) : (
           <Box sx={{ display: "flex", gap: 2, overflowX: "auto" }}>
             {resultGroups.map((group) => {
-              const errorCount = group.records.filter((record) => record.normalize_error !== null).length;
+              const errorCount = group.records.filter((record) => normalizeErrorOf(record.notes) !== null).length;
               return (
                 <Paper
-                  key={`${group.addon_id}@${group.addon_version}`}
+                  key={`${group.addon_id}@${group.addon_version}@${group.output_contract_version}`}
                   variant="outlined"
                   sx={{ p: 2, minWidth: 300, flex: "1 1 300px" }}
                   data-testid="result-version-group"
@@ -371,28 +326,31 @@ export function NormalizeManagementScreen(): JSX.Element {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {group.records.map((record) => (
-                          <TableRow key={record.id}>
-                            <TableCell>{record.source_item_key}</TableCell>
-                            <TableCell>
-                              <code>{record.body_preview}</code>
-                            </TableCell>
-                            <TableCell>
-                              {record.normalize_error === null ? (
-                                <Typography variant="body2" color="text.secondary">
-                                  —
-                                </Typography>
-                              ) : (
-                                <Chip
-                                  size="small"
-                                  color="warning"
-                                  label={`normalize_error: ${record.normalize_error.field}`}
-                                  data-testid="normalize-error-badge"
-                                />
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {group.records.map((record) => {
+                          const error = normalizeErrorOf(record.notes);
+                          return (
+                            <TableRow key={record.id}>
+                              <TableCell>{record.source_item_key}</TableCell>
+                              <TableCell>
+                                <code>{JSON.stringify(record.body)}</code>
+                              </TableCell>
+                              <TableCell>
+                                {error === null ? (
+                                  <Typography variant="body2" color="text.secondary">
+                                    —
+                                  </Typography>
+                                ) : (
+                                  <Chip
+                                    size="small"
+                                    color="warning"
+                                    label={`normalize_error: ${error.field}`}
+                                    data-testid="normalize-error-badge"
+                                  />
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>
