@@ -384,7 +384,16 @@ def test_job_006_an_expired_lease_is_reclaimed_and_the_stalled_worker_is_fenced(
     assert reclaiming_metrics["rejected_completions"] == 0
 
     stalled_metrics = parse_report(stalled.stdout)["metrics"]
-    assert stalled_metrics["suppressed_duplicate_effects"] == 1, "the handler ran to its end"
+    # Issue #4: apply_effect is now fenced the same way a completion is. By the
+    # time A wakes from its stall, B's reclaim has already closed A's attempt as
+    # ABANDONED, so A's effect write is refused by the fence before it ever
+    # reaches the insert — I1's duplicate-suppression path never fires, because
+    # there is no second insert to suppress. This is the harm case issue #4
+    # named: without the fence, A's stale payload would have been the row that
+    # landed (whichever insert "arrived second"); with it, B's payload is the
+    # only one that was ever allowed to write.
+    assert stalled_metrics["rejected_effects"] == 1, "the handler ran to its end, fenced out"
+    assert stalled_metrics["suppressed_duplicate_effects"] == 0
     assert stalled_metrics["rejected_completions"] >= 1, "the completion was attempted"
     assert stalled_metrics["transitions"][JobState.SUCCEEDED] == 0
 
@@ -393,7 +402,11 @@ def test_job_006_an_expired_lease_is_reclaimed_and_the_stalled_worker_is_fenced(
     assert job == job_after_reclaim
     assert attempts_of(job_connection, job_id) == attempts_after_reclaim
     assert all_effects(job_connection) == effects_after_reclaim
-    assert len(all_effects(job_connection)) == 1
+    effects = all_effects(job_connection)
+    assert len(effects) == 1
+    # The one durable row is B's — the reclaiming attempt's — not A's stale one.
+    assert effects[0]["payload"]["applied_by"] == "stall"
+    assert effects[0]["payload"]["attempt_no"] == second["attempt_no"]
 
     refusals = [
         record
@@ -405,6 +418,15 @@ def test_job_006_an_expired_lease_is_reclaimed_and_the_stalled_worker_is_fenced(
     assert refusals[0]["job_id"] == str(job_id)
     assert refusals[0]["correlation_id"] == job["correlation_id"]
     assert refusals[0]["intended_outcome"] == AttemptOutcome.SUCCEEDED
+
+    effect_refusals = [
+        record
+        for record in log_events(stalled.stderr)
+        if record["event"] == "job.effect_rejected"
+    ]
+    assert len(effect_refusals) == 1
+    assert effect_refusals[0]["worker_id"] == STALLED
+    assert effect_refusals[0]["job_id"] == str(job_id)
 
 
 # --------------------------------------------------------------------------- #

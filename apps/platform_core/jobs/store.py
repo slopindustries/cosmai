@@ -1,11 +1,21 @@
 """Every write CONTRACT-JOB@0.1 permits, as hand-written SQL (DP-006 D5).
 
 Copy-adapted from ``experiments/integrated-p0/platform_core/jobs/store.py``. The
-only adaptation is schema qualification: every table reference is written
-``cosmai.<table>`` rather than relying on ``search_path`` (DP-032 D1/D3 — see
-``platform_core.db.migrate``'s docstring for why an unqualified reference is not
-merely cosmetic here). CTE names, column aliases, and every statement's actual
-logic are unchanged from P0.
+only structural adaptation is schema qualification: every table reference is
+written ``cosmai.<table>`` rather than relying on ``search_path`` (DP-032 D1/D3
+— see ``platform_core.db.migrate``'s docstring for why an unqualified reference
+is not merely cosmetic here). CTE names, column aliases, and every other
+statement's actual logic are unchanged from P0.
+
+**One statement is not unchanged: ``APPLY_EFFECT``.** GitHub issue #4 found that
+P0's version — a bare ``insert ... on conflict do nothing``, taking no
+``attempt_id`` or ``worker_id`` — let an attempt the platform had already
+abandoned still write the job's one durable effect, out of step with
+CONTRACT-JOB@0.1 §Semantics:126's fencing rule, which names "any outcome"
+without limiting itself to completions. P1 fixes this; P0
+(`experiments/integrated-p0/`) is read-only archive and is deliberately left as
+it was — the issue stays open against it. See ``docs/p1/M1-RECORD.md``'s
+contract deviation ledger, item 10, for the reproduction and the fix.
 
 There is no mapper and no query builder here on purpose. The three statements a
 gate reviewer has to be able to read — the claim, the fenced completion, and the
@@ -79,11 +89,12 @@ Jitter = Callable[[], float]
 #: class of failure and quotes nothing, as the contract requires of a summary.
 ABANDONED_SUMMARY: Final = "the lease expired before this attempt recorded an outcome"
 
-#: What a rejected completion is told. There is deliberately no attempt to say
-#: which half of the fence failed: finding out would mean reading the rows the
-#: statement just refused to trust, and the answer would be stale on arrival.
+#: What a rejected fenced write is told — a completion or, since issue #4, an
+#: applied effect. There is deliberately no attempt to say which half of the
+#: fence failed: finding out would mean reading the rows the statement just
+#: refused to trust, and the answer would be stale on arrival.
 REJECTED_REASON: Final = (
-    "the completion was refused: this worker no longer holds the lease, "
+    "the write was refused: this worker no longer holds the lease, "
     "or its attempt is already closed"
 )
 
@@ -293,14 +304,19 @@ left join conflict cf on true
 """
 
 
-# The fence, shared by all three completion paths and identical in each.
+# The ownership check every fenced write shares: job RUNNING, lease held by this
+# worker, and this worker's own attempt row still open — all re-checked under
+# `for update of j` in the same statement that goes on to write. Completions
+# concatenate `_ATTEMPT_CLOSE` onto this; `APPLY_EFFECT` concatenates its own
+# insert instead, because applying an effect does not close the attempt (a
+# handler may still be running when it applies one — see `halt_after_effect`).
 #
 # `for update of j` locks the job row and only the job row. Locking the attempt
 # too would invert the order a reclaim takes its locks in — job first, then
 # attempt — and two workers finishing and reclaiming the same job would deadlock.
 # Holding the job row is sufficient: a reclaim cannot get past `candidate`
 # without it, and one that committed earlier is already visible here.
-_FENCE = """
+_FENCE_CHECK = """
 with fenced as materialized (
     select j.id as job_id, a.id as attempt_id, a.attempt_no
     from cosmai.job j
@@ -313,6 +329,9 @@ with fenced as materialized (
       and j.lease_owner = %(worker_id)s
     for update of j
 ),
+"""
+
+_ATTEMPT_CLOSE = """
 attempt_closed as (
     update cosmai.job_attempt a
     set finished_at = now(),
@@ -325,6 +344,11 @@ attempt_closed as (
     returning a.attempt_no
 ),
 """
+
+# Byte-identical to the fence used before `_FENCE_CHECK`/`_ATTEMPT_CLOSE` were
+# split apart — the split exists so `APPLY_EFFECT` can reuse the ownership check
+# without also closing the attempt.
+_FENCE = _FENCE_CHECK + _ATTEMPT_CLOSE
 
 _SETTLE = """
 job_settled as (
@@ -372,12 +396,38 @@ COMPLETE_SUCCESS = _FENCE + _SETTLE.format(assignments=_SUCCEED_ASSIGNMENTS)
 COMPLETE_PERMANENT = _FENCE + _SETTLE.format(assignments=_PERMANENT_ASSIGNMENTS)
 COMPLETE_RETRYABLE = _FENCE + _SETTLE.format(assignments=_RETRYABLE_ASSIGNMENTS)
 
-APPLY_EFFECT = """
-insert into cosmai.platform_effect (effect_key, job_id, payload)
-values (%(effect_key)s, %(job_id)s, %(payload)s)
-on conflict (effect_key) do nothing
-returning effect_key
+# Issue #4: this used to be a bare insert, unfenced, taking no `attempt_id` or
+# `worker_id` — so an attempt the platform had already abandoned could still
+# write the job's one durable effect after the reclaiming attempt had already
+# been recorded as the one that finished the job. Fenced the same way a
+# completion is: `_FENCE_CHECK` re-checks ownership under `for update of j`,
+# and the insert reads `fenced` so a fence miss makes it insert nothing.
+#
+# `on conflict (effect_key) do nothing` stays inside the fenced write — I1's
+# idempotency is still the primary key's job, not the fence's; the fence's job
+# is only to stop a stale attempt's insert from being the one that lands.
+#
+# Fence-miss and duplicate-suppression both leave `inserted` empty, so they are
+# indistinguishable from the insert alone. `fenced_ok` is read back separately
+# so the two refusals can be told apart and counted differently — a fence miss
+# is refused and counted the way a stale completion is; a duplicate is
+# suppressed the way it always was. No `FROM` is needed for one row: two scalar
+# subqueries against materialized, at-most-one-row CTEs always return exactly
+# one row, the same "driven from a one-row relation" shape `CLAIM_NEXT` uses.
+APPLY_EFFECT = (
+    _FENCE_CHECK
+    + """
+inserted as (
+    insert into cosmai.platform_effect (effect_key, job_id, payload)
+    select %(effect_key)s, %(job_id)s, %(payload)s
+    from fenced
+    on conflict (effect_key) do nothing
+    returning effect_key
+)
+select (select job_id from fenced) is not null as fenced_ok,
+       (select effect_key from inserted) as effect_key
 """
+)
 
 REQUEST_RETRY = """
 update cosmai.job
@@ -662,19 +712,49 @@ class JobStore:
 
     # ----------------------------------------------------------------- effect
 
-    def apply_effect(self, job_id: UUID, effect_key: str, payload: Any = None) -> bool:
-        """Apply the one durable effect a P0-A handler may produce.
+    def apply_effect(
+        self, job_id: UUID, attempt_id: UUID, worker_id: str, effect_key: str, payload: Any = None
+    ) -> bool:
+        """Apply the one durable effect a P0-A handler may produce. Fenced (issue #4).
 
-        Returns ``False`` when the key was already present. That is not a failure:
-        at-least-once delivery makes a repeat expected, and I1 is held by the
-        primary key rather than by anyone checking first. The suppression is
-        counted and logged so that a duplicate is observable rather than silent.
+        Fenced the same way a completion is: accepted only if ``worker_id`` still
+        owns the current lease and ``attempt_id`` is still open. Otherwise the
+        insert is refused, changes nothing, and is recorded as a rejected write —
+        the same shape as a rejected completion, so a stale attempt cannot leave
+        its payload as the durable record after the platform has already
+        credited a reclaiming attempt with finishing the job.
+
+        Returns ``False`` both when the fence refuses the write and when the key
+        was already present. Both are "not applied" to a handler that only wants
+        to know whether it may treat the effect as done; ``self._metrics`` and
+        the structured log distinguish them for anyone who needs to. A duplicate
+        is not a failure: at-least-once delivery makes a repeat expected, and I1
+        is held by the primary key rather than by anyone checking first.
         """
-        parameters = {"effect_key": effect_key, "job_id": job_id, "payload": Jsonb(payload)}
+        parameters = {
+            "job_id": job_id,
+            "attempt_id": attempt_id,
+            "worker_id": worker_id,
+            "effect_key": effect_key,
+            "payload": Jsonb(payload),
+        }
         with self._cursor() as cursor:
             cursor.execute(APPLY_EFFECT, parameters)
             row = cursor.fetchone()
-        if row is None:
+        assert row is not None  # driven from scalar subqueries: always exactly one row
+        if not row["fenced_ok"]:
+            self._metrics.record_rejected_effect()
+            with correlation_context(self._correlation_of(job_id)):
+                self._logger.warning(
+                    "job.effect_rejected",
+                    job_id=job_id,
+                    attempt_id=attempt_id,
+                    worker_id=worker_id,
+                    effect_key=effect_key,
+                    reason=REJECTED_REASON,
+                )
+            return False
+        if row["effect_key"] is None:
             self._metrics.record_suppressed_duplicate_effect()
             self._logger.info(
                 "job.effect_suppressed",

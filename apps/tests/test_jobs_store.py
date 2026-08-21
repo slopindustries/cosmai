@@ -400,8 +400,13 @@ class TestApplyEffect:
     def test_the_first_application_is_accepted(
         self, job_store: JobStore, job_connection: psycopg.Connection[Any]
     ) -> None:
+        """Positive control: a live attempt's apply_effect still succeeds."""
         job_id = job_store.create_job(HANDLER, {}, max_attempts=1)
-        applied = job_store.apply_effect(job_id, f"job/{job_id}", {"n": 1})
+        claimed = job_store.claim_next("worker-a", LEASE_SECONDS)
+        assert claimed is not None
+        applied = job_store.apply_effect(
+            job_id, claimed.attempt_id, "worker-a", f"job/{job_id}", {"n": 1}
+        )
         assert applied
         rows = effects_of(job_connection, job_id)
         assert len(rows) == 1
@@ -413,20 +418,121 @@ class TestApplyEffect:
         job_metrics: MetricsRegistry,
     ) -> None:
         job_id = job_store.create_job(HANDLER, {}, max_attempts=1)
+        claimed = job_store.claim_next("worker-a", LEASE_SECONDS)
+        assert claimed is not None
         key = f"job/{job_id}"
-        assert job_store.apply_effect(job_id, key, {"n": 1})
-        assert not job_store.apply_effect(job_id, key, {"n": 2})
+        assert job_store.apply_effect(job_id, claimed.attempt_id, "worker-a", key, {"n": 1})
+        assert not job_store.apply_effect(job_id, claimed.attempt_id, "worker-a", key, {"n": 2})
         rows = effects_of(job_connection, job_id)
         assert len(rows) == 1
         assert job_metrics.read().suppressed_duplicate_effects == 1
+        assert job_metrics.read().rejected_effects == 0
 
     def test_two_different_jobs_can_share_one_key(self, job_store: JobStore) -> None:
         """The contract's identity boundary: `job.id` and `effect_key` are separate."""
         shared_key = f"shared-{uuid4()}"
         job_a = job_store.create_job(HANDLER, {}, max_attempts=1)
         job_b = job_store.create_job(HANDLER, {}, max_attempts=1)
-        assert job_store.apply_effect(job_a, shared_key)
-        assert not job_store.apply_effect(job_b, shared_key)
+        claimed_a = job_store.claim_next("worker-a", LEASE_SECONDS)
+        assert claimed_a is not None
+        claimed_b = job_store.claim_next("worker-b", LEASE_SECONDS)
+        assert claimed_b is not None
+        assert job_store.apply_effect(job_a, claimed_a.attempt_id, "worker-a", shared_key)
+        assert not job_store.apply_effect(job_b, claimed_b.attempt_id, "worker-b", shared_key)
+
+    # ----------------------------------------------------------------- issue #4
+
+    def test_an_abandoned_attempts_effect_is_refused_and_the_reclaiming_attempts_lands(
+        self,
+        job_store: JobStore,
+        job_connection: psycopg.Connection[Any],
+        job_metrics: MetricsRegistry,
+        log_stream: StringIO,
+    ) -> None:
+        """The Phase-1 reproduction for issue #4, as a regression test.
+
+        Worker A claims, stalls past its lease, and is reclaimed by worker B —
+        the exact interleaving the issue's "How to see it" section walks through
+        against real method calls. B applies its effect while its own attempt is
+        still open and then completes, the same order `runner._execute` uses
+        (handler runs, including any `apply_effect`, before the fenced
+        completion). A wakes only afterward and tries to write the effect it
+        would have written had it finished first.
+
+        Before the fix, A's `apply_effect` inserted unfenced regardless of when
+        it ran, so had A arrived first its stale payload would have been the row
+        that landed and B's later, legitimate write would have been the one
+        suppressed as a "duplicate" — even though the job's own state credits B
+        with finishing it. After the fix, A's call is refused by the fence and
+        counted, in either arrival order; only B's write can ever land.
+        """
+        job_id = job_store.create_job(HANDLER, {}, max_attempts=3)
+        stale = job_store.claim_next("worker-A", EXPIRED_LEASE)
+        assert stale is not None
+        reclaimed = job_store.claim_next("worker-B", LEASE_SECONDS)
+        assert reclaimed is not None
+
+        key = f"job/{job_id}"
+        a_payload = {"applied_by": "worker-A", "attempt_no": stale.attempt_no}
+        b_payload = {"applied_by": "worker-B", "attempt_no": reclaimed.attempt_no}
+
+        # B's own write, as the runner would actually call it: while B's attempt
+        # is still open, before B's completion.
+        b_applied = job_store.apply_effect(job_id, reclaimed.attempt_id, "worker-B", key, b_payload)
+        assert b_applied
+        completion = job_store.complete_success(
+            reclaimed.job_id, reclaimed.attempt_id, "worker-B"
+        )
+        assert completion.accepted
+        assert completion.state is JobState.SUCCEEDED
+
+        # A wakes up only now — after B has already finished the job — and
+        # tries to write the effect it would have written had it finished first.
+        a_applied = job_store.apply_effect(job_id, stale.attempt_id, "worker-A", key, a_payload)
+        assert not a_applied
+        assert job_metrics.read().rejected_effects == 1
+        assert job_metrics.read().suppressed_duplicate_effects == 0
+        rejections = events_named(log_stream, "job.effect_rejected")
+        assert len(rejections) == 1
+        assert rejections[0]["worker_id"] == "worker-A"
+        assert rejections[0]["reason"] == REJECTED_REASON
+
+        # B's write is the only one that ever landed.
+        rows = effects_of(job_connection, job_id)
+        assert len(rows) == 1
+        assert rows[0]["payload"] == b_payload
+        assert job_metrics.read().rejected_effects == 1
+        assert job_metrics.read().suppressed_duplicate_effects == 0
+
+    def test_the_fence_tests_ownership_not_expiry_for_effects_too(
+        self, job_store: JobStore, job_connection: psycopg.Connection[Any]
+    ) -> None:
+        """A lease that ran out but was never reclaimed still belongs to its worker."""
+        job_id = job_store.create_job(HANDLER, {}, max_attempts=3)
+        claimed = job_store.claim_next("worker-a", EXPIRED_LEASE)
+        assert claimed is not None
+        applied = job_store.apply_effect(job_id, claimed.attempt_id, "worker-a", f"job/{job_id}")
+        assert applied
+        assert len(effects_of(job_connection, job_id)) == 1
+
+    def test_a_rejected_effect_write_leaves_the_job_row_unchanged(
+        self, job_store: JobStore
+    ) -> None:
+        """The fence refusal is a no-op, field by field — not merely "no exception"."""
+        job_id = job_store.create_job(HANDLER, {}, max_attempts=3)
+        stale = job_store.claim_next("worker-A", EXPIRED_LEASE)
+        assert stale is not None
+        reclaimed = job_store.claim_next("worker-B", LEASE_SECONDS)
+        assert reclaimed is not None
+        before = job_store.read_job(job_id)
+        assert before is not None
+
+        applied = job_store.apply_effect(job_id, stale.attempt_id, "worker-A", f"job/{job_id}")
+        assert not applied
+
+        after = job_store.read_job(job_id)
+        assert after is not None
+        assert after == before
 
 
 # --------------------------------------------------------------------------- #

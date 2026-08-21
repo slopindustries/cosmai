@@ -347,6 +347,70 @@ wave's own observation.
   the retry-backoff curve is untested past attempt 1 — a constant 50 ms backoff at every attempt
   would still pass the suite as written.
 
+**10. `[측정]` 2026-08-21. GitHub issue #4 confirmed: `APPLY_EFFECT` carried no fence, so an
+attempt the platform had already abandoned could still write the job's one durable effect —
+fixed in P1; P0 (`experiments/integrated-p0/platform_core/jobs/store.py:346-351`) is unchanged,
+by design, as an archive.** `[확인 사실]` Verified by reading before touching any code: every
+caller of `apply_effect` in both trees (`grep`) is `JobContext.apply_effect`, wired in
+`runner.py`'s `_effect_applier`, called directly from a handler mid-attempt — never through the
+DP-010 buffered-emit path (`enlist_durable_work`/`durable_scope`), which only ever carries
+`capabilities.py`'s `_flush(...)` calls and was already correctly fenced (it runs inside the same
+transaction as the completion). `[측정]` Reproduced against the real `cosmai_test` database
+(port 5434) before any fix: worker A claims a job, its lease expires, worker B reclaims it
+(closing A's attempt `ABANDONED`) and completes the job `SUCCEEDED`; A's own `complete_success`
+is then correctly refused by `_FENCE`, but A's `apply_effect` on the same job — unfenced —
+returned `True` and inserted `{"applied_by": "worker-A", "attempt_no": 1}` into
+`platform_effect`; B's own later `apply_effect` with the same `effect_key` then returned `False`
+("suppressed duplicate"), leaving A's stale payload as the only durable record of an effect the
+job's own state credits B, not A, with producing. **VERDICT: CONFIRMED.**
+
+`[결정]` Fixed in `apps/platform_core/jobs/store.py`: `_FENCE` was split into `_FENCE_CHECK` (the
+ownership check — job `RUNNING`, lease held by this worker, this worker's attempt still open,
+under `for update of j`) and `_ATTEMPT_CLOSE` (the completion-only half that closes the attempt);
+`_FENCE = _FENCE_CHECK + _ATTEMPT_CLOSE` reproduces the old fence byte-for-byte for the three
+`COMPLETE_*` statements. `APPLY_EFFECT` is now `_FENCE_CHECK` plus an insert gated on `fenced`,
+with `on conflict (effect_key) do nothing` kept *inside* the fenced write for I1's idempotency;
+`apply_effect(job_id, attempt_id, worker_id, effect_key, payload=None)` gained the two identifiers
+the fence needs and refuses — the same refusal shape as a rejected completion (`REJECTED_REASON`,
+now worded generically for "a write" rather than only "the completion") — when the fence misses,
+counted through a new `MetricsRegistry.record_rejected_effect()` / `reading.rejected_effects` and
+logged as `job.effect_rejected`, distinct from the pre-existing `job.effect_suppressed` (I1's
+duplicate path, unchanged). `runner.py`'s `_effect_applier` now closes over `claimed.attempt_id`
+and `claimed.worker_id` in addition to `claimed.job_id`; `JobContext.apply_effect`'s
+handler-facing signature (`Callable[[str, Any], bool]`) is unchanged, since the identifiers are
+platform state a handler never sees, the same as `complete_success`.
+
+**Does CONTRACT-JOB-0.1 already require this — no contract change needed?** Yes. §Semantics:126
+already states, unqualified by which write: "A worker's attempt to record any outcome — success,
+failure, or reschedule — is accepted only if that worker still owns the current lease and its own
+attempt row is still open. Otherwise the write is refused." §Semantics:151 separately calls
+`platform_effect` a "durable effect," and the code implementing it was simply out of contract
+before this fix — no version bump, no scenario re-run of an already-`PASS`ed result, because the
+text's obligation did not change, only the code catching up to it.
+
+**Deviation from REVIEW-M1's byte-parity claim, named as instructed.** M1's `_FENCE` was recorded
+elsewhere in this ledger as copy-adapted from P0 with "CTE names, column aliases, and every
+statement's actual logic... unchanged from P0" (`store.py`'s own module docstring, quoted
+verbatim before this fix). That is no longer true for `APPLY_EFFECT`: P0's version is a bare
+`insert ... on conflict do nothing`, unfenced; P1's is now fenced, with a different signature
+(`apply_effect` gained `attempt_id`/`worker_id`) and a different SQL shape. This is the one place
+in the job-core module where P1 intentionally diverges from P0's logic rather than merely its
+schema qualification — because P0's own text is the artifact under archive, and the issue against
+it stays open by design (`AGENTS.md`'s P0 boundary: "P0 code must not become a runtime or package
+dependency of P1," which cuts both ways — a P0 defect is not inherited into P1 either).
+`[확인 사실]` Regression coverage: `apps/tests/test_jobs_store.py::TestApplyEffect` (the Phase-1
+reproduction above, replayed as
+`test_an_abandoned_attempts_effect_is_refused_and_the_reclaiming_attempts_lands`, plus a positive
+control, the pre-existing same-key-suppressed case re-verified fenced, and a field-by-field
+no-corruption check) and
+`apps/tests/acceptance/test_job_scenarios_concurrency.py::test_job_006_...`, whose own assertions
+changed from `suppressed_duplicate_effects == 1` to `rejected_effects == 1` for the stalled
+worker — the fenced mechanism, not arrival order, is now what the scenario demonstrates. The root
+scenario document `tests/acceptance/JOB-006-lease-expiry-is-reclaimed-and-fenced.md` is a P0-A gate
+record (`Status: ACCEPTED_FOR_POC`, `Result`/`Last executed: 2026-08-17` naming P0's own tree and
+`PASS`) and is left untouched — it accurately records what P0's code did, which this fix does not
+retroactively change.
+
 ## (d) `search_path` strategy
 
 `[확인 사실]` `apps/db/provision.sql` sets a role-level default, not a per-session or
