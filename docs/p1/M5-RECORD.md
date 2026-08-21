@@ -5,9 +5,10 @@
 - Consumed by: M7's full adversarial review, per the batch plan
   (`docs/superpowers/plans/2026-08-21-m2-m7-batch.md` §M5).
 
-This record grows one section per batch. Batch 5d (normalization management, downloads, schedule
-UI, and real wiring of everything batches 5b/5c mocked) is not yet started; its section is added
-when that batch lands.
+This record grows one section per batch. All six DP-033 D1 screens now have a complete UI
+(batches 5a–5d); what remains is a final wiring/live-integration pass — batch 5-final, per the
+controller ruling recorded in the 5d section below — replacing every mocked or real-but-unwired
+call with the real thing once M2 and M6 land in dev. Its section is added when that batch lands.
 
 ## Batch 5a — scaffold, jobs monitor, health/metrics
 
@@ -242,5 +243,119 @@ batch 5a's 10), across 7 test files:
 batch 5a's three unchanged files (10).
 
 `[측정]` `npm run lint` (`oxlint`), 2026-08-21: clean, no findings.
+
+No Python gates were run for this batch (no Python files touched).
+
+## Batch 5d — normalization management + downloads (UI complete, mock-first)
+
+- Date: 2026-08-21.
+
+`[결정]` Coordinator dispatch (2026-08-21, "Lane B batch 3"): build the remaining two DP-033 D1
+screens — normalization management (spec §6, PoC Contract §8) and downloads (DP-033 D3) — UI
+mock-first, completing all six screens. Real wiring to M2's/M6's actual routes moves to a later
+"batch 5-final" (integration wiring + a live pass against the real backend), which is not part of
+this batch.
+
+### What was built
+
+- `apps/dashboard/src/mocks/sources.ts`: extracted the `{sourceId, label}` mock source list
+  shared by every screen that needs a source selector (`DataBrowserScreen`, and now
+  `NormalizeManagementScreen`, `DownloadScreen`) — batch 5b/5c had it duplicated once
+  (`DataBrowserScreen`'s own copy); this batch would have made it three, so it moved to a
+  shared module instead. `CollectorDomainScreen`'s richer per-source mock (status, config
+  schema, credential purposes) is unchanged and uses the same two source ids for consistency.
+- `apps/dashboard/src/screens/NormalizeManagementScreen.tsx`: no longer a placeholder. Three
+  panes over a source-scoped set of sealed snapshots: (a) a snapshots table — `snapshot_id`
+  (short), `item_count`, a manifest-digest prefix (`manifest_sha256.slice(0,12)`), `sealed_at`,
+  and **`verifies` as its own table column** (PoC Contract §8: "A snapshot's verification state
+  is its own column, never folded into a status word" — mirrors `experiments/integrated-p0/dashboard/src/domain-view.tsx`'s
+  `SnapshotTable`, read as reference, new implementation), plus a `Seal snapshot` button in this
+  pane's own header; (b) a create-run pane — visible once a snapshot row is selected, a
+  normalizer-addon+version selector (mocked list) and a `Create run` button, **structurally
+  separate** from the seal button (PoC Contract §8: "Sealing and normalizing are separate
+  deliberate acts and must not be combined into one control" — enforced here by the two buttons
+  living in two different `Paper`/`data-testid` sections, not by any shared handler that could
+  later be merged); (c) a results pane — for the selected snapshot, one card per
+  `(addon_id, addon_version, output_contract_version)` group, rendered side by side in a
+  horizontal flex row (PoC Contract §5: "Versions coexist... two sets of rows, both readable"),
+  each card showing a run summary (`N records, M errors` — DP-030 D2: "the run summary
+  aggregates the error-record count") and a per-record table whose `error` column shows a
+  `normalize_error: <field>` `Chip` only when that record's mocked `notes.normalize_error` is
+  non-null.
+- `apps/dashboard/src/screens/download/buildExportUrl.ts`: the actual deliverable for the
+  download screen — a pure `buildExportUrl(base, filters)` function against the shape the M2–M7
+  batch plan's §신규 API fixes (`GET /export/raw?source_id&from&to&key_prefix&format=jsonl|csv`,
+  `GET /export/results?...&format=csv`). An empty `from`/`to`/`keyPrefix` is omitted from the
+  query string entirely rather than sent empty. `kind: "results"` always forces `format=csv` in
+  the built URL regardless of the requested format, because the plan gives `/export/results` no
+  JSONL option ("정규화 결과는 CSV 평탄화"). Pulled into its own module (not
+  `DownloadScreen.tsx`) after `oxlint`'s `react(only-export-components)` flagged a component file
+  also exporting plain functions/types — see Verification.
+- `apps/dashboard/src/screens/DownloadScreen.tsx`: no longer a placeholder. A raw/normalized-results
+  radio toggle, a source selector (shared mock list), from/to date fields, an `item_key` prefix
+  field, and a JSONL/CSV format radio (JSONL disabled and forced off when "normalized results" is
+  selected, matching `buildExportUrl`'s own forcing rule so the UI never shows a state the built
+  URL contradicts). Renders the built URL as text, a `Download` link (`<a href>`) carrying that
+  same URL, and a copyable `curl -o export.download '<url>'` line. **No network call is made by
+  this screen at all** — per the dispatch brief, correct URL construction is the whole
+  deliverable; M6 serves the actual route.
+
+### What remains unwired (enumerated, mocked vs. real-but-unwired vs. no-network-by-design)
+
+Real client functions, written against a shape the plan already fixes, with no live backend yet
+(batch 5b/5c, unchanged by this batch):
+- `POST /sources/{id}/credentials` (`writeCredential`, DP-034 D1) — Lane A's route.
+- `GET /sources/{id}/raw/items?offset&limit` (`readRawItems`) — M2's route.
+
+Local mock data, because no route shape for these exists anywhere in the plan yet:
+- `GET /sources` (or equivalent source list/detail) — `CollectorDomainScreen`'s `MOCK_SOURCES`
+  and the shared `mocks/sources.ts` `MOCK_SOURCE_OPTIONS`, used by `DataBrowserScreen`,
+  `NormalizeManagementScreen`, and `DownloadScreen`.
+- `GET /snapshots?source_id=...` — `NormalizeManagementScreen`'s `INITIAL_SNAPSHOTS`.
+- A normalizer-addon+version list for the create-run selector — `MOCK_NORMALIZERS`.
+- `GET /snapshots/{id}/results` — `NormalizeManagementScreen`'s `MOCK_RESULTS`.
+- Sealing (`POST /sources/{id}/snapshots` in the P0 reference's `api.ts` shape) — this batch's
+  `mockSealSnapshot` appends a locally-generated row to component state; no request is sent.
+  P0's reference shape exists (`experiments/integrated-p0/dashboard/src/api.ts`'s
+  `sealSnapshot`), but nothing in this batch's brief or the plan re-fixed it for P1, so — unlike
+  the credential/raw-item calls — this was left mocked rather than written as a real,
+  unwired client function against a guessed shape.
+- Creating a normalize run (`POST /snapshots/{id}/normalize` in the P0 reference's shape) — same
+  reasoning; `onCreateRun` shows a mocked notice and touches no network.
+- Persisting `ConfigSchemaForm`'s submitted config values — unchanged from batch 5b/5c, still a
+  no-op `onSubmit`.
+
+No network call by design (the deliverable is the URL, not a fetch):
+- `GET /export/raw` / `GET /export/results` — `DownloadScreen` never calls `fetch`; it renders
+  the URL and a curl line for the operator to use directly. Wiring here means confirming the
+  built URL actually downloads once M6 serves the route — not adding a fetch call.
+
+Batch 5-final (not part of this batch) replaces every "real-but-unwired" and "mock" entry above
+with the real call, once M2 and M6 land in dev; the "no network call by design" entries stay as
+they are — a live pass there means testing the link, not adding a request.
+
+### Verification
+
+`[측정]` `npm run build` (`tsc -b && vite build`), 2026-08-21: clean, no TypeScript errors.
+Bundle ~548 kB / 166 kB gzip (up from batch 5b/5c's ~530 kB / 162 kB — two more full screens'
+worth of MUI table/form usage); still one chunk, still over Vite's 500 kB warning threshold,
+still unaddressed (noted in every batch so far; not treated as a build failure).
+
+`[측정]` `npm test` (`vitest run`), 2026-08-21: **34 passed, 0 failed** (13 new tests added to
+the running total of 21), across 9 test files. New: `NormalizeManagementScreen.test.tsx` (4:
+seal/normalize distinct-button-and-section check, sealing creates a separate row without
+touching the run pane, two result versions render side by side, the error badge appears only on
+the flagged record with the run summary counting it) and `DownloadScreen.test.tsx` (9: 4 direct
+unit tests of `buildExportUrl` — param mapping, empty-range omission, format toggling, the
+results-forces-csv rule — plus 5 integration tests against the rendered screen covering the same
+properties through the UI, and one asserting the download link and curl line carry the same
+URL).
+
+`[측정]` `npm run lint` (`oxlint`), 2026-08-21: **found one warning on the first pass** —
+`DownloadScreen.tsx:46:17: react(only-export-components)` (a component file also exporting
+`buildExportUrl`/`curlLine`/types breaks Fast Refresh). Fixed by moving those exports to
+`screens/download/buildExportUrl.ts`, a non-component module, and re-running: clean, no findings,
+exit code 0 both before and after the fix (the warning did not fail the gate, but "lint clean" per
+the dispatch brief's own gate means no findings, not just a zero exit code).
 
 No Python gates were run for this batch (no Python files touched).
