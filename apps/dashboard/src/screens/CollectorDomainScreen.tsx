@@ -5,8 +5,7 @@
 // Real as of batch 5-final: the source list/detail (`GET /sources`), raw
 // summary (`GET /sources/{id}/raw`), and schedule (`GET|PUT
 // /sources/{id}/schedule`) all come from `apps/domain/api.py` / M6's
-// scheduler, merged from `dev`. Two things are still not backed by any live
-// route, named rather than silently faked:
+// scheduler, merged from `dev`.
 //
 // - **The config-schema form still renders a per-`addon_id` mock.**
 //   `apps/domain/api.py`'s `source_view` returns `config` (the source's
@@ -15,12 +14,11 @@
 //   `addon_host` (M3) will ever parse it. `MOCK_CONFIG_SCHEMAS` below is a
 //   per-addon guess at that shape, kept from batch 5b/5c; it renders and
 //   validates, but submitting it is a no-op (no write route exists either).
-// - **"Collect now" is disabled with a note.** `apps/domain/api.py`'s own
-//   docstring: `POST /sources/{id}/collect` was never built, because it
-//   would create a job for an `addon:*` handler nothing can claim until M3
-//   registers one. Controller ruling (batch 5-final dispatch): leave it
-//   visibly disabled rather than removed, so the operator sees the action
-//   exists and why it does nothing yet.
+// - **"Collect now" is wired.** `POST /sources/{id}/collect` has existed in
+//   `apps/addon_host/api.py` since M3 merged; this screen shipped with the
+//   action disabled and a note claiming the route did not exist (B12,
+//   `docs/agent-workflow/reviews/REVIEW-M2-M7.md`). `useStartCollectionMutation`
+//   fires the request and this pane renders the `201`/refusal it gets back.
 
 import {
   Alert,
@@ -39,7 +37,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import type { JSX } from "react";
@@ -51,7 +48,9 @@ import {
   useScheduleQuery,
   useScheduleWriteMutation,
   useSourcesQuery,
+  useStartCollectionMutation,
 } from "../api/queries";
+import { isDomainRefused } from "../api/types";
 import { CredentialForm } from "./collector/CredentialForm";
 import { ConfigSchemaForm } from "./collector/ConfigSchemaForm";
 import type { ConfigField } from "./collector/ConfigSchemaForm";
@@ -81,10 +80,6 @@ function shown(value: string | null): string {
   return value === null ? "—" : value;
 }
 
-const COLLECT_DISABLED_NOTE =
-  "Collection dispatch arrives with the add-on host (M3). apps/domain/api.py builds no " +
-  "/collect route yet — creating one now would enqueue a job nothing can ever claim.";
-
 export function CollectorDomainScreen(): JSX.Element {
   const sourcesQuery = useSourcesQuery();
   const collectors = (sourcesQuery.data?.sources ?? []).filter((source) => source.kind === "collector");
@@ -97,6 +92,8 @@ export function CollectorDomainScreen(): JSX.Element {
   const scheduleQuery = useScheduleQuery(effectiveId);
   const scheduleMutation = useScheduleWriteMutation(effectiveId);
   const [intervalInput, setIntervalInput] = useState("3600");
+  const collectMutation = useStartCollectionMutation();
+  const collectOutcome = collectMutation.data;
 
   // Reuses the jobs monitor's own hook (batch 5a) rather than a second query
   // path: this table is the same job list, filtered to one handler. The
@@ -163,17 +160,33 @@ export function CollectorDomainScreen(): JSX.Element {
               <Typography variant="body2">
                 next scheduled run: {shown(scheduleQuery.data?.next_run_at ?? null)}
               </Typography>
-              <Tooltip title={COLLECT_DISABLED_NOTE}>
-                <span>
-                  <Button variant="outlined" disabled data-testid="collect-now-button">
-                    Collect now
-                  </Button>
-                </span>
-              </Tooltip>
+              <Button
+                variant="outlined"
+                disabled={collectMutation.isPending}
+                onClick={() => collectMutation.mutate(source.source_id)}
+                data-testid="collect-now-button"
+              >
+                Collect now
+              </Button>
             </Stack>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }} data-testid="collect-disabled-note">
-              {COLLECT_DISABLED_NOTE}
-            </Typography>
+            {collectOutcome ? (
+              isDomainRefused(collectOutcome) ? (
+                <Alert severity="error" sx={{ mt: 1 }} data-testid="collect-outcome">
+                  Collection refused: {collectOutcome.detail}
+                </Alert>
+              ) : (
+                <Alert severity="success" sx={{ mt: 1 }} data-testid="collect-outcome">
+                  Collect job {collectOutcome.job_id.slice(0, 8)} enqueued for {collectOutcome.source_id}.
+                </Alert>
+              )
+            ) : null}
+            {collectMutation.isError ? (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                {collectMutation.error instanceof Error
+                  ? collectMutation.error.message
+                  : String(collectMutation.error)}
+              </Alert>
+            ) : null}
           </Paper>
 
           <Paper sx={{ p: 2 }}>

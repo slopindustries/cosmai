@@ -124,23 +124,30 @@ scheduled.
 
 ## Tests
 
-- `tests/test_handler.py` — the collector logic, called directly against a
-  hand-built `CollectContext` (not through `addon_kit`'s fixture harness):
-  watermark/cursor round-trip, `kinds` filtering, page-size validation, the
-  404/409/410 branches, and that the credential never appears in a `RawItem`
+**`[정정, 2026-08-21, m7-fixwave, M-X7]`** The paragraphs below described a
+`tests/` layout under this add-on's own directory. That never matched this
+tree's layout: every add-on's tests live under `apps/tests/`, not inside the
+add-on's own directory (the same convention `apps/tests/test_collector_naver_blog.py`
+and every other add-on's tests already follow), and `tests/test_handler_fixtures.py`
+does not exist anywhere in this tree. Corrected to the real paths:
+
+- `apps/tests/test_addon_collector_tubedepth.py` — the collector logic, called
+  directly against a hand-built `CollectContext` (not through `addon_kit`'s
+  fixture harness): watermark/cursor round-trip, `kinds` filtering, page-size
+  validation, the 404/409/410 branches, the golden-path pagination and
+  dereference sequence, and that the credential never appears in a `RawItem`
   or in any log line the add-on writes (`context.log` fields are inspected,
   not just its calls) — `addon_kit`'s harness can script only one status code
   per run (`docs/conventions/addon-authoring.md`, "하네스가 표현하지 못하는
   것"), which cannot express three different dereference outcomes in one
   page.
-- `tests/fixtures/` — a two-page `/v1/artifacts` response pair and three
-  `/v1/artifacts/{digest}` payload responses, built from the shapes measured
-  against the live instance 2026-08-21 (one is the live
-  `video.sponsor_segments` payload for `MfqI-W_JRQQ`, 74 bytes, itself public
-  YouTube-derived metadata with an empty `segments` list — SponsorBlock data
-  the source documents as CC BY-NC-SA 4.0). Used by
-  `tests/test_handler_fixtures.py` for the golden-path pagination and
-  dereference sequence.
+- `apps/tests/fixtures/collector.tubedepth.rest/` — a two-page
+  `/v1/artifacts` response pair and three `/v1/artifacts/{digest}` payload
+  responses, built from the shapes measured against the live instance
+  2026-08-21 (one is the live `video.sponsor_segments` payload for
+  `MfqI-W_JRQQ`, 74 bytes, itself public YouTube-derived metadata with an
+  empty `segments` list — SponsorBlock data the source documents as
+  CC BY-NC-SA 4.0).
 - Conformance suite (`addon_kit.conformance`) and host-loading — see the
   batch report for the exact commands and results.
 
@@ -183,7 +190,7 @@ this add-on needed **no handler code change** to use either: `handler.py`'s
 the contract's intended shape (see "Design" above and the git history of this
 file). What changed is the *operator-approved outbound profile* — "The
 operator-approved outbound profile" above is the row that now actually
-reaches the target — and `tests/test_handler.py`'s dereference-branch tests
+reaches the target — and `apps/tests/test_addon_collector_tubedepth.py`'s dereference-branch tests
 still exercise `handler.py` directly against a hand-built `CollectContext`
 (the harness-cannot-express-three-statuses-in-one-page reason given above,
 unrelated to either gap).

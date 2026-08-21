@@ -12,7 +12,7 @@ Build evidence that allows the team to choose the architecture. Do not treat P0 
   occasionally a sign that the boundary is wrong — which is evidence worth recording
   rather than routing around.
 - Before writing an add-on, read `docs/conventions/addon-authoring.md`. An add-on
-  imports `addon_api` and nothing else in this project; `tests/environment/test_addon_layer_direction.py`
+  imports `addon_api` and nothing else in this project; `tests/environment/test_p1_isolation.py`
   enforces that and will name the violation.
 
 ## Branch and merge

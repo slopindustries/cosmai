@@ -20,6 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from domain.api import extend_with_domain
+from domain.export import _raw_jsonl_line
 from domain.store import DomainStore, NormalizedResultRow, RawItemRow, SourceRow
 from platform_core.api.app import create_app
 from platform_core.config import PlatformConfig
@@ -141,6 +142,39 @@ class TestRawExportJsonl:
         record = json.loads(response.text.splitlines()[0])
         assert record["payload"] == "not json"
 
+    def test_a_pretty_printed_payload_is_re_serialized_compactly_not_spliced_verbatim(
+        self,
+        client: TestClient,
+        registered: None,
+        domain_store: DomainStore,
+        job_connection: psycopg.Connection[Any],
+    ) -> None:
+        """B3 (REVIEW-M2-M7.md): `json.loads` accepts embedded newlines, so a
+        pretty-printed payload spliced in verbatim puts its own newlines inside what is
+        supposed to be one JSONL line — one stored item becomes several unparseable
+        physical lines and everything after it in the export is corrupted. The review's
+        own reproduction payload."""
+        put_raw(
+            domain_store,
+            job_connection,
+            [
+                RawItemRow("k1", b'{\n  "title": "hello"\n}', "application/json"),
+                RawItemRow("k2", b'{"title": "second"}', "application/json"),
+            ],
+        )
+
+        response = client.get("/export/raw", params={"source_id": SOURCE_ID})
+
+        assert response.status_code == 200
+        lines = response.text.splitlines()
+        # The whole export must remain line-parseable: every physical line is its own
+        # complete JSON object, and there is exactly one line per stored item.
+        assert len(lines) == 2
+        records = [json.loads(line) for line in lines]
+        by_key = {r["item_key"]: r for r in records}
+        assert by_key["k1"]["payload"] == {"title": "hello"}
+        assert by_key["k2"]["payload"] == {"title": "second"}
+
     def test_an_empty_source_is_zero_lines_not_an_error(
         self, client: TestClient, registered: None
     ) -> None:
@@ -154,6 +188,47 @@ class TestRawExportJsonl:
 
     def test_a_source_id_is_required(self, client: TestClient, registered: None) -> None:
         assert client.get("/export/raw").status_code == 422
+
+
+def a_raw_row(payload: bytes) -> dict[str, Any]:
+    return {
+        "item_key": "k1",
+        "seq": 1,
+        "emitted_at": None,
+        "content_type": "application/json",
+        "payload": payload,
+    }
+
+
+class TestRawJsonlLineSurvivesSpecValidJsonThatIsNotAJsonDecodeError:
+    """N1 (round-2 re-review, `docs/agent-workflow/reviews/REVIEW-M2-M7.md` batch):
+    `_raw_jsonl_line`'s own `except (json.JSONDecodeError, UnicodeDecodeError)` carried
+    the exact defect class B1 fixed in the four add-on handlers — `json.loads` raises a
+    bare `ValueError` (CPython's integer-string-conversion limit) or `RecursionError`
+    (pathological nesting) on spec-valid JSON without ever raising `JSONDecodeError`,
+    and the narrow tuple let either propagate out of this generator mid-stream instead
+    of taking the escaped-string fallback. Pure-function tests against `_raw_jsonl_line`
+    directly — no fixture, no database, the same two reproduction payloads B1's own
+    tests use.
+    """
+
+    def test_an_integer_over_the_4300_digit_conversion_limit_takes_the_fallback(self) -> None:
+        payload = b'{"id":"b","v":' + b"9" * 5000 + b"}"
+
+        line = _raw_jsonl_line(a_raw_row(payload))
+
+        assert line.count(b"\n") == 1
+        record = json.loads(line)
+        assert record["payload"] == payload.decode("utf-8")
+
+    def test_pathologically_deep_nesting_takes_the_fallback(self) -> None:
+        payload = b"[" * 100_000 + b"]" * 100_000
+
+        line = _raw_jsonl_line(a_raw_row(payload))
+
+        assert line.count(b"\n") == 1
+        record = json.loads(line)
+        assert record["payload"] == payload.decode("utf-8")
 
 
 class TestRawExportCsv:
@@ -192,6 +267,34 @@ class TestRawExportCsv:
 
         rows = list(csv.reader(io.StringIO(response.text)))
         assert rows == [["item_key", "seq", "emitted_at", "content_type", "payload"]]
+
+    @pytest.mark.parametrize("prefix", ["=", "+", "-", "@"])
+    def test_a_payload_starting_with_a_formula_prefix_is_guarded(
+        self,
+        prefix: str,
+        client: TestClient,
+        registered: None,
+        domain_store: DomainStore,
+        job_connection: psycopg.Connection[Any],
+    ) -> None:
+        """M-S4 (REVIEW-M2-M7.md): RFC4180 quoting (`test_csv_escapes_quotes...` above)
+        protects CSV *syntax*; it does nothing against a spreadsheet application
+        evaluating a well-quoted cell as a formula because its content starts with one
+        of these characters. A leading `'` defeats that without changing the content a
+        reader that does not treat it as a formula marker sees."""
+        original = f"{prefix}cmd|'/c calc'!A1"
+        put_raw(
+            domain_store,
+            job_connection,
+            [RawItemRow("k1", original.encode("utf-8"), "text/plain")],
+        )
+
+        response = client.get(
+            "/export/raw", params={"source_id": SOURCE_ID, "format": "csv"}
+        )
+
+        rows = list(csv.reader(io.StringIO(response.text)))
+        assert rows[1][4] == f"'{original}"
 
 
 class TestRawExportScopeFilters:
@@ -297,6 +400,33 @@ class TestResultsExport:
             "/export/results", params={"source_id": NORMALIZER_SOURCE_ID}
         )
         assert jsonl_response.text == ""
+
+    @pytest.mark.parametrize("prefix", ["=", "+", "-", "@"])
+    def test_a_source_item_key_starting_with_a_formula_prefix_is_guarded(
+        self, prefix: str, client: TestClient, registered: None, domain_store: DomainStore
+    ) -> None:
+        """M-S4 (REVIEW-M2-M7.md): the results CSV's equivalent of the raw CSV's guard.
+        `source_item_key` is add-on-derived (a normalizer's `NormalizedResult.source_item_key`,
+        ultimately from an upstream provider's own record), the same kind of untrusted
+        string as a raw payload."""
+        snapshot_id = domain_store.seal_snapshot(NORMALIZER_SOURCE_ID, members=())
+        item_key = f"{prefix}cmd|'/c calc'!A1"
+        domain_store.record_results(
+            snapshot_id,
+            NORMALIZER_SOURCE_ID,
+            "normalizer.smoke",
+            "0.1.0",
+            "1",
+            [NormalizedResultRow(source_item_key=item_key, body={"title": "ok"})],
+        )
+
+        csv_response = client.get(
+            "/export/results", params={"source_id": NORMALIZER_SOURCE_ID, "format": "csv"}
+        )
+
+        rows = list(csv.reader(io.StringIO(csv_response.text)))
+        assert rows[0][6] == "source_item_key"
+        assert rows[1][6] == f"'{item_key}"
 
 
 class TestLargeExportStreams:

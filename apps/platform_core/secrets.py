@@ -190,7 +190,21 @@ def write_credential(ref: str, value: str) -> None:
     # written store — `os.replace` is atomic on the same filesystem. The mode is
     # copied from the file being replaced rather than left to the process umask,
     # which is what "mode preserved" means here: a store that was 600 stays 600.
+    #
+    # M-S1 (REVIEW-M2-M7.md): the file must be *created* at `mode`, not created at
+    # the process umask (typically 0644, holding plaintext credential lines) and
+    # `chmod`ed afterward — that ordering has a window between creation and chmod
+    # where the temp file is readable by anything the umask would allow. `os.open`
+    # with `mode` set applies the permission bits atomically at creation (subject
+    # only to the umask *narrowing* it further, never widening it — `0o077` is not
+    # a plausible umask on a system this store's own read-time check already
+    # requires 0600 of), so there is no window where the file exists at a wider mode.
     tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
-    tmp.write_text("".join(rewritten), encoding="utf-8")
-    tmp.chmod(mode)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write("".join(rewritten))
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     os.replace(tmp, path)

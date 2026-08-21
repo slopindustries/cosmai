@@ -14,6 +14,19 @@ state that one left behind. Each uses its own fresh `migrator_connection`
 (a new session-level connection object, not a shared one), so "a reapply is a
 no-op" is evidence about the database's recorded state, not merely about one
 open connection remembering what it already did.
+
+**N2 (round-2 re-review, `docs/agent-workflow/reviews/REVIEW-M2-M7.md` batch):**
+"starts from empty" is only true because every test here requests
+`migrator_connection`, which `tests/conftest.py`'s `_DB_TOUCHING_FIXTURES` now
+covers (it did not before this fix wave) — that is what makes
+`pytest_collection_modifyitems` actually run `_reset_schema` before this
+module's tests, standalone or not, rather than this module silently running
+against whatever schema state a prior session happened to leave. `[측정]`
+Verified both ways: run alone against the live server, 5 passed (schema reset,
+"starts from empty" holds); run alone with `COSMA_DB_PORT` pointed at a dead
+port, 5 errors after ~130s (`psycopg`'s own connect timeout) with
+`platform_core.errors.ConfigurationInvalidError: cannot reach the platform
+database` — not a hang forever, not a silent pass against stale state.
 """
 
 from __future__ import annotations

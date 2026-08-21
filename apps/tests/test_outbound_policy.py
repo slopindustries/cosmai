@@ -260,6 +260,24 @@ class TestTheApprovedPathRangeIsComparedBySegment:
         assert isinstance(result, Refusal)
         assert result.reason is RefusalReason.PATH_NOT_ALLOWED
 
+    def test_an_encoded_separator_inside_the_approved_prefix_is_still_refused(self) -> None:
+        """B5 (REVIEW-M2-M7.md): the case above cannot tell "refused for the encoded
+        separator" from "refused for being out of range" — `/v1/items%2f..%2fadmin/keys`
+        is a string prefix of neither approved endpoint even before `%2f` is considered.
+        This payload starts inside the approved range as ordinary `str.split("/")` sees
+        it (`/v1/items/x...`), so if `_ENCODED_SLASH` detection in
+        `comparable_segments` were ever removed, this segment (`x%2f..%2f..%2fadmin`,
+        containing no literal `..` segment) would compare equal to the granted prefix and
+        the redirect would be *accepted* — even though a server that treats `%2f` as a
+        path separator would resolve it outside `/v1/items` entirely. Refused here proves
+        the encoded-slash check is load-bearing, not merely redundant with the
+        out-of-range refusal above."""
+        result = check_redirect(
+            "https://api.example.com/v1/items/x%2f..%2f..%2fadmin", a_profile(), hops=1
+        )
+        assert isinstance(result, Refusal)
+        assert result.reason is RefusalReason.PATH_NOT_ALLOWED
+
     def test_an_approved_path_that_cannot_be_compared_refuses_at_resolve_time(self) -> None:
         """A source whose own approved path carries a dot segment would otherwise fail only
         on a redirect, which is the one place nobody would look. It fails on the first
@@ -951,3 +969,144 @@ class TestPathTemplateDeclaration:
         )
         assert row is not None
         assert row.path_params_of("items") == {}
+
+
+class TestThisModuleActuallyRunsWithTheDatabaseDown:
+    """M-X8 (`docs/agent-workflow/reviews/REVIEW-M2-M7.md`): this module's own claim
+    ("no fixture, no database... a security test that needs a server standing up is a
+    security test that eventually gets skipped") used to be false in practice —
+    `apps/tests/conftest.py`'s session-scoped autouse `_reset_schema` opened a database
+    connection before a single test in this file ran, gating an otherwise DB-free
+    security suite on server availability. `conftest.py` now skips that connection
+    when nothing selected needs one; the four tests below prove the mechanism
+    directly, in two pairs — this file's own DB-freedom against the detection set
+    (`test_this_file_itself_requests_no_db_touching_fixture`) and the detection set's
+    own completeness against `conftest.py`'s real fixture graph
+    (`test_every_db_touching_conftest_fixture_is_in_the_detection_set`), then the
+    collection-time flag and `_reset_schema`'s own use of it — rather than trusting
+    the conftest change by inspection.
+
+    `[측정]` End-to-end, run by hand (not as an automated test — a nested
+    pytest-inside-pytest subprocess proved too sensitive to plugin load order,
+    specifically pytest-xdist, to keep as a reliable CI assertion): `COSMA_DB_HOST=
+    127.0.0.1 COSMA_DB_PORT=1 COSMA_DB_NAME=cosmai_test COSMA_DB_USER=cosmai_runtime
+    COSMA_DB_PASSWORD_REF=COSMA_DB_RUNTIME .venv/bin/python3 -m pytest
+    tests/test_outbound_policy.py -q` (port `1`, nothing listens there, no
+    `with-secret-source.sh` wrapper needed) — **115 passed**, this whole file,
+    server down.
+    """
+
+    def test_this_file_itself_requests_no_db_touching_fixture(self) -> None:
+        """This test checks only this one file, not the fixture graph: every name in
+        `conftest.py`'s own `_DB_TOUCHING_FIXTURES` is absent from this module's
+        source, so this module's own claim to be DB-free is at least self-consistent.
+        `test_every_db_touching_conftest_fixture_is_in_the_detection_set` below is the
+        other half — that the detection set itself is complete over `conftest.py`'s
+        real fixture graph, which this test cannot see and does not claim to."""
+        import ast
+        from pathlib import Path
+
+        import tests.conftest as conftest
+
+        source = Path(__file__).read_text(encoding="utf-8")
+        names = {node.id for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Name)}
+        for fixture_name in conftest._DB_TOUCHING_FIXTURES:
+            assert fixture_name not in names, fixture_name
+
+    def test_every_db_touching_conftest_fixture_is_in_the_detection_set(self) -> None:
+        """N2 (round-2 re-review, `docs/agent-workflow/reviews/REVIEW-M2-M7.md` batch):
+        the first version of `_DB_TOUCHING_FIXTURES` covered `job_connection` and
+        `_migrations_applied` but not `migrator_connection`/`runtime_connection`, which
+        also open a real connection independently — a test requesting either of the
+        latter two alone (`test_migrate.py`, `test_db_connection.py`) would have been
+        wrongly read as DB-free. Rather than trust a hand-picked set again, this
+        introspects `conftest.py`'s own AST: every `@pytest.fixture`-decorated function
+        whose body calls `connect(...)` must be a member of `_DB_TOUCHING_FIXTURES`.
+        A DB-opening fixture added later without updating the set fails this test
+        immediately, rather than silently reading as DB-free."""
+        import ast
+        import inspect
+
+        import tests.conftest as conftest
+
+        source = inspect.getsource(conftest)
+        tree = ast.parse(source)
+        db_opening_fixtures: set[str] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            is_fixture = any(
+                getattr(dec.func, "attr", getattr(dec.func, "id", None)) == "fixture"
+                if isinstance(dec, ast.Call)
+                else (isinstance(dec, ast.Attribute) and dec.attr == "fixture")
+                for dec in node.decorator_list
+            )
+            if not is_fixture:
+                continue
+            calls_connect = any(
+                isinstance(inner, ast.Call) and getattr(inner.func, "id", None) == "connect"
+                for inner in ast.walk(node)
+            )
+            if calls_connect:
+                db_opening_fixtures.add(node.name)
+
+        # The positive control: the scan itself finds something. An empty result
+        # would satisfy the subset assertion below just as well as a correct one.
+        assert db_opening_fixtures, "the AST scan found no connect()-calling fixture at all"
+        # `_reset_schema` itself calls connect() but is the fixture being gated, not a
+        # fixture a test requests to opt into the database — excluded by name.
+        requestable = db_opening_fixtures - {"_reset_schema"}
+        assert requestable <= conftest._DB_TOUCHING_FIXTURES, (
+            requestable - conftest._DB_TOUCHING_FIXTURES
+        )
+
+    def test_the_hook_marks_a_db_free_selection_as_needing_no_database(self) -> None:
+        """`conftest.pytest_collection_modifyitems`'s own computation, exercised
+        directly against a stand-in item list — no real pytest session, no
+        subprocess, so nothing about plugin load order or capture can make this
+        flaky. A stand-in only needs the two attributes the hook actually reads."""
+        import tests.conftest as conftest
+
+        class _StubItem:
+            def __init__(self, fixturenames: tuple[str, ...]) -> None:
+                self.fixturenames = fixturenames
+                self.fspath = "tests/test_outbound_policy.py"
+
+        db_free_items: list[Any] = [_StubItem(("a_profile",)), _StubItem(())]
+        conftest.pytest_collection_modifyitems(db_free_items)
+        assert conftest._SESSION_NEEDS_DATABASE is False
+
+        db_backed_items: list[Any] = [
+            _StubItem(("a_profile",)),
+            _StubItem(("job_connection", "domain_store")),
+        ]
+        conftest.pytest_collection_modifyitems(db_backed_items)
+        assert conftest._SESSION_NEEDS_DATABASE is True
+
+    def test_reset_schema_never_connects_when_the_session_needs_no_database(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other half: `_reset_schema` itself, called directly with the flag set
+        both ways, against a `connect` that raises if it is ever reached — the
+        positive control (flag `True`) proves the spy would actually catch a call,
+        so the flag-`False` assertion is not vacuous."""
+        import tests.conftest as conftest
+
+        def _connect_must_not_be_called(*args: Any, **kwargs: Any) -> Any:
+            raise AssertionError("connect() was called with the database allegedly not needed")
+
+        monkeypatch.setattr(conftest, "connect", _connect_must_not_be_called)
+        monkeypatch.setattr(conftest, "_SESSION_NEEDS_DATABASE", False)
+        conftest._reset_schema.__wrapped__(platform_config=object())  # type: ignore[attr-defined]
+
+        calls: list[bool] = []
+
+        def _connect_records_a_call(*args: Any, **kwargs: Any) -> Any:
+            calls.append(True)
+            raise RuntimeError("stop before actually touching a database")
+
+        monkeypatch.setattr(conftest, "connect", _connect_records_a_call)
+        monkeypatch.setattr(conftest, "_SESSION_NEEDS_DATABASE", True)
+        with pytest.raises(RuntimeError, match="stop before"):
+            conftest._reset_schema.__wrapped__(platform_config=object())  # type: ignore[attr-defined]
+        assert calls == [True]

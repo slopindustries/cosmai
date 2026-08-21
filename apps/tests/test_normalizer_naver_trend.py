@@ -217,6 +217,28 @@ class TestWhatItSkips:
         outcome, results = normalize(a_point(), a_point(period="2026-08-08"))
         assert outcome.results_emitted == len(results) == 2
 
+    def test_an_integer_over_the_4300_digit_conversion_limit_is_skipped_not_aborted(
+        self,
+    ) -> None:
+        """B1 (REVIEW-M2-M7.md): `json.loads` raises a bare `ValueError` (not
+        `json.JSONDecodeError`) on an integer past CPython's string-conversion limit; a
+        narrow `except (json.JSONDecodeError, UnicodeDecodeError)` misses it and the whole
+        run aborts instead of skipping the one bad item."""
+        huge_int = SnapshotItem(
+            "x|huge", b'{"dimension":"x","v":' + b"9" * 5000 + b"}", "application/json"
+        )
+        outcome, results = normalize(a_point(), huge_int)
+        assert (outcome.results_emitted, outcome.skipped) == (1, 1)
+        assert len(results) == 1
+
+    def test_pathologically_deep_nesting_is_skipped_not_aborted(self) -> None:
+        """B1's second reproduction: deep nesting raises `RecursionError`, also missed by
+        the narrow tuple."""
+        deep = SnapshotItem("x|deep", b"[" * 100_000 + b"]" * 100_000, "application/json")
+        outcome, results = normalize(a_point(), deep)
+        assert (outcome.results_emitted, outcome.skipped) == (1, 1)
+        assert len(results) == 1
+
 
 class TestDP030RecordLevelFallback:
     """DP-030 D2: a point that carries a `dimension` string — so it claims to be a DataLab

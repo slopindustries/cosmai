@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JobPage, RawSummary, Schedule, Source, SourceList } from "../../api/types";
@@ -62,6 +63,11 @@ function installFetchMock(): void {
     "fetch",
     vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.includes("/collect")) {
+        return Promise.resolve(
+          jsonResponse(201, { job_id: "11111111-2222-3333-4444-555555555555", source_id: "naver-blog-main" }),
+        );
+      }
       if (url.includes("/raw")) {
         return Promise.resolve(jsonResponse(200, RAW_SUMMARY));
       }
@@ -94,11 +100,24 @@ describe("CollectorDomainScreen", () => {
     await waitFor(() => expect(screen.getByText(/No job history/)).toBeInTheDocument());
   });
 
-  it("shows a disabled 'Collect now' action with the M3-pending note, per the controller ruling", async () => {
+  it("fires POST /sources/{id}/collect and renders the 201 result (B12, REVIEW-M2-M7.md)", async () => {
+    const user = userEvent.setup();
     renderScreen();
 
     await waitFor(() => expect(screen.getByTestId("collect-now-button")).toBeInTheDocument());
-    expect(screen.getByTestId("collect-now-button")).toBeDisabled();
-    expect(screen.getByTestId("collect-disabled-note").textContent).toMatch(/add-on host/);
+    expect(screen.getByTestId("collect-now-button")).not.toBeDisabled();
+
+    await user.click(screen.getByTestId("collect-now-button"));
+
+    const fetchMock = vi.mocked(fetch);
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/collect"))).toBe(true),
+    );
+    const [, init] = fetchMock.mock.calls.find(([input]) => String(input).includes("/collect")) ?? [];
+    expect(init?.method).toBe("POST");
+
+    await waitFor(() => expect(screen.getByTestId("collect-outcome")).toBeInTheDocument());
+    expect(screen.getByTestId("collect-outcome").textContent).toMatch(/11111111/);
+    expect(screen.getByTestId("collect-outcome").textContent).toMatch(/naver-blog-main/);
   });
 });

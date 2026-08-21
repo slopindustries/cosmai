@@ -73,8 +73,9 @@ from pathlib import Path
 from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from platform_core.config import PlatformConfig
@@ -262,6 +263,40 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error_without_input_echo(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """The body FastAPI could not bind, minus the one field its default handler adds.
+
+        B2 (REVIEW-M2-M7.md): FastAPI's default `RequestValidationError` handler puts
+        each rejected field's raw value in an `input` key, so a request body that fails
+        Pydantic validation before an endpoint's own logic runs — a JSON string sent to
+        a route expecting an object, for instance — echoes that body verbatim into a 422
+        response. `POST /sources/{id}/credentials` is write-only "by construction"
+        exactly because no code path here ever puts `value` in a response; this handler
+        closes the one path that was FastAPI's own, not this app's. It is registered
+        once, platform-wide, so every route — present and future — gets it, rather than
+        each route re-deriving its own 422 shape.
+
+        Every other field FastAPI's default handler emits (`type`, `loc`, `msg`, and any
+        `ctx`) is preserved unchanged, so a caller still learns what was wrong and where.
+        `[측정]` `ctx` is not withheld and is not always empty of the input — a
+        `uuid_parsing`-class error, for one, puts a fragment of the offending value in
+        `ctx["error"]` ("invalid character: found `n` at 1"). This route's own failure
+        class (`dict_type`, a JSON string bound where the body schema requires an
+        object) carries no `ctx` at all, so the credential value withholds completely
+        here — but this handler is registered platform-wide, and a route accepting a
+        typed path/body field whose validator's `ctx` echoes part of the input (UUID
+        parsing is the one Pydantic v2 ships with this shape) would still leak that
+        fragment through `ctx`, not through the `input` key this handler strips.
+        """
+        errors = [
+            {key: value for key, value in error.items() if key != "input"}
+            for error in exc.errors()
+        ]
+        return JSONResponse(status_code=422, content=jsonable_encoder({"detail": errors}))
 
     def store_for(handle: Any) -> JobStore:
         return JobStore(handle, config, logger=logger, metrics=registry)

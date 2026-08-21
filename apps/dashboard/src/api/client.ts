@@ -14,6 +14,7 @@ import type {
   DomainRefused,
   HealthResponse,
   Job,
+  JobEnqueued,
   JobPage,
   JobState,
   MetricsResponse,
@@ -30,7 +31,10 @@ import type {
   SourceList,
 } from "./types";
 
-const DEFAULT_API_BASE = "http://127.0.0.1:8000";
+// M-X2 (docs/agent-workflow/reviews/REVIEW-M2-M7.md): matches
+// `platform_core.config`'s own `COSMA_API_PORT` default — `8000` collides with
+// trend-radar's live dashboard (DP-031 D3); the M7 demo ran on `8100`.
+const DEFAULT_API_BASE = "http://127.0.0.1:8100";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
@@ -120,13 +124,49 @@ export function readMetrics(): Promise<MetricsResponse> {
 // summary (which turned out to be wrong about `/export/results`'s format
 // options; see `buildExportUrl`'s own note and docs/p1/M5-RECORD.md).
 //
-// `POST /sources/{id}/collect` and `POST /sources/{id}/import` do not exist
-// in `apps/domain/api.py` at all — its own docstring names why: both would
-// create a job for an `addon:*` handler nothing can claim until M3 lands.
-// This client layer therefore has no `startCollection`/`startImport`
-// function; the dashboard shows a disabled action with a note instead of
-// calling a route that was never built.
+// `POST /sources/{id}/collect` and `POST /sources/{id}/import` live in
+// `apps/addon_host/api.py` (M3), composed onto this same surface at
+// `python -m addon_host` — not in `apps/domain/api.py`, which still declines
+// to build them for the reason its own docstring names (a job nothing could
+// claim, at the time M2 was written). `startCollection`/`startImport` below
+// were added in the B12 fix wave (`docs/agent-workflow/reviews/REVIEW-M2-M7.md`):
+// the routes had existed since M3 merged, and the dashboard shipped with no
+// client function for them and a note telling the operator they did not exist.
 // --------------------------------------------------------------------------- //
+
+/**
+ * Enqueue one collect job for this source (`POST /sources/{id}/collect`,
+ * `apps/addon_host/api.py`). Takes no body — everything about the request the
+ * collector will make is read from the row this identifier names. A `404`
+ * (no such source) or `409` (wrong kind, or disabled) is returned rather than
+ * thrown, the same convention `sealSnapshot` and `createNormalizeRun` use.
+ */
+export async function startCollection(sourceId: string): Promise<JobEnqueued | DomainRefused> {
+  const response = await fetch(`${apiBase()}/sources/${encodeURIComponent(sourceId)}/collect`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (response.ok || [404, 409].includes(response.status)) {
+    return (await response.json()) as JobEnqueued | DomainRefused;
+  }
+  throw new ApiFailure(response.status, await response.text());
+}
+
+/**
+ * Enqueue one import job for this source (`POST /sources/{id}/import`,
+ * `apps/addon_host/api.py`). The dataset half of `startCollection`, same
+ * shape and same refusal handling.
+ */
+export async function startImport(sourceId: string): Promise<JobEnqueued | DomainRefused> {
+  const response = await fetch(`${apiBase()}/sources/${encodeURIComponent(sourceId)}/import`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (response.ok || [404, 409].includes(response.status)) {
+    return (await response.json()) as JobEnqueued | DomainRefused;
+  }
+  throw new ApiFailure(response.status, await response.text());
+}
 
 export function listSources(): Promise<SourceList> {
   return getJson<SourceList>("/sources");
@@ -141,9 +181,23 @@ export function readRawSummary(sourceId: string): Promise<RawSummary> {
   return getJson<RawSummary>(`/sources/${encodeURIComponent(sourceId)}/raw`);
 }
 
-/** The env-file key name `apps/domain/api.py`'s `credential_ref_for` derives: `COSMA_SRC_<SOURCE_ID>_<PURPOSE>`. */
+/**
+ * The env-file key name `apps/domain/api.py`'s `credential_ref_for` derives:
+ * `COSMA_SRC_<SOURCE_ID>_<PURPOSE>`. M-X3 (`docs/agent-workflow/reviews/REVIEW-M2-M7.md`):
+ * this used to replace each forbidden character individually and keep leading/trailing
+ * underscores, diverging from `credential_ref_for`'s collapse-and-strip on consecutive
+ * separators and edges (`"a..b"` → `A__B` here vs `A_B` there; `".lead"` → `_LEAD` here
+ * vs `LEAD` there) — the operator-facing purpose of this function is showing which key
+ * to populate, so a divergence here is a UI that names the wrong key. Now matches
+ * `credential_ref_for` exactly: `test_credential_ref_derivation_agrees.test.ts` and
+ * `apps/tests/test_credential_ref_derivation_agrees.py` assert both sides against the
+ * same vector table.
+ */
 function envSafe(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 export function credentialRefName(sourceId: string, purpose: string): string {

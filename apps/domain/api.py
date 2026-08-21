@@ -18,15 +18,18 @@ routes M2 deferred (``collect``, ``import``) — see ``addon_host.api``'s own mo
 docstring for the reasoning. This module's routes and location are therefore final, not
 provisional: every route below still serves unchanged under ``python -m addon_host``.
 
-**Scope narrowing.** P0's surface had seven writes: register (not an endpoint, per its own
-docstring), collect, import, seal, normalize, and (added by this batch) a credential write.
-``POST /sources/{id}/collect`` and ``POST /sources/{id}/import`` are **not** reproduced here.
-Both would create a job whose handler names ``addon:<addon_id>`` — a dispatch convention
-that lives in ``addon_host.registration`` (P0) and has no P1 equivalent yet: nothing in this
-tree registers a handler for that prefix, so such a job would sit ``PENDING`` forever with no
-worker able to claim it in a way that does anything. Creating a job nothing can ever process
-is not a smaller version of the feature; it is a route that looks like it works and does not.
-``docs/p1/M2-RECORD.md`` names this split and the M3 batch that closes it.
+**Scope narrowing, closed by M3.** P0's surface had seven writes: register (not an
+endpoint, per its own docstring), collect, import, seal, normalize, and (added by this
+batch) a credential write. ``POST /sources/{id}/collect`` and ``POST /sources/{id}/import``
+were **not** reproduced here at M2 time: both create a job whose handler names
+``addon:<addon_id>``, a dispatch convention that lived in P0's ``addon_host.registration``
+and had no P1 equivalent yet, so such a job would have sat ``PENDING`` forever with no
+worker able to claim it. ``docs/p1/M2-RECORD.md`` named this split and handed it to M3.
+**M3 closed it**: ``addon_host.registration`` now exists, and ``addon_host.api`` composes
+this module's ``extend_with_domain`` with the two routes M2 deferred — see
+``addon_host/api.py``'s own module docstring. Both routes are live at
+``python -m addon_host`` (B12, ``docs/agent-workflow/reviews/REVIEW-M2-M7.md`` — this
+paragraph is the one an earlier revision of the shipped dashboard quoted as still true).
 ``POST /snapshots/{id}/normalize`` **is** reproduced, per this batch's brief, even though it
 shares the same eventual-dispatch dependency — the job it creates is equally unprocessable
 until M3 registers ``addon:*`` handlers. That inconsistency is deliberate scope from the
@@ -75,11 +78,13 @@ SOURCE_ID_FIELD = "source_id"
 SNAPSHOT_ID_FIELD = "snapshot_id"
 
 #: The addon-dispatch handler prefix CONTRACT-JOB@0.1's job-handler naming convention
-#: fixes and ``addon_host.registration.HANDLER_PREFIX`` will define for real in M3.
-#: Mirrored here, not imported — ``addon_host`` does not exist in this tree yet. **M3 must
-#: keep this string in sync with its own** (or supersede this module outright; see this
-#: module's docstring); a mismatch would mean a job this route creates is never claimed by
-#: the handler M3 registers.
+#: fixes, and which ``addon_host.registration.HANDLER_PREFIX`` (M3) now also defines.
+#: Mirrored here, not imported — ``domain`` may not import ``addon_host`` (the layer
+#: direction rule ``tests/environment/test_p1_isolation.py`` enforces; see M-C2,
+#: ``docs/agent-workflow/reviews/REVIEW-M2-M7.md``). A mismatch between this copy and
+#: ``addon_host.registration``'s would mean a job this route creates is never claimed by
+#: the handler that module registers — no test asserts the two stay equal (M-X4, same
+#: review).
 HANDLER_PREFIX = "addon:"
 
 #: A normalize job's attempt budget. Three, matching every other P0 job: a transient

@@ -290,3 +290,19 @@ Phase 0.3's "or record a P1-scoped decision that is not a waiver" clause.
   until a future packet or milestone adopts one, per D3.
 - Forward links: `docs/conventions/secret-setup.md` and `docs/conventions/p0-security.md` each
   gain one line pointing to this packet, added in this same commit.
+
+## Post-decision corrections
+
+Appended, not a rewrite of the sections above.
+
+- **`[정정, 2026-08-21, m7-fixwave, M-X6]` D1's own text still says the screen shows
+  "whether it is currently set."** That was correctly removed from the shipped
+  dashboard by `e2afd95` (M5): the credential write route is genuinely write-only
+  with no "configured" status ever queryable anywhere (`docs/p1/M5-RECORD.md:414-424`,
+  its own fixed-finding #4 — `apps/domain/api.py`'s `write_source_credential` never
+  reads a value back, and no route reports whether a purpose is configured). The
+  shipped `CredentialForm` shows "written this session" / "not written this
+  session" from the component's own local state instead — a claim about this
+  browser tab, never a claim about server state the component cannot see. M5-RECORD
+  reconciles this well; only this packet's own D1 sentence was left saying the
+  earlier, incorrect thing. See M-X6, `docs/agent-workflow/reviews/REVIEW-M2-M7.md`.

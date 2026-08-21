@@ -254,7 +254,12 @@ side, is M1 implementation work, not decided here.
 
 `[확인 사실]` The first Remaining-uncertainty bullet above ("the shared server's actual address...
 unconfirmed") is discharged for M1's scope. The server is docker container `tubedepth-postgres`
-(image `postgres:18-alpine`, PostgreSQL 18.6), reachable at `127.0.0.1:5433`; administrative work
+(image `postgres:18-alpine`, PostgreSQL 18.6), reachable at `127.0.0.1:5433`
+(`[정정, 2026-08-21, m7-fixwave, M-R13]` present tense, stated with no dated correction even
+though `apps/db/provision.md`'s own 2026-08-21 addendum records the shared server was replaced
+mid-M3/M6: the live server as of this fix wave is container `shared-postgres`, `127.0.0.1:5434`
+— `docker ps`, this session — and `docs/project-state.md` points here as the current
+decision without carrying that replacement forward either); administrative work
 runs as its `fleet` superuser over `docker exec` (container-internal trust, no password),
 confirmed live with `docker ps` before provisioning. Provisioning was executed against it, not
 merely designed: databases `cosmai`/`cosmai_test` (owner `cosmai_owner`), roles `cosmai_owner`

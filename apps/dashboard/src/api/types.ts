@@ -327,6 +327,12 @@ export interface NormalizeRunCreated {
   snapshot_id: string;
 }
 
+/** A `201` from `POST /sources/{id}/collect` or `/import` (`apps/addon_host/api.py`, M3): the job it enqueued and nothing else — a worker claims it, this response does not wait for that. */
+export interface JobEnqueued {
+  job_id: string;
+  source_id: string;
+}
+
 /** `result_view`: one normalized record, both version axes, and the lineage key. */
 export interface NormalizedResult {
   id: string;

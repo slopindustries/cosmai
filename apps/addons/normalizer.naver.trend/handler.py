@@ -134,7 +134,12 @@ def _require_language(context: NormalizeContext) -> str:
 def _parse(payload: bytes) -> dict[str, Any] | None:
     try:
         point = json.loads(payload)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (ValueError, RecursionError):
+        # ValueError covers json.JSONDecodeError and UnicodeDecodeError (both are
+        # ValueError subclasses) as well as CPython's integer-string-conversion limit
+        # (`ValueError: Exceeds the limit ... for integer string conversion`, not a
+        # JSONDecodeError). RecursionError covers pathologically deep nesting. Both must
+        # abstain rather than abort per DP-030 D2 — see B1 in REVIEW-M2-M7.md.
         return None
     return point if isinstance(point, dict) else None
 

@@ -66,8 +66,34 @@ from platform_core.obs.metrics import MetricsRegistry
 TEST_DATABASE = os.environ.get("COSMA_TEST_DB", "cosmai_test")
 
 
+#: M-X8 (``docs/agent-workflow/reviews/REVIEW-M2-M7.md``): fixtures whose transitive
+#: closure means "this test actually touches the database" — every fixture in this
+#: file whose own body calls :func:`connect` directly. `job_connection` and
+#: `_migrations_applied` are the two most-used; `migrator_connection` and
+#: `runtime_connection` (round-2 re-review, N2: the first version of this set omitted
+#: both, so a test requesting either one alone — `test_migrate.py`, `test_db_connection.py`
+#: — would have wrongly read as DB-free) also open a connection independently, not
+#: through either of the first two. Every *other* DB-backed fixture in this file
+#: (`domain_store`, `job_store`, `_reset_job_tables`, …) depends transitively on one of
+#: these four, so this set is exhaustive over fixtures a test can request — not a guess:
+#: `test_every_db_touching_conftest_fixture_is_in_the_detection_set` in
+#: `test_outbound_policy.py` introspects this module's own AST and asserts it.
+_DB_TOUCHING_FIXTURES: Final = frozenset(
+    {"job_connection", "_migrations_applied", "migrator_connection", "runtime_connection"}
+)
+
+#: Set by :func:`pytest_collection_modifyitems` before fixtures run, so
+#: :func:`_reset_schema` can read it. A module attribute rather than a
+#: ``pytest.Config`` stash because the schema-reset fixture has no route to the
+#: session's `Config` other than importing this module either way, and this keeps the
+#: two functions in the same file next to each other.
+_SESSION_NEEDS_DATABASE: bool = True
+
+
+@pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Run ``test_migrate.py`` before any test that needs the schema populated.
+    """Run ``test_migrate.py`` before any test that needs the schema populated, and
+    record whether *any* selected test needs a database at all.
 
     ``test_migrate.py``'s own docstring assumes its first test is the one that
     "actually starts from empty": `_reset_schema` above resets schema `cosmai`
@@ -82,8 +108,21 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     Sorting `test_migrate.py`'s items first removes the ordering accident
     without changing what either module asserts; `apply_migrations` is
     idempotent, so `_migrations_applied` running after it is a no-op.
+
+    **M-X8's fix.** `_reset_schema` below is session-scoped *and* autouse, so it used
+    to open a database connection before a single test ran — including a run of
+    `apps/tests/test_outbound_policy.py` alone, whose own module docstring says "a
+    security test that needs a server standing up is a security test that eventually
+    gets skipped." Computed here (collection time, before any fixture executes) rather
+    than inside `_reset_schema` itself, because a fixture cannot see the full selected
+    item list — only what its own test requested.
     """
     items.sort(key=lambda item: (0 if "test_migrate.py" in str(item.fspath) else 1,))
+    global _SESSION_NEEDS_DATABASE
+    _SESSION_NEEDS_DATABASE = any(
+        not _DB_TOUCHING_FIXTURES.isdisjoint(getattr(item, "fixturenames", ()))
+        for item in items
+    )
 
 
 @pytest.fixture(scope="session")
@@ -119,7 +158,15 @@ def _reset_schema(platform_config: PlatformConfig) -> None:
     and three `alter default privileges`) are `apps/db/provision_db.sql`'s
     Part B grants, reissued verbatim so a reset schema is left in the same
     state a freshly provisioned one is.
+
+    **M-X8 (`docs/agent-workflow/reviews/REVIEW-M2-M7.md`).** Skipped entirely when
+    `pytest_collection_modifyitems` found no selected test whose fixture closure
+    touches the database at all (`_SESSION_NEEDS_DATABASE`) — `platform_config` above
+    only reads environment variables, so resolving it costs nothing even with the
+    server down; this is the statement that would have opened the refused connection.
     """
+    if not _SESSION_NEEDS_DATABASE:
+        return
     with connect(platform_config, role="migrator") as connection:
         connection.execute(f"drop schema if exists {SCHEMA} cascade")
         connection.execute(f"create schema {SCHEMA}")

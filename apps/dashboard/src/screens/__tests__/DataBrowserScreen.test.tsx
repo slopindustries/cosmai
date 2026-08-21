@@ -135,4 +135,22 @@ describe("DataBrowserScreen", () => {
     expect(payloadElement.querySelector("b")).toBeNull();
     expect(payloadElement.children.length).toBe(0);
   });
+
+  it("M-S5 (REVIEW-M2-M7.md): the table preview cell renders markup as literal plain text too, not only the detail pane", async () => {
+    renderScreen();
+    await waitFor(() => expect(screen.getByText("post-2")).toBeInTheDocument());
+
+    const row = screen.getByText("post-2").closest("tr");
+    expect(row).not.toBeNull();
+    const previewCell = within(row as HTMLElement).getByTestId("payload-preview");
+
+    // The exact raw string, angle brackets intact — the row's own record still
+    // fits under `preview`'s 80-character slice, so nothing here is truncated.
+    expect(previewCell.textContent).toBe(RAW_SCRIPT_PAYLOAD);
+    // And proof it was never parsed as markup, the same two assertions the
+    // detail-pane test above makes: no <script>/<b> element, no DOM children.
+    expect(previewCell.querySelector("script")).toBeNull();
+    expect(previewCell.querySelector("b")).toBeNull();
+    expect(previewCell.children.length).toBe(0);
+  });
 });

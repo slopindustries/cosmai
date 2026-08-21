@@ -47,7 +47,7 @@ describe("CredentialForm", () => {
       expect(fetchMock()).toHaveBeenCalledTimes(1);
     });
     const [url, init] = fetchMock().mock.calls[0] as [string, RequestInit];
-    expect(String(url)).toBe(`http://127.0.0.1:8000/sources/${SOURCE_ID}/credentials`);
+    expect(String(url)).toBe(`http://127.0.0.1:8100/sources/${SOURCE_ID}/credentials`);
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({ purpose: "client_id", value: SECRET_VALUE });
 

@@ -20,7 +20,7 @@
 #
 # Usage (run from apps/, with the shared server reachable):
 #
-#   COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5433 COSMA_DB_NAME=cosmai_test \
+#   COSMA_DB_HOST=127.0.0.1 COSMA_DB_PORT=5434 COSMA_DB_NAME=cosmai_test \
 #     COSMA_DB_USER=cosmai_runtime ../scripts/with-secret-source.sh \
 #     tests/concurrency/run_measurements.sh
 #

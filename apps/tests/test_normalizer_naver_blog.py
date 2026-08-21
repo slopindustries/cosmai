@@ -285,6 +285,41 @@ class TestPerRecordFallback:
         assert "normalize_error" not in results[0].notes
 
 
+class TestSpecValidJsonThatIsNotAJsonDecodeError:
+    """B1 (REVIEW-M2-M7.md): `json.loads` raises `ValueError`/`RecursionError` on some
+    spec-valid JSON without ever raising `json.JSONDecodeError` — a bare
+    `except (json.JSONDecodeError, UnicodeDecodeError)` misses both and aborts the whole
+    run instead of abstaining on the one bad row, defeating DP-030 D2. These are the
+    review's own reproduction payloads, run through the real `normalize()` entry point
+    (not `_parse` in isolation) so an abort would show up as this test hanging or raising
+    out of `normalize`, not as a wrong return value.
+    """
+
+    def test_an_integer_over_the_4300_digit_conversion_limit_abstains_not_aborts(
+        self,
+    ) -> None:
+        payload = b'{"id":"b","v":' + b"9" * 5000 + b"}"
+        outcome, results = normalize(
+            an_item(),
+            SnapshotItem("https://blog.naver.com/huge-int", payload, "application/json"),
+            an_item(link="https://blog.naver.com/z/1"),
+        )
+        assert outcome.results_emitted == 3
+        assert outcome.skipped == 0
+        assert len(results) == 3
+
+    def test_pathologically_deep_nesting_abstains_not_aborts(self) -> None:
+        payload = b"[" * 100_000 + b"]" * 100_000
+        outcome, results = normalize(
+            an_item(),
+            SnapshotItem("https://blog.naver.com/deep-nest", payload, "application/json"),
+            an_item(link="https://blog.naver.com/z/1"),
+        )
+        assert outcome.results_emitted == 3
+        assert outcome.skipped == 0
+        assert len(results) == 3
+
+
 class TestConformance:
     """`addon_kit.conformance.run_conformance` against the real add-on directory.
 

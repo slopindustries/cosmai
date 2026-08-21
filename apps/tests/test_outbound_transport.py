@@ -587,16 +587,37 @@ class TestLoopbackIsOnlyReachableByFlag:
         Widened to the whole repository over the suffixes a flag can be set in, rather than
         to one more directory, because the previous shape's failure was that it named its
         subjects.
+
+        `[측정]` Run from inside `.worktrees/<name>/apps/` (an M4/M2/M3/M5/M6 lane
+        worktree), `REPO_ROOT` correctly resolves to that worktree's own root — but that
+        root's *own* absolute path necessarily contains a `.worktrees` path segment (it
+        lives inside the main checkout's `.worktrees/` directory). Checking
+        `path.parts` — the *absolute* path — against `SKIPPED_PARTS` therefore excluded
+        every file the scan found, from every worktree, unconditionally: `found` was
+        always empty. `[정정, 2026-08-21, m7-fixwave, M-R3]` This did **not** pass
+        vacuously — replayed with the bug reintroduced, this test's own positive
+        control (`assert Path("apps/domain/outbound.py") in found`, below) failed
+        loudly, because an empty `found` cannot contain that path. Only the *other*
+        assertion (`set(found) <= permitted`) would have passed vacuously on its own —
+        the positive control is exactly what stopped that vacuity from being silent,
+        which is the property a positive control exists to have. Fixed by checking the
+        parts of each file's path *relative to `REPO_ROOT`* instead, which is what
+        `SKIPPED_PARTS` was always meant to filter (a nested `.worktrees/` *inside* the
+        tree being scanned) and never depends on where that tree itself happens to sit
+        on disk.
         """
-        found = sorted(
-            path.relative_to(REPO_ROOT)
-            for path in REPO_ROOT.rglob("*")
-            if path.is_file()
-            and path.suffix in self.SCANNED_SUFFIXES
-            and not any(part in self.SKIPPED_PARTS for part in path.parts)
-            and not any(part.startswith("dist") for part in path.parts)
-            and "allow_loopback" in path.read_text("utf-8", errors="ignore")
-        )
+        found = []
+        for path in REPO_ROOT.rglob("*"):
+            if not path.is_file() or path.suffix not in self.SCANNED_SUFFIXES:
+                continue
+            rel = path.relative_to(REPO_ROOT)
+            if any(part in self.SKIPPED_PARTS for part in rel.parts):
+                continue
+            if any(part.startswith("dist") for part in rel.parts):
+                continue
+            if "allow_loopback" in path.read_text("utf-8", errors="ignore"):
+                found.append(rel)
+        found = sorted(found)
         permitted = {
             # P0's own tree, read-only and unchanged — still real files this scan finds.
             Path("experiments/integrated-p0/domain/outbound.py"),
@@ -617,9 +638,7 @@ class TestLoopbackIsOnlyReachableByFlag:
             # widened, so the flag stays a thing someone had to write down.
             Path("experiments/integrated-p0/tests/test_operator_loop.py"),
             # M2 batch 2c's copy-adapted P1 tree — the same three roles, one level shallower
-            # (``apps/`` rather than ``experiments/integrated-p0/``). No P1 dashboard exists
-            # yet (M5 is a different lane; its dashboard has not reached this flag as of this
-            # commit), so there is no ``apps/dashboard`` entry to add here.
+            # (``apps/`` rather than ``experiments/integrated-p0/``).
             Path("apps/domain/outbound.py"),
             Path("apps/tests/test_outbound_policy.py"),
             Path("apps/tests/test_outbound_transport.py"),
@@ -627,6 +646,17 @@ class TestLoopbackIsOnlyReachableByFlag:
             # ``experiments/integrated-p0/addon_host/api.py`` already holds above —
             # ``profile_view`` reads the flag back to an operator and never sets one.
             Path("apps/domain/api.py"),
+            # M4x's Gap 1 (plain HTTP for loopback): the module docstring and
+            # ``_refuse_http_off_loopback``'s own docstring explain the flag's role in the
+            # transport-layer re-check; the flag is read (``profile.allow_loopback``), never
+            # set, by this module.
+            Path("apps/domain/transport.py"),
+            # M5's P1 dashboard reaching this flag for the first time — the same read-only
+            # display role ``experiments/integrated-p0/dashboard/src/api.ts`` already holds
+            # above. ``allow_loopback: boolean`` is a response-type field the outbound
+            # profile view renders back to an operator; the dashboard never constructs or
+            # submits an outbound profile itself.
+            Path("apps/dashboard/src/api/types.ts"),
         }
         assert set(found) <= permitted, f"allow_loopback appeared in {set(found) - permitted}"
         # The control: the scan can find things. An empty result would satisfy the subset
@@ -644,7 +674,7 @@ class TestLoopbackIsOnlyReachableByFlag:
             for path in REPO_ROOT.rglob("*")
             if path.is_file()
             and path.suffix in self.SCANNED_SUFFIXES
-            and not any(part in self.SKIPPED_PARTS for part in path.parts)
+            and not any(part in self.SKIPPED_PARTS for part in path.relative_to(REPO_ROOT).parts)
         }
         for required in (".py", ".toml", ".sql", ".ts", ".tsx"):
             assert required in reached, f"the scan opened no {required} file"
