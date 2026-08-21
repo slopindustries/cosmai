@@ -26,7 +26,13 @@ import pytest
 from platform_core.config import ConfigurationInvalidError
 from platform_core.db.migrate import SCHEMA, apply_migrations
 
-EXPECTED_VERSION = "0001_platform_core"
+#: M2 batch 2a added `0002_domain.sql` beside `0001_platform_core.sql` in this
+#: same directory (`docs/superpowers/plans/2026-08-21-m2-m7-batch.md` §M2) —
+#: the platform and domain migrations for P1 apply through one applier and
+#: one directory, unlike P0's separate `platform_core`/`domain` migration
+#: directories (see `0002_domain.sql`'s own header for why P0 needed the split
+#: and P1 does not).
+EXPECTED_VERSIONS = ["0001_platform_core", "0002_domain"]
 
 
 def _tables_in_schema(connection: psycopg.Connection[Any]) -> set[str]:
@@ -50,9 +56,22 @@ def test_apply_migrations_from_an_empty_schema_applies_0001(
     migrator_connection: psycopg.Connection[Any],
 ) -> None:
     applied = apply_migrations(migrator_connection)
-    assert applied == [EXPECTED_VERSION]
+    assert applied == EXPECTED_VERSIONS
     tables = _tables_in_schema(migrator_connection)
-    assert {"job", "job_attempt", "platform_effect", "schema_migrations"} <= tables
+    assert {
+        "job",
+        "job_attempt",
+        "platform_effect",
+        "schema_migrations",
+        "source",
+        "source_cursor",
+        "raw_envelope",
+        "raw_item",
+        "snapshot",
+        "snapshot_item",
+        "normalized_result",
+        "schedule",
+    } <= tables
 
 
 def test_reapplying_migrations_is_a_no_op(migrator_connection: psycopg.Connection[Any]) -> None:
@@ -67,8 +86,9 @@ def test_applied_versions_are_recorded_in_schema_migrations(
         f"select version, applied_at from {SCHEMA}.schema_migrations"
     ).fetchall()
     versions = {str(row[0]): row[1] for row in rows}
-    assert EXPECTED_VERSION in versions
-    assert versions[EXPECTED_VERSION] is not None
+    for expected in EXPECTED_VERSIONS:
+        assert expected in versions
+        assert versions[expected] is not None
 
 
 def test_the_runtime_role_cannot_run_ddl(runtime_connection: psycopg.Connection[Any]) -> None:

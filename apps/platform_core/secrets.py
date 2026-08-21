@@ -37,6 +37,7 @@ __all__ = [
     "SecretValue",
     "resolve_credential",
     "secret_store_path",
+    "write_credential",
 ]
 
 #: The repository working tree. ``secrets.py`` sits at
@@ -134,3 +135,62 @@ def resolve_credential(ref: str) -> SecretValue:
         f"the secret store holds no key named {ref!r}",
         {"credential_ref": ref},
     )
+
+
+def write_credential(ref: str, value: str) -> None:
+    """Write ``ref=value`` to the secret store, replacing any existing line for ``ref``.
+
+    M2 batch 2d / DP-034 D1-D2: the dashboard's credential-entry write path. This is
+    the one relaxation DP-034 D2 names — a *second* point of use for invariant 2,
+    the API process rather than the worker — bounded to exactly this call: ``value``
+    is a local variable for the duration of one write, never returned, never logged,
+    never included in any exception this function raises (only ``ref``, a key name,
+    ever is), and never held past this function's return.
+
+    Writes to the same location ``resolve_credential`` reads (``secret_store_path()``),
+    so a value written here is immediately resolvable — and, per DP-034 D1, a store
+    that cannot be located, is not a file, is inside the repository, or carries the
+    wrong permissions refuses exactly as it already does for a *read*
+    (``CredentialNotResolved``, ``CONFIGURATION_INVALID``), never falling back to
+    creating one at a guessed location.
+
+    ``ref`` must already be a secret-store key name — the caller derives and
+    validates it before calling this, the same division of labor
+    ``domain.outbound._read_credentials`` already holds between a profile's shape and
+    the store that resolves it.
+    """
+    if not CREDENTIAL_REF_PATTERN.match(ref):
+        raise CredentialNotResolved(
+            f"{ref!r} is not a secret-store key name; it must match "
+            f"{CREDENTIAL_REF_PATTERN.pattern} and is never a value",
+            {"credential_ref": ref},
+        )
+    path = secret_store_path()
+    mode = stat.S_IMODE(path.stat().st_mode)
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+    replaced = False
+    rewritten: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key, _, _ = stripped.partition("=")
+            if key.strip() == ref:
+                rewritten.append(f"{ref}={value}\n")
+                replaced = True
+                continue
+        rewritten.append(line)
+    if not replaced:
+        if rewritten and not rewritten[-1].endswith("\n"):
+            rewritten[-1] = f"{rewritten[-1]}\n"
+        rewritten.append(f"{ref}={value}\n")
+
+    # Written to a temporary file in the same directory and renamed into place, so a
+    # reader (a worker resolving a credential mid-write) never observes a partially
+    # written store — `os.replace` is atomic on the same filesystem. The mode is
+    # copied from the file being replaced rather than left to the process umask,
+    # which is what "mode preserved" means here: a store that was 600 stays 600.
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    tmp.write_text("".join(rewritten), encoding="utf-8")
+    tmp.chmod(mode)
+    os.replace(tmp, path)

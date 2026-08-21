@@ -47,6 +47,7 @@ import psycopg
 import pytest
 from psycopg.rows import dict_row
 
+from domain.store import DomainStore
 from platform_core.config import DEFAULT_API_HOST, PlatformConfig, load_config
 from platform_core.db.connection import connect
 from platform_core.db.migrate import SCHEMA, apply_migrations
@@ -55,10 +56,14 @@ from platform_core.obs.logging import StructuredLogger
 from platform_core.obs.metrics import MetricsRegistry
 
 #: DP-032 D1: the dedicated test database, distinct from the production
-#: `cosmai` database `apps/db/provision.sql` also created. Forced here rather
-#: than trusted to `COSMA_DB_NAME`, so a test run can never reach `cosmai` by
-#: way of an operator's ordinary shell configuration.
-TEST_DATABASE = "cosmai_test"
+#: `cosmai` database `apps/db/provision.sql` also created. Read from
+#: `COSMA_TEST_DB` (default `cosmai_test`) rather than `COSMA_DB_NAME`, so a
+#: test run can never reach `cosmai` by way of an operator's ordinary shell
+#: configuration, while still letting each M2-M7 lane point at its own
+#: provisioned database (`apps/db/provision.md`'s 2026-08-21 section) instead
+#: of racing another lane's parallel `pytest` run over one shared schema reset
+#: (OQ-006).
+TEST_DATABASE = os.environ.get("COSMA_TEST_DB", "cosmai_test")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -248,6 +253,58 @@ def job_store(
 
 
 # --------------------------------------------------------------------------- #
+# Domain-store fixtures (M2 batch 2b)
+#
+# Copy-adapted in spirit from ``experiments/integrated-p0/tests/conftest.py``'s
+# ``domain``/``database`` block, at the size DP-032's one-shared-database
+# placement needs — the same trade ``job_store`` above already makes against
+# P0's per-test cloned database. ``domain_store`` shares ``job_connection``
+# with ``job_store`` on purpose: P0's own atomicity tests
+# (``TestCollectionIsAtomic`` in ``test_domain_store.py``) need the domain
+# writes and the fenced completion inside **one** transaction, which they
+# cannot be if each store held its own connection.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def _reset_domain_tables(
+    job_connection: psycopg.Connection[Any], _reset_job_tables: None
+) -> Iterator[None]:
+    """Clear the domain tables before and after a test, so no row outlives it.
+
+    Depends on ``_reset_job_tables`` (not merely ``job_connection``) so the two
+    resets nest correctly around the foreign keys ``raw_envelope.job_id`` and
+    ``raw_envelope.attempt_id`` put between the domain and job tables:
+    pytest's fixture-teardown order is the reverse of setup order, so this
+    fixture's own ``_clear()`` runs — on both setup and teardown — while
+    ``_reset_job_tables``'s job/job_attempt rows are still present, and a
+    domain row referencing one created during the test is always gone before
+    that job row's own cleanup tries to delete it.
+    """
+
+    def _clear() -> None:
+        job_connection.execute("delete from cosmai.normalized_result")
+        job_connection.execute("delete from cosmai.snapshot_item")
+        job_connection.execute("delete from cosmai.snapshot")
+        job_connection.execute("delete from cosmai.raw_item")
+        job_connection.execute("delete from cosmai.raw_envelope")
+        job_connection.execute("delete from cosmai.source_cursor")
+        job_connection.execute("delete from cosmai.schedule")
+        job_connection.execute("delete from cosmai.source")
+
+    _clear()
+    yield
+    _clear()
+
+
+@pytest.fixture
+def domain_store(
+    job_connection: psycopg.Connection[Any], _reset_domain_tables: None
+) -> DomainStore:
+    return DomainStore(job_connection)
+
+
+# --------------------------------------------------------------------------- #
 # Process helpers for worker/API integration tests (Tasks 7-8)
 #
 # Copy-adapted from ``experiments/integrated-p0/tests/conftest.py``'s process
@@ -289,8 +346,23 @@ def worker_environment(config: PlatformConfig, **overrides: str) -> dict[str, st
     (a short lease, a fast poll, a deliberately broken variable), and a caller
     that wants a setting *removed* can still delete a key from the mapping this
     returns.
+
+    ``COSMA_TEST_DB`` (M2 batch 2a) is dropped from the copied environment
+    before it reaches a spawned process. It selects *this session's* database
+    (see ``TEST_DATABASE`` above) and is not one of ``platform_core.config``'s
+    settings, so a spawned worker or API process has no use for it — and
+    because it is ``COSMA_``-prefixed, an operator who set it in their shell to
+    pick a lane's database (`apps/db/provision.md`'s 2026-08-21 section) would
+    otherwise make every spawned process log an unrelated
+    ``api.configuration_warning``/``worker.configuration_warning`` for an
+    "unknown COSMA_-prefixed variable" that has nothing to do with that
+    process's own configuration — `[측정]` this broke
+    ``test_sec_003_case_f_the_api_entrypoint_reports_an_unknown_variable_and_runs``
+    (`tests/test_api.py`), which counts exactly one such warning for the one
+    variable *it* injects.
     """
     values = dict(os.environ)
+    values.pop("COSMA_TEST_DB", None)
     values.update(
         {
             "COSMA_DB_HOST": str(config.db_host),
@@ -310,6 +382,11 @@ def worker_environment(config: PlatformConfig, **overrides: str) -> dict[str, st
 def worker_command(*arguments: str) -> list[str]:
     """The command line DP-006 D1 fixes for the worker process."""
     return [sys.executable, "-m", "platform_core.worker", *arguments]
+
+
+def scheduler_command(*arguments: str) -> list[str]:
+    """The command line M6 batch 6a fixes for the scheduler process."""
+    return [sys.executable, "-m", "scheduler", *arguments]
 
 
 def api_command(*arguments: str) -> list[str]:
@@ -362,6 +439,33 @@ def run_worker(
 ) -> subprocess.CompletedProcess[str]:
     """Run a worker process to completion. The common case in a scenario."""
     return wait_for_worker(start_worker(config, *arguments, **overrides), timeout=timeout)
+
+
+def start_scheduler(
+    config: PlatformConfig, *arguments: str, **overrides: str
+) -> subprocess.Popen[str]:
+    """Start a scheduler process against ``config`` and return it still running.
+
+    Named after ``start_worker`` and shaped identically — see that function's
+    own docstring for why both streams are captured.
+    """
+    return subprocess.Popen(
+        scheduler_command(*arguments),
+        env=worker_environment(config, **overrides),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def run_scheduler(
+    config: PlatformConfig,
+    *arguments: str,
+    timeout: float = PROCESS_TIMEOUT_SECONDS,
+    **overrides: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run a scheduler process to completion. The common case in a scenario."""
+    return wait_for_worker(start_scheduler(config, *arguments, **overrides), timeout=timeout)
 
 
 def free_port(host: str) -> int:

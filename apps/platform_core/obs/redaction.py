@@ -25,6 +25,20 @@ Known limit, recorded in SEC-004: matching is key-name based, so a value placed
 under an innocuous key is not detected. In text, a value is also only masked when
 a key introduces it — a bare value in prose has nothing to match on, and a value
 that continues past whitespace keeps only its first word masked.
+
+**One narrow exemption, added in M2 batch 2c.** ``credential_ref`` casefolds to
+``credentialref``, which contains ``credential`` — so the containment rule above
+masked it, even though DP-018 D1 fixes what a ``credential_ref`` *is*: a
+secret-store key **name**, never a value. The value it names is resolved only at
+``platform_core.secrets.resolve_credential``, far from this module, and never
+reaches a mapping this redactor walks — masking the name protects nothing the
+name's own value did not already withhold, while costing an operator the one
+piece of information ``docs/decisions/DP-018-credential-parts-and-attachment.md``
+says is safe and useful to show: which key to populate. ``EXEMPT_KEYS`` below is
+an **exact**, casefolded match — not a second containment rule — so it narrows
+nothing else: a key that merely contains ``credential`` alongside other content
+(``api_credential_and_secret``) is still fully covered, and nothing in
+``REDACTED_KEYS`` loses coverage anywhere else.
 """
 
 from __future__ import annotations
@@ -68,6 +82,12 @@ def _casefold_key(key: str) -> str:
 
 _CASEFOLDED_KEYS: Final[frozenset[str]] = frozenset(_casefold_key(key) for key in REDACTED_KEYS)
 
+#: Keys exempt from masking despite matching `REDACTED_KEYS` by containment — see the
+#: module docstring's "One narrow exemption" paragraph. `credential_ref` is the one entry
+#: today (DP-018 D1); a future domain surface that names a ref field differently registers
+#: its own casefolded form here rather than widening the match to a second containment rule.
+EXEMPT_KEYS: Final[frozenset[str]] = frozenset({_casefold_key("credential_ref")})
+
 
 def _term_pattern(key: str) -> str:
     """Allow the same separators ``_casefold_key`` erases: ``api_key``, ``API KEY``."""
@@ -105,6 +125,8 @@ def is_redacted_key(key: object) -> bool:
     if not isinstance(key, str):
         return False
     folded = _casefold_key(key)
+    if folded in EXEMPT_KEYS:
+        return False
     return any(term in folded for term in _CASEFOLDED_KEYS)
 
 
