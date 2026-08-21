@@ -10,11 +10,11 @@ import { CredentialForm } from "../CredentialForm";
 const SOURCE_ID = "naver-blog-main";
 const SECRET_VALUE = "super-secret-token-999";
 
-function renderForm(configuredPurposes: readonly string[] = []): void {
+function renderForm(): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <CredentialForm sourceId={SOURCE_ID} configuredPurposes={configuredPurposes} />
+      <CredentialForm sourceId={SOURCE_ID} />
     </QueryClientProvider>,
   );
 }
@@ -56,24 +56,23 @@ describe("CredentialForm", () => {
     expect(document.body.textContent ?? "").not.toContain(SECRET_VALUE);
   });
 
-  it("shows the derived ref name and a not-configured status for an unconfigured purpose", async () => {
+  it("shows the derived ref name and 'not written this session' before any submit", async () => {
     const user = userEvent.setup();
-    renderForm(["other_purpose"]);
+    renderForm();
 
     await user.type(screen.getByLabelText("purpose"), "client_id");
 
     // `credentialRefName` sanitizes to an env-var-safe name: `-` becomes `_`.
     expect(screen.getByText("COSMA_SRC_NAVER_BLOG_MAIN_CLIENT_ID", { exact: false })).toBeInTheDocument();
-    expect(screen.getByText("not configured")).toBeInTheDocument();
+    expect(screen.getByText("not written this session")).toBeInTheDocument();
   });
 
-  it("shows a configured status for a purpose already in configuredPurposes", async () => {
-    const user = userEvent.setup();
-    renderForm(["client_id"]);
+  it("shows 'written this session' for the purpose just submitted, after a successful write", async () => {
+    renderForm();
 
-    await user.type(screen.getByLabelText("purpose"), "client_id");
+    await fillAndSubmit("client_id", SECRET_VALUE);
 
-    expect(screen.getByText("configured")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("written this session")).toBeInTheDocument());
   });
 
   it("shows the error class without echoing the submitted value on a refusal", async () => {
