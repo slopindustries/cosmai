@@ -114,8 +114,20 @@ SECRET_SETUP_POINTER: Final = "docs/conventions/secret-setup.md"
 #: pass everything.
 WORKING_TREE_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 
+#: ``COSMA_ADDON_DIR`` is read by ``addon_host.settings`` rather than here (DP-008
+#: D1 keeps the add-on layer's settings in the add-on layer). Without this entry the
+#: report would say the variable "is ignored", which is false, and a standing false
+#: positive is worse than noise: SEC-003 case f exists to catch a **typo in a real
+#: setting name**, and an operator who learns to skip the warning loses that.
+#:
+#: M1 deferred this entry (Task 3-4 report, deviation 5): M1 built no add-on host, so
+#: there was nothing yet for the variable to serve, and ``docs/p1/M1-RECORD.md``
+#: named M3 — this batch — as where it comes back. Restored verbatim from
+#: ``experiments/integrated-p0/platform_core/config.py``.
+ADDON_DIR_VARIABLE: Final = "COSMA_ADDON_DIR"
+
 #: Variables this stage recognises but does not turn into a configuration field.
-RECOGNIZED_UNUSED: Final[frozenset[str]] = frozenset({SECRET_STORE_VARIABLE})
+RECOGNIZED_UNUSED: Final[frozenset[str]] = frozenset({SECRET_STORE_VARIABLE, ADDON_DIR_VARIABLE})
 
 DEFAULT_API_HOST: Final = "127.0.0.1"
 
