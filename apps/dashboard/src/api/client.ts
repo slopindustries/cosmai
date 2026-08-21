@@ -10,11 +10,13 @@
 
 import type {
   AttemptPage,
+  CredentialWriteRefusal,
   HealthResponse,
   Job,
   JobPage,
   JobState,
   MetricsResponse,
+  RawItemPage,
   RetryOutcome,
 } from "./types";
 
@@ -99,4 +101,87 @@ export function readHealth(): Promise<HealthResponse> {
 
 export function readMetrics(): Promise<MetricsResponse> {
   return getJson<MetricsResponse>("/metrics");
+}
+
+// --------------------------------------------------------------------------- //
+// The domain surface (Lane A / M2). Neither route below is served yet — the
+// backend half of the credential endpoint moved to Lane A (domain API owns
+// source routes, controller ruling 2026-08-21), and the raw-item route is
+// M2's. Both shapes are already fixed (DP-034 D1; the batch plan's §신규 API),
+// so these are real client functions written against those fixed shapes, not
+// placeholders — batch 5d points them at the real backend once M2 merges.
+// Batch 5b/5c's own tests exercise them against a mocked `fetch`.
+// --------------------------------------------------------------------------- //
+
+/** The env-file key name DP-034 D1 fixes: `COSMA_SRC_<SOURCE_ID>_<PURPOSE>`. */
+function envSafe(value: string): string {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+}
+
+export function credentialRefName(sourceId: string, purpose: string): string {
+  return `COSMA_SRC_${envSafe(sourceId)}_${envSafe(purpose)}`;
+}
+
+/** Thrown when the credentials write route refuses, carrying its `error_class`/`error_summary` — never the submitted value, which this type has no field for. */
+export class CredentialWriteFailure extends Error {
+  readonly error_class: string;
+  readonly error_summary: string;
+
+  constructor(refusal: CredentialWriteRefusal) {
+    super(`${refusal.error_class}: ${refusal.error_summary}`);
+    this.name = "CredentialWriteFailure";
+    this.error_class = refusal.error_class;
+    this.error_summary = refusal.error_summary;
+  }
+}
+
+export function isCredentialWriteFailure(error: unknown): error is CredentialWriteFailure {
+  return error instanceof CredentialWriteFailure;
+}
+
+function parseCredentialRefusal(bodyText: string): CredentialWriteRefusal | null {
+  try {
+    const parsed: unknown = JSON.parse(bodyText);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as Record<string, unknown>).error_class === "string" &&
+      typeof (parsed as Record<string, unknown>).error_summary === "string"
+    ) {
+      return parsed as CredentialWriteRefusal;
+    }
+  } catch {
+    // Not JSON, or not the refusal shape — falls through to the generic failure below.
+  }
+  return null;
+}
+
+/**
+ * Write one credential value (DP-034 D1). The route answers `204` with no
+ * body on success; this function returns `void` — there is no read path, by
+ * design, so there is nothing to hand back. The submitted value lives only
+ * inside this call's own request body; it is never retained, returned, or
+ * logged by this function.
+ */
+export async function writeCredential(sourceId: string, purpose: string, value: string): Promise<void> {
+  const response = await fetch(`${apiBase()}/sources/${encodeURIComponent(sourceId)}/credentials`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ purpose, value }),
+  });
+  if (response.status === 204) {
+    return;
+  }
+  const bodyText = await response.text();
+  const refusal = parseCredentialRefusal(bodyText);
+  if (refusal !== null) {
+    throw new CredentialWriteFailure(refusal);
+  }
+  throw new ApiFailure(response.status, bodyText);
+}
+
+/** A page of one source's Raw items, newest-seq-first. DP-033 D2: `payload` is plain text, rendered as such and never as markup. */
+export function readRawItems(sourceId: string, offset: number, limit: number): Promise<RawItemPage> {
+  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  return getJson<RawItemPage>(`/sources/${encodeURIComponent(sourceId)}/raw/items?${query.toString()}`);
 }

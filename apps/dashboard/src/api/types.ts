@@ -168,3 +168,52 @@ export interface MetricsResponse {
   pid: number;
   metrics: MetricsReading;
 }
+
+// --------------------------------------------------------------------------- //
+// The domain surface (Lane A / M2). Only the two shapes batch 5b/5c actually
+// call against: the credential write DP-034 D1 fixes, and the raw-item page
+// the M2-M7 batch plan's §신규 API fixes
+// (`GET /sources/{id}/raw/items?offset&limit`). Neither route is served yet —
+// batch 5d wires these against the real thing once M2 merges — but the shapes
+// are already fixed by the plan/decision, not guessed.
+// --------------------------------------------------------------------------- //
+
+/**
+ * `POST /sources/{id}/credentials` request body (DP-034 D1). Write-only: there
+ * is no corresponding read type, because the value is never read back.
+ */
+export interface CredentialWriteRequest {
+  purpose: string;
+  value: string;
+}
+
+/**
+ * A refusal shape from the credentials write route. Mirrors
+ * `PlatformError.operator_view()` (`error_class`/`error_summary`), the same
+ * shape `HealthUnhealthy` already carries — the plan does not fix this error
+ * body itself, so this follows the one convention every other platform error
+ * response in this codebase already uses.
+ */
+export interface CredentialWriteRefusal {
+  error_class: string;
+  error_summary: string;
+}
+
+/** One item on the `GET /sources/{id}/raw/items` page. `payload` is plain text (DP-033 D2). */
+export interface RawItem {
+  item_key: string;
+  seq: number;
+  emitted_at: string;
+  content_type: string;
+  payload: string;
+}
+
+/** The `GET /sources/{id}/raw/items?offset&limit` envelope. */
+export interface RawItemPage {
+  source_id: string;
+  offset: number;
+  limit: number;
+  returned: number;
+  matched: number;
+  items: RawItem[];
+}

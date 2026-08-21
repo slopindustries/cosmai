@@ -5,7 +5,16 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { listJobs, readAttempts, readHealth, readJob, readMetrics, requestRetry } from "./client";
+import {
+  listJobs,
+  readAttempts,
+  readHealth,
+  readJob,
+  readMetrics,
+  readRawItems,
+  requestRetry,
+  writeCredential,
+} from "./client";
 import type { JobState } from "./types";
 
 export function useJobsQuery(state: JobState | null, limit: number, offset: number) {
@@ -54,4 +63,26 @@ export function useHealthQuery() {
 
 export function useMetricsQuery() {
   return useQuery({ queryKey: ["metrics"] as const, queryFn: readMetrics });
+}
+
+export function useRawItemsQuery(sourceId: string, offset: number, limit: number) {
+  return useQuery({
+    queryKey: ["rawItems", sourceId, offset, limit] as const,
+    queryFn: () => readRawItems(sourceId, offset, limit),
+    enabled: sourceId !== "",
+  });
+}
+
+/**
+ * DP-034 D1's one write. No `onSuccess` invalidation targets a query key here
+ * on purpose: there is no read query for a credential's value to invalidate —
+ * the "configured" status callers show today comes from mocked source detail
+ * (batch 5d wires it to the real thing), not from a cache this mutation could
+ * refresh.
+ */
+export function useCredentialWriteMutation() {
+  return useMutation({
+    mutationFn: ({ sourceId, purpose, value }: { sourceId: string; purpose: string; value: string }) =>
+      writeCredential(sourceId, purpose, value),
+  });
 }
