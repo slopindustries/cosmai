@@ -47,6 +47,7 @@ import psycopg
 import pytest
 from psycopg.rows import dict_row
 
+from domain.store import DomainStore
 from platform_core.config import DEFAULT_API_HOST, PlatformConfig, load_config
 from platform_core.db.connection import connect
 from platform_core.db.migrate import SCHEMA, apply_migrations
@@ -249,6 +250,58 @@ def job_store(
             platform_config.retry_base_ms, platform_config.retry_max_ms, jitter=lambda: 0.0
         ),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Domain-store fixtures (M2 batch 2b)
+#
+# Copy-adapted in spirit from ``experiments/integrated-p0/tests/conftest.py``'s
+# ``domain``/``database`` block, at the size DP-032's one-shared-database
+# placement needs — the same trade ``job_store`` above already makes against
+# P0's per-test cloned database. ``domain_store`` shares ``job_connection``
+# with ``job_store`` on purpose: P0's own atomicity tests
+# (``TestCollectionIsAtomic`` in ``test_domain_store.py``) need the domain
+# writes and the fenced completion inside **one** transaction, which they
+# cannot be if each store held its own connection.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def _reset_domain_tables(
+    job_connection: psycopg.Connection[Any], _reset_job_tables: None
+) -> Iterator[None]:
+    """Clear the domain tables before and after a test, so no row outlives it.
+
+    Depends on ``_reset_job_tables`` (not merely ``job_connection``) so the two
+    resets nest correctly around the foreign keys ``raw_envelope.job_id`` and
+    ``raw_envelope.attempt_id`` put between the domain and job tables:
+    pytest's fixture-teardown order is the reverse of setup order, so this
+    fixture's own ``_clear()`` runs — on both setup and teardown — while
+    ``_reset_job_tables``'s job/job_attempt rows are still present, and a
+    domain row referencing one created during the test is always gone before
+    that job row's own cleanup tries to delete it.
+    """
+
+    def _clear() -> None:
+        job_connection.execute("delete from cosmai.normalized_result")
+        job_connection.execute("delete from cosmai.snapshot_item")
+        job_connection.execute("delete from cosmai.snapshot")
+        job_connection.execute("delete from cosmai.raw_item")
+        job_connection.execute("delete from cosmai.raw_envelope")
+        job_connection.execute("delete from cosmai.source_cursor")
+        job_connection.execute("delete from cosmai.schedule")
+        job_connection.execute("delete from cosmai.source")
+
+    _clear()
+    yield
+    _clear()
+
+
+@pytest.fixture
+def domain_store(
+    job_connection: psycopg.Connection[Any], _reset_domain_tables: None
+) -> DomainStore:
+    return DomainStore(job_connection)
 
 
 # --------------------------------------------------------------------------- #
