@@ -1,0 +1,23 @@
+{
+  "artifacts": [
+    {
+      "kind": "video.sponsor_segments",
+      "target": "MfqI-W_JRQQ",
+      "schema_version": "1",
+      "digest": "0be813a5998c93b6936521fd8b312734d0dc14b9def6f9c5976df1101fd2f557",
+      "byte_count": 74,
+      "fetched_at": "2026-08-19T00:29:38.328557Z",
+      "fresh_until": "2026-08-19T06:29:38.328557Z"
+    },
+    {
+      "kind": "video.metadata",
+      "target": "dQw4w9WgXcQ",
+      "schema_version": "1",
+      "digest": "b9f4c0e2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "byte_count": 17761,
+      "fetched_at": "2026-08-18T12:00:00.000000Z",
+      "fresh_until": "2026-08-18T18:00:00.000000Z"
+    }
+  ],
+  "cursor": "MjAyNi0wOC0xOFQxMjowMDowMC4wMDAwMDArMDA6MDB8ZmFrZS1wYWdlLTI"
+}

@@ -1,0 +1,39 @@
+# collector.tubedepth.rest — an adapter for the tubedepth (yt-scrapper) YouTube
+# domain service, target fixed by DP-031 D3 (and its 2026-08-21 addendum, which
+# moves the baseline to release tag v1.0.0). See README.md for the collection
+# design and docs/decisions/DP-031-p1-collector-topology.md for why this source
+# is an external adapter rather than an internal direct collector.
+
+[addon]
+id = "collector.tubedepth.rest"
+version = "0.1.0"
+kind = "collector"
+entry = "handler:run"
+requires_contract = ">=1.0,<2.0"
+
+
+[config]
+schema_version = "1"
+
+[[config.field]]
+name = "kinds"
+type = "string"
+required = false
+label = "Kind allowlist"
+help = "Comma-separated tubedepth kinds to keep (e.g. video.metadata,video.transcript); empty means every kind"
+
+[[config.field]]
+name = "page_limit"
+type = "integer"
+required = false
+label = "Page size"
+help = "Rows requested per /v1/artifacts page, 1-500; omit to use this add-on's own default (50)"
+
+[declares]
+# tubedepth's live target is fixed by DP-031 D3 at 127.0.0.1:8080 (loopback) —
+# the operator-approved outbound profile is what actually binds a host, port,
+# and path; this line only states what the add-on needs approved.
+hosts = ["127.0.0.1"]
+endpoints = ["artifacts_list", "artifact_payload"]
+streams = ["artifacts"]
+needs_credential = true
