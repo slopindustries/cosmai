@@ -536,7 +536,9 @@ class TestLoopbackIsOnlyReachableByFlag:
 
     #: Build output is derived, not authored. `dist-*/` holds a bundle of `src/`, so an
     #: occurrence there is already reported against the source it came from.
-    SKIPPED_PARTS = ("__pycache__", ".git", ".venv", "node_modules")
+    #: `.worktrees/` holds the batch-mode lane worktrees — gitignored scratch checkouts of
+    #: this same repository, so scanning them double-counts every authored occurrence.
+    SKIPPED_PARTS = ("__pycache__", ".git", ".venv", "node_modules", ".worktrees")
 
     def test_no_source_or_add_on_in_the_repository_sets_it(self) -> None:
         """The flag exists for tests. If it ever appears elsewhere, this names the file.
